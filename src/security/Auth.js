@@ -5,12 +5,12 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase
 
 // ★ここをご自身のFirebaseコンソールで取得した内容に書き換えてください！
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyB-xxxxxxxxxxxxxxx",
+    authDomain: "my-universe-os.firebaseapp.com",
+    projectId: "my-universe-os",
+    storageBucket: "my-universe-os.appspot.com",
+    messagingSenderId: "1234567890",
+    appId: "1:1234567890:web:abcdefg..."
 };
 
 // Firebaseの起動

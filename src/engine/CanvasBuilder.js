@@ -14,20 +14,9 @@ export class CanvasBuilder {
         this.memorizedNode = null; 
         this.imageCache = {};
         
-        const savedData = DataManager.load();
-        if (savedData) {
-            this.currentUniverse = savedData.rootUniverse;
-            this.wormholes = savedData.wormholes;
-            this.blackHole = savedData.blackHole;
-            this.allNodesMap = savedData.nodeMap;
-        } else {
-            const userName = prompt("【OS初期セットアップ】\nあなたのユーザーネーム（アカウント名）を登録してください。", "Guest") || "Guest";
-            this.currentUniverse = new Universe(userName, 'space');
-            const galaxy = this.currentUniverse.addNode('アイデア銀河', -150, -50, 30, '#9966ff', 'galaxy');
-            const star = this.currentUniverse.addNode('基幹システム', 100, -100, 18, '#ffcc00', 'star');
-            this.currentUniverse.addLink(galaxy, star);
-            this.allNodesMap = new Map();
-        }
+        // ★クラウドから読み込むまでの「仮の宇宙」を設定
+        this.currentUniverse = new Universe("Loading...", 'space');
+        this.allNodesMap = new Map();
 
         this.isZoomingIn = false;
         this.targetUniverse = null;
@@ -72,18 +61,43 @@ export class CanvasBuilder {
         window.addEventListener('resize', () => this.resizeCanvas());
         this.time = 0;
         
-        this.ui.updateBreadcrumbs();
+        // ★同期処理から非同期処理（init）へ変更
+        this.init();
         this.animate();
     }
 
-    autoSave() {
+    // ★追加：クラウドからデータが降りてくるのを待つ関数
+    async init() {
+        console.log("OS: データのロードを開始します...");
+        const savedData = await DataManager.load();
+        
+        if (savedData) {
+            this.currentUniverse = savedData.rootUniverse;
+            this.wormholes = savedData.wormholes;
+            this.blackHole = savedData.blackHole;
+            this.allNodesMap = savedData.nodeMap;
+        } else {
+            const userName = prompt("【OS初期セットアップ】\nあなたのユーザーネーム（アカウント名）を登録してください。", "Guest") || "Guest";
+            this.currentUniverse = new Universe(userName, 'space');
+            const galaxy = this.currentUniverse.addNode('アイデア銀河', -150, -50, 30, '#9966ff', 'galaxy');
+            const star = this.currentUniverse.addNode('基幹システム', 100, -100, 18, '#ffcc00', 'star');
+            this.currentUniverse.addLink(galaxy, star);
+            this.allNodesMap = new Map();
+        }
+        
+        this.ui.updateBreadcrumbs();
+        console.log("OS: ロード完了。システムをオンラインにします。");
+    }
+
+    // ★変更：保存も非同期(async)にする
+    async autoSave() {
         let root = this.currentUniverse;
         let histIndex = this.universeHistory.length - 1;
         while (histIndex >= 0) {
             root = this.universeHistory[histIndex];
             histIndex--;
         }
-        DataManager.save(root, this.wormholes, this.blackHole);
+        await DataManager.save(root, this.wormholes, this.blackHole);
     }
 
     executeWarp(targetNode) {
@@ -317,6 +331,14 @@ export class CanvasBuilder {
                 
                 this.ctx.fill();
                 this.ctx.shadowBlur = 0;
+            }
+
+            // ★追加：セキュリティ：鍵がかかっている場合に南京錠を表示
+            if (node.isLocked) {
+                this.ctx.fillStyle = "#ffcc00"; 
+                this.ctx.font = "16px serif";
+                this.ctx.textAlign = "center";
+                this.ctx.fillText("🔒", node.x, node.y - drawSize - 10);
             }
 
             this.ctx.fillStyle = '#ffffff';
