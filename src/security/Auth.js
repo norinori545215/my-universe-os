@@ -3,14 +3,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// ★ここをご自身のFirebaseコンソールで取得した内容に書き換えてください！
+// ★ついに手に入れた本物の魔法の呪文（APIキー）！
 const firebaseConfig = {
-    apiKey: "AIzaSyB-xxxxxxxxxxxxxxx",
-    authDomain: "my-universe-os.firebaseapp.com",
-    projectId: "my-universe-os",
-    storageBucket: "my-universe-os.appspot.com",
-    messagingSenderId: "1234567890",
-    appId: "1:1234567890:web:abcdefg..."
+  apiKey: "AIzaSyDjr1e3AYjQ7ZGqagb23HWqMdGjZaYcAmU",
+  authDomain: "my-universe-os.firebaseapp.com",
+  projectId: "my-universe-web",
+  storageBucket: "my-universe-os.firebasestorage.app",
+  messagingSenderId: "190319305708",
+  appId: "1:190319305708:web:0dd89920ad6b9e2f1416c9",
+  measurementId: "G-VGBNGHQZWD"
 };
 
 // Firebaseの起動
