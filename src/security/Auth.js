@@ -7,7 +7,7 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase
 const firebaseConfig = {
   apiKey: "AIzaSyDjr1e3AYjQ7ZGqagb23HWqMdGjZaYcAmU",
   authDomain: "my-universe-os.firebaseapp.com",
-  projectId: "my-universe-web",
+  projectId: "my-universe-os", // ⭕️ ここを直しました！
   storageBucket: "my-universe-os.firebasestorage.app",
   messagingSenderId: "190319305708",
   appId: "1:190319305708:web:0dd89920ad6b9e2f1416c9",
