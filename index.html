@@ -41,7 +41,6 @@
             font-weight: bold; background: #000; color: #ffaa00; border-color: #ffaa00;
         }
 
-        /* 宇宙のタイトル文字 */
         #center-text {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: rgba(255, 255, 255, 0.1); font-size: 4vw; font-weight: bold;
@@ -52,29 +51,26 @@
 <body>
 
     <div id="auth-screen">
-        
         <div id="login-box" class="auth-box">
             <h2 style="margin-top:0; color:#00ffcc; letter-spacing: 2px;">UNIVERSE OS</h2>
-            <p style="font-size:12px; color:#aaa;">システムへアクセスするための<br>認証情報を入力してください</p>
+            <p style="font-size:12px; color:#aaa;">クラウド同期を利用するために<br>ログインしてください</p>
             
-            <input type="text" id="login-id" placeholder=" ">
-            <input type="password" id="login-pw" placeholder=" ">
+            <input type="email" id="login-id" placeholder="メールアドレス">
+            <input type="password" id="login-pw" placeholder="パスワード">
             
-            <button id="btn-login">ログイン</button>
-            <div id="login-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">認証に失敗しました</div>
+            <button id="btn-login">認証を開始</button>
+            <div id="login-error" style="color:#ff4444; font-size:11px; margin-top:10px; display:none;">認証に失敗しました</div>
         </div>
 
         <div id="mfa-box" class="auth-box" style="display:none;">
             <h2 style="margin-top:0; color:#ffaa00; letter-spacing: 2px;">2FA SECURE</h2>
-            <p style="font-size:12px; color:#aaa;">新しい端末からのアクセスです。<br>送信された4桁のコードを入力してください。</p>
+            <p style="font-size:12px; color:#aaa;">セキュリティコードを入力してください</p>
             
             <input type="text" id="mfa-code" placeholder="----" maxlength="4" autocomplete="off">
             
-            <button id="btn-verify-mfa">認証して起動</button>
-            <div id="mfa-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">コードが違います</div>
-            <button id="btn-back-login" style="background:transparent; color:#888; margin-top:10px; padding:5px; font-size:11px; font-weight:normal;">← 戻る</button>
+            <button id="btn-verify-mfa">システムを承認</button>
+            <div id="mfa-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">コードが一致しません</div>
         </div>
-
     </div>
 
     <div id="center-text"></div>
@@ -82,67 +78,68 @@
 
     <script type="module">
         import { CanvasBuilder } from './src/engine/CanvasBuilder.js';
-        
-        // --- セキュリティロジック（※将来は Auth.js へ移行） ---
-        const VALID_ID = "tokitoki3232";
-        const VALID_PW = "Tokimogu3248-3248";
-        let currentMfaCode = ""; // システムが発行するワンタイムパスワードを保持
+        import { auth, loginToUniverse } from './src/security/Auth.js';
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const authScreen = document.getElementById('auth-screen');
         const loginBox = document.getElementById('login-box');
         const mfaBox = document.getElementById('mfa-box');
+        const loginError = document.getElementById('login-error');
+        
+        let currentMfaCode = "";
 
-        // STEP 1: ログイン処理
-        document.getElementById('btn-login').addEventListener('click', () => {
-            const inputId = document.getElementById('login-id').value;
-            const inputPw = document.getElementById('login-pw').value;
+        // システム起動の共通処理
+        function bootSystem() {
+            authScreen.style.opacity = '0';
+            setTimeout(() => {
+                authScreen.style.display = 'none';
+                window.app = new CanvasBuilder('universe-canvas');
+            }, 500);
+        }
 
-            if (inputId === VALID_ID && inputPw === VALID_PW) {
-                // ID/PWが合致したら、第2関門（2FA）へ進む
-                document.getElementById('login-error').style.display = 'none';
+        // STEP 1: Firebaseログインボタン
+        document.getElementById('btn-login').addEventListener('click', async () => {
+            const email = document.getElementById('login-id').value;
+            const password = document.getElementById('login-pw').value;
+
+            loginError.style.display = 'none';
+            const result = await loginToUniverse(email, password);
+
+            if (result.success) {
+                // Firebaseログイン成功 -> 2FA画面へ
                 loginBox.style.display = 'none';
                 mfaBox.style.display = 'block';
 
-                // ★ランダムな4桁のコードを生成（本来はここでスマホにSMS等を送る）
+                // 疑似2FAコード生成
                 currentMfaCode = Math.floor(1000 + Math.random() * 9000).toString();
-                
-                // 【疑似体験用】ブラウザのアラートを使って、スマホに通知が来たような演出をする
                 setTimeout(() => {
-                    alert(`📱 【セキュリティ通知】\nMy Universe OS へのログイン要求がありました。\n\n認証コード: [ ${currentMfaCode} ]\n\n※このコードを画面に入力してください。`);
+                    alert(`📱 【2FA認証コード】\n\nコード: [ ${currentMfaCode} ]\n\n※この数字を画面に入力してください。`);
                 }, 500);
-
             } else {
-                document.getElementById('login-error').style.display = 'block';
-                document.getElementById('login-pw').value = ''; 
+                loginError.innerText = "エラー: " + result.error;
+                loginError.style.display = 'block';
+                document.getElementById('login-pw').value = '';
             }
         });
 
-        // STEP 2: 二段階認証の確認処理
+        // STEP 2: 二段階認証コードの検証
         document.getElementById('btn-verify-mfa').addEventListener('click', () => {
             const inputCode = document.getElementById('mfa-code').value;
 
             if (inputCode === currentMfaCode) {
-                // 認証完全クリア！扉を開けて宇宙を起動
-                document.getElementById('mfa-error').style.display = 'none';
-                authScreen.style.opacity = '0';
-                
-                setTimeout(() => {
-                    authScreen.style.display = 'none';
-                    // 🚨 ここで初めてシステムがメモリに展開される
-                    window.app = new CanvasBuilder('universe-canvas');
-                }, 500);
+                bootSystem();
             } else {
                 document.getElementById('mfa-error').style.display = 'block';
-                document.getElementById('mfa-code').value = ''; 
+                document.getElementById('mfa-code').value = '';
             }
         });
 
-        // 戻るボタン
-        document.getElementById('btn-back-login').addEventListener('click', () => {
-            mfaBox.style.display = 'none';
-            loginBox.style.display = 'block';
-            document.getElementById('mfa-code').value = '';
-            document.getElementById('login-pw').value = ''; 
+        // ログイン状態の監視（自動ログイン）
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("セッション維持による自動起動");
+                bootSystem();
+            }
         });
 
         // Enterキー対応
