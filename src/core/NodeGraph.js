@@ -1,6 +1,6 @@
 // Firebase接続に必要な部品をインポート
 import { db, auth } from '../security/Auth.js';
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class EntityNode {
     constructor(name, x, y, size, color, category = 'star') {
@@ -12,9 +12,13 @@ export class EntityNode {
         this.url = ""; 
         this.iconUrl = "";
         
+        // ★セキュリティ機能：星に鍵をかけるための新属性
+        this.isLocked = false;       // 鍵がかかっているか
+        this.password = "";          // この星専用のパスワード
+        this.ownerId = auth.currentUser ? auth.currentUser.uid : ""; // 所有者ID
+
         this.parentUniverse = null;
 
-        // カテゴリーに応じたテーマ設定（あなたのこだわり！）
         const theme = (category === 'life' || category === 'microbe') ? 'cell' : 'space';
         this.innerUniverse = new Universe(`${name}の内部`, theme);
         
@@ -69,11 +73,12 @@ export class Universe {
 }
 
 export const DataManager = {
-    // クラウド保存に対応させるために async (非同期) に変更
+    // クラウド保存（シリアライズに鍵情報を含める）
     save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
+            isLocked: n.isLocked, password: n.password, ownerId: n.ownerId, // ★追加
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
         const serializeUniverse = (u) => ({
@@ -88,13 +93,10 @@ export const DataManager = {
             blackHole: blackHole.map(serializeNode)
         };
 
-        // 1. ローカル保存
         localStorage.setItem('my_universe_save_data', JSON.stringify(data));
 
-        // 2. クラウド同期（Firebase）
         if (auth.currentUser) {
             try {
-                // ログインしているユーザーのIDを名前としたドキュメントに保存
                 const userDoc = doc(db, "universes", auth.currentUser.uid);
                 await setDoc(userDoc, data);
                 console.log("☁️ クラウド同期完了！");
@@ -104,11 +106,28 @@ export const DataManager = {
         }
     },
 
-    load: () => {
-        const raw = localStorage.getItem('my_universe_save_data');
-        if (!raw) return null;
+    // ★進化：クラウドからデータを取ってくるように変更
+    load: async () => {
+        let data = null;
 
-        const data = JSON.parse(raw);
+        // 1. ログインしていればクラウドから取得を試みる
+        if (auth.currentUser) {
+            console.log("☁️ クラウドから宇宙を取得中...");
+            const userDoc = await getDoc(doc(db, "universes", auth.currentUser.uid));
+            if (userDoc.exists()) {
+                data = userDoc.data();
+                console.log("✅ クラウドデータの読み込みに成功しました");
+            }
+        }
+
+        // 2. クラウドにない場合はローカルから取得
+        if (!data) {
+            const raw = localStorage.getItem('my_universe_save_data');
+            if (!raw) return null;
+            data = JSON.parse(raw);
+            console.log("💾 ローカルデータの読み込みに成功しました");
+        }
+
         const nodeMap = new Map();
 
         const parseUniverse = (uData) => {
@@ -118,6 +137,12 @@ export const DataManager = {
                 node.id = nData.id;
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
+                
+                // ★セキュリティ属性の復元
+                node.isLocked = nData.isLocked || false;
+                node.password = nData.password || "";
+                node.ownerId = nData.ownerId || "";
+
                 node.parentUniverse = u;
                 node.innerUniverse = parseUniverse(nData.innerUniverse);
                 u.nodes.push(node);
@@ -144,7 +169,11 @@ export const DataManager = {
 
         const blackHole = data.blackHole.map(nData => {
             const node = new EntityNode(nData.name, nData.baseX, nData.baseY, nData.size, nData.color, nData.category);
-            node.id = nData.id; node.url = nData.url || ""; node.iconUrl = nData.iconUrl || "";
+            node.id = nData.id; 
+            node.url = nData.url || ""; 
+            node.iconUrl = nData.iconUrl || "";
+            node.isLocked = nData.isLocked || false; // 追加
+            node.password = nData.password || "";   // 追加
             node.innerUniverse = parseUniverse(nData.innerUniverse);
             return node;
         });
