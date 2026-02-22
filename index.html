@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My Universe OS</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050510; font-family: sans-serif; }
+        canvas { display: block; }
+        
+        /* 🚪 ログイン＆2FA画面の共通スタイル */
+        #auth-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999; color: white; backdrop-filter: blur(10px);
+            transition: opacity 0.5s ease;
+        }
+        .auth-box {
+            background: rgba(20, 20, 30, 0.8); border: 1px solid #00ffcc;
+            padding: 40px; border-radius: 12px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 255, 204, 0.2); width: 280px;
+        }
+        .auth-box input {
+            width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px;
+            border: 1px solid #555; background: #111; color: white; box-sizing: border-box;
+        }
+        .auth-box button {
+            width: 100%; padding: 12px; margin-top: 20px; border-radius: 6px;
+            background: #00ffcc; color: #000; font-weight: bold; border: none;
+            cursor: pointer; font-size: 16px; transition: 0.2s;
+        }
+        .auth-box button:hover { background: #fff; box-shadow: 0 0 15px #00ffcc; }
+
+        /* 🔐 2FA専用のスタイル上書き */
+        #mfa-box { border-color: #ffaa00; box-shadow: 0 10px 40px rgba(255, 170, 0, 0.2); }
+        #mfa-box button { background: #ffaa00; }
+        #mfa-box button:hover { box-shadow: 0 0 15px #ffaa00; }
+        #mfa-code { 
+            text-align: center; font-size: 24px; letter-spacing: 12px; 
+            font-weight: bold; background: #000; color: #ffaa00; border-color: #ffaa00;
+        }
+
+        /* 宇宙のタイトル文字 */
+        #center-text {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.1); font-size: 4vw; font-weight: bold;
+            pointer-events: none; user-select: none; z-index: 10; white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen">
+        
+        <div id="login-box" class="auth-box">
+            <h2 style="margin-top:0; color:#00ffcc; letter-spacing: 2px;">UNIVERSE OS</h2>
+            <p style="font-size:12px; color:#aaa;">システムへアクセスするための<br>認証情報を入力してください</p>
+            
+            <input type="text" id="login-id" placeholder="ユーザーID (例: admin)">
+            <input type="password" id="login-pw" placeholder="パスワード (例: 1234)">
+            
+            <button id="btn-login">ログイン</button>
+            <div id="login-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">認証に失敗しました</div>
+        </div>
+
+        <div id="mfa-box" class="auth-box" style="display:none;">
+            <h2 style="margin-top:0; color:#ffaa00; letter-spacing: 2px;">2FA SECURE</h2>
+            <p style="font-size:12px; color:#aaa;">新しい端末からのアクセスです。<br>送信された4桁のコードを入力してください。</p>
+            
+            <input type="text" id="mfa-code" placeholder="----" maxlength="4" autocomplete="off">
+            
+            <button id="btn-verify-mfa">認証して起動</button>
+            <div id="mfa-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">コードが違います</div>
+            <button id="btn-back-login" style="background:transparent; color:#888; margin-top:10px; padding:5px; font-size:11px; font-weight:normal;">← 戻る</button>
+        </div>
+
+    </div>
+
+    <div id="center-text"></div>
+    <canvas id="universe-canvas"></canvas>
+
+    <script type="module">
+        import { CanvasBuilder } from './src/engine/CanvasBuilder.js';
+        
+        // --- セキュリティロジック（※将来は Auth.js へ移行） ---
+        const VALID_ID = "admin";
+        const VALID_PW = "1234";
+        let currentMfaCode = ""; // システムが発行するワンタイムパスワードを保持
+
+        const authScreen = document.getElementById('auth-screen');
+        const loginBox = document.getElementById('login-box');
+        const mfaBox = document.getElementById('mfa-box');
+
+        // STEP 1: ログイン処理
+        document.getElementById('btn-login').addEventListener('click', () => {
+            const inputId = document.getElementById('login-id').value;
+            const inputPw = document.getElementById('login-pw').value;
+
+            if (inputId === VALID_ID && inputPw === VALID_PW) {
+                // ID/PWが合致したら、第2関門（2FA）へ進む
+                document.getElementById('login-error').style.display = 'none';
+                loginBox.style.display = 'none';
+                mfaBox.style.display = 'block';
+
+                // ★ランダムな4桁のコードを生成（本来はここでスマホにSMS等を送る）
+                currentMfaCode = Math.floor(1000 + Math.random() * 9000).toString();
+                
+                // 【疑似体験用】ブラウザのアラートを使って、スマホに通知が来たような演出をする
+                setTimeout(() => {
+                    alert(`📱 【セキュリティ通知】\nMy Universe OS へのログイン要求がありました。\n\n認証コード: [ ${currentMfaCode} ]\n\n※このコードを画面に入力してください。`);
+                }, 500);
+
+            } else {
+                document.getElementById('login-error').style.display = 'block';
+                document.getElementById('login-pw').value = ''; 
+            }
+        });
+
+        // STEP 2: 二段階認証の確認処理
+        document.getElementById('btn-verify-mfa').addEventListener('click', () => {
+            const inputCode = document.getElementById('mfa-code').value;
+
+            if (inputCode === currentMfaCode) {
+                // 認証完全クリア！扉を開けて宇宙を起動
+                document.getElementById('mfa-error').style.display = 'none';
+                authScreen.style.opacity = '0';
+                
+                setTimeout(() => {
+                    authScreen.style.display = 'none';
+                    // 🚨 ここで初めてシステムがメモリに展開される
+                    window.app = new CanvasBuilder('universe-canvas');
+                }, 500);
+            } else {
+                document.getElementById('mfa-error').style.display = 'block';
+                document.getElementById('mfa-code').value = ''; 
+            }
+        });
+
+        // 戻るボタン
+        document.getElementById('btn-back-login').addEventListener('click', () => {
+            mfaBox.style.display = 'none';
+            loginBox.style.display = 'block';
+            document.getElementById('mfa-code').value = '';
+            document.getElementById('login-pw').value = ''; 
+        });
+
+        // Enterキー対応
+        document.getElementById('login-pw').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('btn-login').click();
+        });
+        document.getElementById('mfa-code').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('btn-verify-mfa').click();
+        });
+    </script>
+</body>
+</html>

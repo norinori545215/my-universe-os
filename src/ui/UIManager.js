@@ -1,0 +1,437 @@
+// src/ui/UIManager.js
+export class UIManager {
+    constructor(app) {
+        this.app = app; // CanvasBuilder（本体）との連携用
+        this.createUI();
+    }
+
+    createUI() {
+        const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
+        const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
+
+        const centerTextEl = document.getElementById('center-text');
+        if (centerTextEl) {
+            centerTextEl.style.pointerEvents = 'auto'; 
+            centerTextEl.style.cursor = 'pointer';
+            centerTextEl.title = "クリックで現在の階層の名前を変更";
+            centerTextEl.onclick = () => {
+                const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
+                if (newName) {
+                    this.app.currentUniverse.name = newName;
+                    this.app.autoSave();
+                    this.updateBreadcrumbs(); 
+                }
+            };
+        }
+
+        this.breadcrumbUI = document.createElement('div');
+        this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center;';
+        document.body.appendChild(this.breadcrumbUI);
+
+        const searchFab = document.createElement('div');
+        searchFab.style.cssText = `${fabStyle} top:15px; right:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc;`;
+        searchFab.innerText = '🔍';
+        document.body.appendChild(searchFab);
+
+        const searchUI = document.createElement('div');
+        searchUI.style.cssText = `${uiStyle} top:70px; right:15px; width:200px; display:none; flex-direction:column; gap:5px; transform-origin: top right;`;
+        searchUI.innerHTML = `
+            <input type="text" id="radar-input" placeholder="星を探す..." style="background:rgba(0,0,0,0.5); color:white; border:1px solid #00ffcc; padding:5px; border-radius:4px; outline:none; font-size:12px;">
+            <div id="radar-results" style="max-height:150px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:2px;"></div>
+        `;
+        document.body.appendChild(searchUI);
+
+        searchFab.onclick = () => {
+            const isHidden = searchUI.style.display === 'none';
+            searchUI.style.display = isHidden ? 'flex' : 'none';
+            searchFab.style.background = isHidden ? 'rgba(0,255,204,0.4)' : 'rgba(0,255,204,0.1)';
+        };
+
+        const radarInput = document.getElementById('radar-input');
+        const radarResults = document.getElementById('radar-results');
+        radarInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            radarResults.innerHTML = '';
+            if (!query) return;
+
+            let count = 0;
+            const searchUniverse = (u) => {
+                u.nodes.forEach(n => {
+                    if (n.name.toLowerCase().includes(query) && count < 10) {
+                        const btn = document.createElement('button');
+                        btn.innerText = `🌌 ${n.name}`;
+                        btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:3px; border-bottom:1px solid rgba(0,255,204,0.2);';
+                        btn.onclick = () => {
+                            this.app.executeWarp(n);
+                            radarInput.value = ''; radarResults.innerHTML = '';
+                            searchUI.style.display = 'none';
+                            searchFab.style.background = 'rgba(0,255,204,0.1)';
+                        };
+                        radarResults.appendChild(btn);
+                        count++;
+                    }
+                    searchUniverse(n.innerUniverse);
+                });
+            };
+            let root = this.app.currentUniverse;
+            if (this.app.universeHistory.length > 0) root = this.app.universeHistory[0];
+            searchUniverse(root);
+        });
+
+        const toolFab = document.createElement('div');
+        toolFab.style.cssText = `${fabStyle} bottom:15px; left:15px; background:rgba(0,255,255,0.1); border:1px solid #00ffff; color:#00ffff;`;
+        toolFab.innerText = '🛠️';
+        document.body.appendChild(toolFab);
+
+        const paletteUI = document.createElement('div');
+        paletteUI.style.cssText = `${uiStyle} bottom:70px; left:15px; display:none; flex-direction:column; gap:8px; max-width: 170px;`;
+        paletteUI.innerHTML = `
+            <div style="font-size:11px; color:#aaa; text-align:center;">🔄 操作モード</div>
+            <div style="display:flex; gap:3px;">
+                <button id="mode-run" style="flex:1; padding:8px 2px; background:#00ffcc; color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px;">👆 実行</button>
+                <button id="mode-link" style="flex:1; padding:8px 2px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; cursor:pointer; font-size:11px;">🔗 結ぶ</button>
+                <button id="mode-edit" style="flex:1; padding:8px 2px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; cursor:pointer; font-size:11px;">⚙️ 編集</button>
+            </div>
+            <hr style="border-color:rgba(255,255,255,0.2); margin:2px 0;">
+            <div style="font-size:11px; color:#aaa; text-align:center;">＋ 創造する</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+                <button id="spawn-galaxy" style="cursor:pointer; background:#331144; color:#cc99ff; border:1px solid #cc99ff; padding:6px; border-radius:5px; font-size:11px;">🌌 銀河</button>
+                <button id="spawn-star" style="cursor:pointer; background:#443300; color:#ffcc00; border:1px solid #ffcc00; padding:6px; border-radius:5px; font-size:11px;">⭐ 星</button>
+                <button id="spawn-life" style="cursor:pointer; background:#441122; color:#ff6699; border:1px solid #ff6699; padding:6px; border-radius:5px; font-size:11px;">🧬 生命</button>
+                <button id="spawn-microbe" style="cursor:pointer; background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:6px; border-radius:5px; font-size:11px;">🦠 微小</button>
+            </div>
+        `;
+        document.body.appendChild(paletteUI);
+
+        toolFab.onclick = () => {
+            const isHidden = paletteUI.style.display === 'none';
+            paletteUI.style.display = isHidden ? 'flex' : 'none';
+            toolFab.style.background = isHidden ? 'rgba(0,255,255,0.4)' : 'rgba(0,255,255,0.1)';
+        };
+
+        const updateModeUI = () => {
+            const runBtn = document.getElementById('mode-run');
+            const linkBtn = document.getElementById('mode-link');
+            const editBtn = document.getElementById('mode-edit');
+
+            runBtn.style.background = this.app.appMode === 'RUN' ? '#00ffcc' : '#113344';
+            runBtn.style.color = this.app.appMode === 'RUN' ? '#000' : '#fff';
+            
+            linkBtn.style.background = this.app.appMode === 'LINK' ? '#ff00ff' : '#113344';
+            linkBtn.style.color = '#fff';
+
+            editBtn.style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
+            editBtn.style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
+            
+            this.hideMenu(); 
+            paletteUI.style.display = 'none';
+            toolFab.style.background = 'rgba(0,255,255,0.1)';
+        };
+
+        document.getElementById('mode-run').onclick = () => { this.app.appMode = 'RUN'; updateModeUI(); };
+        document.getElementById('mode-link').onclick = () => { this.app.appMode = 'LINK'; updateModeUI(); };
+        document.getElementById('mode-edit').onclick = () => { this.app.appMode = 'EDIT'; updateModeUI(); };
+
+        const spawnCenter = (name, color, category) => {
+            if (this.app.isZoomingIn) return;
+            this.app.currentUniverse.addNode(name, -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, color, category);
+            this.app.autoSave(); 
+            paletteUI.style.display = 'none';
+            toolFab.style.background = 'rgba(0,255,255,0.1)';
+        };
+        document.getElementById('spawn-galaxy').onclick = () => spawnCenter('新規[銀河]', '#9966ff', 'galaxy');
+        document.getElementById('spawn-star').onclick = () => spawnCenter('新規[星]', '#ffcc00', 'star');
+        document.getElementById('spawn-life').onclick = () => spawnCenter('新規[生命]', '#ff6699', 'life');
+        document.getElementById('spawn-microbe').onclick = () => spawnCenter('新規[微生物]', '#00ffcc', 'microbe');
+
+        const sysFab = document.createElement('div');
+        sysFab.style.cssText = `${fabStyle} bottom:15px; right:15px; background:rgba(255,102,153,0.1); border:1px solid #ff6699; color:#ff6699;`;
+        sysFab.innerText = '🎒';
+        document.body.appendChild(sysFab);
+
+        const hintUI = document.createElement('div');
+        hintUI.style.cssText = `${uiStyle} bottom:70px; right:15px; display:none; flex-direction:column; gap:8px; max-width: 150px;`;
+        hintUI.innerHTML = `
+            <div style="font-size:11px; color:#aaa; text-align:center;">データ管理</div>
+            <button id="btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px 5px; cursor:pointer; border-radius:3px; font-weight:bold;">🎒 亜空間<br>(復元/消去)</button>
+            <button id="btn-reset-all" style="width:100%; background:#440000; color:#ff6666; border:1px solid #ff4444; padding:6px; cursor:pointer; border-radius:3px; font-size:10px; font-weight:bold;">⚠️ 全データリセット</button>
+        `;
+        document.body.appendChild(hintUI);
+
+        sysFab.onclick = () => {
+            const isHidden = hintUI.style.display === 'none';
+            hintUI.style.display = isHidden ? 'flex' : 'none';
+            sysFab.style.background = isHidden ? 'rgba(255,102,153,0.4)' : 'rgba(255,102,153,0.1)';
+        };
+
+        document.getElementById('btn-inventory').addEventListener('click', () => {
+            hintUI.style.display = 'none'; 
+            sysFab.style.background = 'rgba(255,102,153,0.1)';
+            if (this.app.blackHole.length === 0) return alert("ポケットは空です。");
+            this.showInventoryUI();
+        });
+
+        document.getElementById('btn-reset-all').addEventListener('click', () => {
+            hintUI.style.display = 'none';
+            sysFab.style.background = 'rgba(255,102,153,0.1)';
+            if (confirm("⚠️ 【警告】\nすべてのデータが完全に消去されます。\n本当に最初からやり直しますか？")) {
+                localStorage.removeItem('my_universe_save_data');
+                location.reload(); // 一番安全なリセット方法は画面のリロード
+            }
+        });
+
+        this.inventoryModal = document.createElement('div');
+        this.inventoryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #ff6699; padding:20px; border-radius:10px; z-index:300; min-width:320px; color:white; box-shadow: 0 10px 30px rgba(255,102,153,0.3);';
+        document.body.appendChild(this.inventoryModal);
+
+        this.actionMenu = document.createElement('div');
+        this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px;';
+        document.body.appendChild(this.actionMenu);
+
+        this.appLibraryModal = document.createElement('div');
+        this.appLibraryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #00ffcc; padding:20px; border-radius:10px; z-index:400; min-width:300px; color:white; box-shadow: 0 10px 30px rgba(0,255,204,0.3);';
+        document.body.appendChild(this.appLibraryModal);
+    }
+
+    showAppLibrary(node) {
+        let html = `<h3 style="margin-top:0; margin-bottom:15px; color:#00ffcc; border-bottom:1px solid #00ffcc; padding-bottom:5px;">📱 アプリを追加/編集</h3>`;
+        html += `<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
+
+        this.app.appPresets.forEach((app, index) => {
+            html += `
+                <div id="preset-${index}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer; padding:5px; border-radius:8px; transition:0.2s; background:rgba(255,255,255,0.05);">
+                    <img src="${app.icon}" style="width:32px; height:32px; border-radius:8px; margin-bottom:5px;" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'32\\' height=\\'32\\'><rect width=\\'32\\' height=\\'32\\' fill=\\'%23555\\'/></svg>'">
+                    <span style="font-size:10px; text-align:center;">${app.name}</span>
+                </div>
+            `;
+        });
+        html += `</div>`;
+        html += `<button id="custom-url-btn" style="width:100%; padding:10px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:5px; cursor:pointer; margin-bottom:10px;">✍️ 自分でURLを手入力する</button>`;
+        
+        if (node.url || node.iconUrl) {
+            html += `<button id="reset-app-btn" style="width:100%; padding:10px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:5px; cursor:pointer; margin-bottom:10px;">🧹 リンクとアイコンを解除</button>`;
+        }
+        
+        html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; color:white; border:1px solid #aaa; border-radius:5px; cursor:pointer;">キャンセル</button>`;
+
+        this.appLibraryModal.innerHTML = html;
+        this.appLibraryModal.style.display = 'block';
+
+        this.app.appPresets.forEach((app, index) => {
+            document.getElementById(`preset-${index}`).onclick = () => {
+                node.name = app.name; node.url = app.url; node.iconUrl = app.icon;
+                this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
+            };
+        });
+
+        document.getElementById('custom-url-btn').onclick = () => {
+            this.appLibraryModal.style.display = 'none';
+            const newUrl = prompt("URLまたはアプリ起動用スキームを入力\n(例: https://example.com)", node.url);
+            if (newUrl) { 
+                node.url = newUrl;
+                if (newUrl.startsWith('http') && !node.iconUrl && confirm("アイコンを自動取得しますか？")) {
+                    try {
+                        const domain = new URL(newUrl).hostname;
+                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                    } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${newUrl}&sz=128`; }
+                }
+                this.app.autoSave(); 
+            }
+            this.hideMenu();
+        };
+
+        const resetBtn = document.getElementById('reset-app-btn');
+        if (resetBtn) {
+            resetBtn.onclick = () => {
+                if(confirm("この星のリンクとアイコンを解除しますか？")) {
+                    node.url = ""; node.iconUrl = "";
+                    this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
+                }
+            };
+        }
+        document.getElementById('lib-close').onclick = () => { this.appLibraryModal.style.display = 'none'; };
+    }
+
+    showInventoryUI() {
+        let html = `<h3 style="margin-top:0; margin-bottom:15px; color:#ff6699; border-bottom:1px solid #ff6699; padding-bottom:5px;">🎒 亜空間ポケット</h3>`;
+        html += `<div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
+
+        this.app.blackHole.forEach((node, index) => {
+            const innerCount = node.innerUniverse.nodes.length;
+            html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.1); padding:10px; border-radius:5px;">
+                    <div>
+                        <div style="font-size:14px; font-weight:bold;">${node.name}</div>
+                        <div style="font-size:11px; color:#aaa;">内包データ: ${innerCount}個</div>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <button id="inv-restore-${index}" style="background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:12px;">🌌 出す</button>
+                        <button id="inv-delete-${index}" style="background:#440000; color:#ff4444; border:1px solid #ff4444; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:12px;">❌</button>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; color:white; border:1px solid #aaa; border-radius:5px; cursor:pointer;">閉じる</button>`;
+        
+        this.inventoryModal.innerHTML = html;
+        this.inventoryModal.style.display = 'block';
+
+        this.app.blackHole.forEach((node, index) => {
+            document.getElementById(`inv-restore-${index}`).onclick = () => {
+                this.app.blackHole.splice(index, 1);
+                node.x = -this.app.camera.x; node.y = -this.app.camera.y;
+                node.baseX = node.x; node.baseY = node.y;
+                this.app.currentUniverse.nodes.push(node);
+                node.parentUniverse = this.app.currentUniverse;
+                this.app.autoSave();
+                this.inventoryModal.style.display = 'none';
+            };
+
+            document.getElementById(`inv-delete-${index}`).onclick = () => {
+                if(confirm(`「${node.name}」を完全に消去しますか？`)) {
+                    this.app.blackHole.splice(index, 1);
+                    this.app.autoSave();
+                    if (this.app.blackHole.length > 0) this.showInventoryUI();
+                    else this.inventoryModal.style.display = 'none';
+                }
+            };
+        });
+        document.getElementById('inv-close').onclick = () => { this.inventoryModal.style.display = 'none'; };
+    }
+
+    showMenu(node, screenX, screenY) {
+        this.actionMenu.style.left = `${screenX}px`;
+        this.actionMenu.style.top = `${screenY}px`;
+        this.actionMenu.style.display = 'flex';
+        
+        const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;';
+        
+        let menuHTML = `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
+
+        if (node.url) {
+            const isAppScheme = !node.url.startsWith('http');
+            const openText = isAppScheme ? '📱 アプリを起動' : '🌐 リンクを開く';
+            menuHTML += `<button id="menu-open-url" style="${btnStyle} background:rgba(0,255,204,0.2); color:#00ffcc; border:1px solid #00ffcc;"><span>${openText}</span></button>`;
+        }
+
+        menuHTML += `
+            <button id="menu-rename" style="${btnStyle} color:#ccff66;"><span>✏ 名前変更</span></button>
+            <button id="menu-set-app" style="${btnStyle} color:#aaaaff; background:rgba(170,170,255,0.1);"><span>📱 アプリ/URLを登録</span></button>
+            <button id="menu-set-icon" style="${btnStyle} color:#ffaa00;"><span>🖼 アイコン手動設定</span></button>
+            <button id="menu-memorize" style="${btnStyle} color:#00ffff;"><span>💡 座標を記憶</span></button>
+        `;
+
+        if (this.app.memorizedNode && this.app.memorizedNode.id !== node.id) {
+            menuHTML += `<button id="menu-connect" style="${btnStyle} color:#ff00ff; background:rgba(255,0,255,0.1);"><span>🌀 次元接続</span></button>`;
+        }
+
+        const connectedWormholes = this.app.wormholes.filter(wh => wh.source.id === node.id || wh.target.id === node.id);
+        connectedWormholes.forEach((wh, index) => {
+            const dest = (wh.source.id === node.id) ? wh.target : wh.source;
+            menuHTML += `<button id="menu-warp-${index}" style="${btnStyle} color:#ff88ff;"><span>🌌 [${dest.name}]へワープ</span></button>`;
+        });
+
+        menuHTML += `<button id="menu-delete" style="${btnStyle} color:#ff4444; border:1px solid #ff4444;"><span>🎒 亜空間へ送る</span></button>`;
+        this.actionMenu.innerHTML = menuHTML;
+
+        document.getElementById('menu-dive').onclick = () => {
+            this.hideMenu(); this.app.isZoomingIn = true;
+            this.app.targetUniverse = node.innerUniverse;
+            this.app.camera.zoomTo(node.x, node.y);
+        };
+
+        if (node.url) {
+            document.getElementById('menu-open-url').onclick = () => {
+                const targetWin = node.url.startsWith('http') ? '_blank' : '_self';
+                window.open(node.url, targetWin); 
+                this.hideMenu();
+            };
+        }
+
+        document.getElementById('menu-rename').onclick = () => {
+            const newName = prompt("新しい名前:", node.name);
+            if (newName) { node.name = newName; this.app.autoSave(); }
+            this.hideMenu();
+        };
+
+        document.getElementById('menu-set-app').onclick = () => {
+            this.hideMenu(); this.showAppLibrary(node);
+        };
+
+        document.getElementById('menu-set-icon').onclick = () => {
+            const newIconUrl = prompt("画像のURLを入力してください:", node.iconUrl);
+            if (newIconUrl !== null) { node.iconUrl = newIconUrl; this.app.autoSave(); }
+            this.hideMenu();
+        };
+
+        document.getElementById('menu-memorize').onclick = () => {
+            this.app.memorizedNode = node; alert(`「${node.name}」を記憶しました。`); this.hideMenu();
+        };
+
+        if (document.getElementById('menu-connect')) {
+            document.getElementById('menu-connect').onclick = () => {
+                this.app.wormholes.push({ source: this.app.memorizedNode, target: node });
+                this.app.memorizedNode = null;
+                alert("次元を超えたワームホールが開通しました！");
+                this.app.autoSave(); this.hideMenu();
+            };
+        }
+
+        connectedWormholes.forEach((wh, index) => {
+            document.getElementById(`menu-warp-${index}`).onclick = () => {
+                const dest = (wh.source.id === node.id) ? wh.target : wh.source;
+                this.app.executeWarp(dest); this.hideMenu();
+            };
+        });
+
+        document.getElementById('menu-delete').onclick = () => {
+            if (node.innerUniverse.nodes.length > 0) {
+                if (!confirm(`内部に ${node.innerUniverse.nodes.length}個の星 が存在します。\n全てまとめて転送しますか？`)) {
+                    this.hideMenu(); return;
+                }
+            }
+            this.app.currentUniverse.removeNode(node);
+            this.app.wormholes = this.app.wormholes.filter(w => w.source.id !== node.id && w.target.id !== node.id);
+            this.app.blackHole.push(node);
+            this.app.autoSave(); this.hideMenu();
+        };
+    }
+
+    hideMenu() { this.actionMenu.style.display = 'none'; }
+
+    updateBreadcrumbs() {
+        this.breadcrumbUI.innerHTML = '';
+        const path = [...this.app.universeHistory, this.app.currentUniverse];
+        
+        path.forEach((uni, index) => {
+            const btn = document.createElement('button');
+            btn.innerText = uni.name;
+            const isCurrent = (index === path.length - 1);
+            
+            if (index === 0) btn.innerHTML = `👤 ${uni.name}`;
+
+            btn.style.cssText = `background:rgba(255,255,255,${isCurrent ? '0.2' : '0.05'}); color:${isCurrent ? '#fff' : '#aaa'}; border:1px solid rgba(255,255,255,0.3); padding:4px 8px; border-radius:5px; cursor:pointer; font-weight:${isCurrent ? 'bold' : 'normal'}; font-size:12px;`;
+            
+            btn.onclick = () => {
+                if (isCurrent) return;
+                this.app.currentUniverse = this.app.universeHistory[index];
+                this.app.universeHistory = this.app.universeHistory.slice(0, index);
+                this.app.camera.reset();
+                this.updateBreadcrumbs();
+            };
+            this.breadcrumbUI.appendChild(btn);
+
+            if (!isCurrent) {
+                const sep = document.createElement('span');
+                sep.innerText = '>';
+                sep.style.cssText = 'color:rgba(255,255,255,0.4); font-size:10px;';
+                this.breadcrumbUI.appendChild(sep);
+            }
+        });
+
+        const centerTextEl = document.getElementById('center-text');
+        if (centerTextEl) {
+            centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.7;">✏️</span>`;
+        }
+    }
+}
