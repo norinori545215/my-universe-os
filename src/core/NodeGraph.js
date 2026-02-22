@@ -1,3 +1,7 @@
+// Firebase接続に必要な部品をインポート
+import { db, auth } from '../security/Auth.js';
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
 export class EntityNode {
     constructor(name, x, y, size, color, category = 'star') {
         this.id = Math.random().toString(36).substr(2, 9);
@@ -6,10 +10,11 @@ export class EntityNode {
         this.size = size;
         this.color = color;
         this.url = ""; 
-        this.iconUrl = ""; // ★追加：星に表示する画像（アイコン）のURL
+        this.iconUrl = "";
         
         this.parentUniverse = null;
 
+        // カテゴリーに応じたテーマ設定（あなたのこだわり！）
         const theme = (category === 'life' || category === 'microbe') ? 'cell' : 'space';
         this.innerUniverse = new Universe(`${name}の内部`, theme);
         
@@ -64,10 +69,11 @@ export class Universe {
 }
 
 export const DataManager = {
-    save: (rootUniverse, wormholes, blackHole) => {
+    // クラウド保存に対応させるために async (非同期) に変更
+    save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
-            url: n.url, iconUrl: n.iconUrl, // ★追加
+            url: n.url, iconUrl: n.iconUrl,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
         const serializeUniverse = (u) => ({
@@ -81,7 +87,21 @@ export const DataManager = {
             wormholes: wormholes.map(w => ({ source: w.source.id, target: w.target.id })),
             blackHole: blackHole.map(serializeNode)
         };
+
+        // 1. ローカル保存
         localStorage.setItem('my_universe_save_data', JSON.stringify(data));
+
+        // 2. クラウド同期（Firebase）
+        if (auth.currentUser) {
+            try {
+                // ログインしているユーザーのIDを名前としたドキュメントに保存
+                const userDoc = doc(db, "universes", auth.currentUser.uid);
+                await setDoc(userDoc, data);
+                console.log("☁️ クラウド同期完了！");
+            } catch (e) {
+                console.error("❌ クラウド同期失敗:", e);
+            }
+        }
     },
 
     load: () => {
@@ -97,7 +117,7 @@ export const DataManager = {
                 const node = new EntityNode(nData.name, nData.baseX, nData.baseY, nData.size, nData.color, nData.category);
                 node.id = nData.id;
                 node.url = nData.url || "";
-                node.iconUrl = nData.iconUrl || ""; // ★追加
+                node.iconUrl = nData.iconUrl || "";
                 node.parentUniverse = u;
                 node.innerUniverse = parseUniverse(nData.innerUniverse);
                 u.nodes.push(node);
@@ -124,7 +144,7 @@ export const DataManager = {
 
         const blackHole = data.blackHole.map(nData => {
             const node = new EntityNode(nData.name, nData.baseX, nData.baseY, nData.size, nData.color, nData.category);
-            node.id = nData.id; node.url = nData.url || ""; node.iconUrl = nData.iconUrl || ""; // ★追加
+            node.id = nData.id; node.url = nData.url || ""; node.iconUrl = nData.iconUrl || "";
             node.innerUniverse = parseUniverse(nData.innerUniverse);
             return node;
         });
