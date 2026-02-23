@@ -1,3 +1,4 @@
+// src/engine/CameraControl.js
 export class CameraControl {
     constructor(canvas, callbacks) {
         this.x = 0; this.y = 0; this.scale = 1;
@@ -6,16 +7,22 @@ export class CameraControl {
         this.isCameraDragging = false;
         this.lastMouseX = 0; this.lastMouseY = 0;
 
-        // PC（マウス）とスマホ（タッチ）の座標を統一して取得する便利関数
+        // ★ タップ判定用の変数（指のブレ許容用）
+        this.touchStartX = 0; this.touchStartY = 0;
+
         const getPointer = (e) => e.touches ? e.touches[0] : e;
 
-        // --- 押した時（PC & スマホ） ---
+        // --- 押した時 ---
         const handleStart = (e) => {
             if (e.type === 'mousedown' && e.button !== 0) return;
             const ptr = getPointer(e);
+            
+            // ★ 押し始めた瞬間の「座標」をしっかり記憶
+            this.touchStartX = ptr.clientX;
+            this.touchStartY = ptr.clientY;
+
             const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
 
-            // 「結ぶモード」がONか、PCでShiftキーが押されていれば線を引く
             if (callbacks.isLinkModeActive() || e.shiftKey) {
                 callbacks.onLinkStart(worldX, worldY);
             } else {
@@ -28,35 +35,47 @@ export class CameraControl {
             }
         };
 
-        // --- 離した時（PC & スマホ） ---
+        // --- 離した時 ---
         const handleEnd = (e) => {
             this.isCameraDragging = false;
-            // touchendの時は座標が取れないため、最後に記憶した座標を使う
             const ptr = e.changedTouches ? e.changedTouches[0] : e;
             const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
             
+            // ★ 押した時から何ピクセル動いたか計算
+            const moveDist = Math.hypot(ptr.clientX - this.touchStartX, ptr.clientY - this.touchStartY);
+
             if (callbacks.isLinking()) {
                 callbacks.onLinkEnd(worldX, worldY);
             }
             callbacks.onNodeGrabEnd();
+
+            // ★【特効薬】スマホで指を離した時、動いた距離が10px未満なら「タップ」と判定して強制的にメニューを開く！
+            if (e.type === 'touchend' && moveDist < 10) {
+                if (!callbacks.isLinkModeActive() && !e.shiftKey) {
+                    callbacks.onClick(worldX, worldY, e);
+                }
+            }
         };
 
-        // --- 動かした時（PC & スマホ） ---
+        // --- 動かした時 ---
         const handleMove = (e) => {
             const ptr = getPointer(e);
             const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
+            
+            // ★ 指のブレ（10px未満）は「移動」とみなさない！
+            const moveDist = Math.hypot(ptr.clientX - this.touchStartX, ptr.clientY - this.touchStartY);
             
             if (this.isCameraDragging) {
                 const dx = (ptr.clientX - this.lastMouseX) / this.scale;
                 const dy = (ptr.clientY - this.lastMouseY) / this.scale;
                 this.targetX += dx; this.targetY += dy;
                 this.lastMouseX = ptr.clientX; this.lastMouseY = ptr.clientY;
-            } else {
+            } else if (moveDist >= 10) { 
+                // 10px以上動いた時だけノードのドラッグ処理をする
                 callbacks.onMouseMove(worldX, worldY);
             }
         };
 
-        // イベントリスナーの登録（マウスとタッチ両方）
         canvas.addEventListener('mousedown', handleStart);
         canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e); }, { passive: false });
 
@@ -66,11 +85,15 @@ export class CameraControl {
         window.addEventListener('mousemove', handleMove);
         canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, { passive: false });
 
-        // クリック / タップ
+        // PC向けのクリック処理
         canvas.addEventListener('click', (e) => {
             if (callbacks.isLinkModeActive() || e.shiftKey || callbacks.wasDragging()) return;
-            const { worldX, worldY } = this.getWorldCoords(canvas, e);
-            callbacks.onClick(worldX, worldY, e);
+            const moveDist = Math.hypot(e.clientX - this.touchStartX, e.clientY - this.touchStartY);
+            // PCでも10px未満のブレならクリックとみなす
+            if (moveDist < 10) {
+                const { worldX, worldY } = this.getWorldCoords(canvas, e);
+                callbacks.onClick(worldX, worldY, e);
+            }
         });
 
         canvas.addEventListener('contextmenu', (e) => {
