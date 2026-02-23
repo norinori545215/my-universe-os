@@ -1,4 +1,4 @@
-// src/engine/CanvasBuilder.js// テスト
+// src/engine/CanvasBuilder.js
 import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
@@ -165,7 +165,6 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
-                // ★【スマホバグ修正】タッチイベントの座標を正確に拾うよう改修
                 let clientX = event.clientX || 0;
                 let clientY = event.clientY || 0;
                 
@@ -210,7 +209,7 @@ export class CanvasBuilder {
             this.ui.updateBreadcrumbs(); 
         }
 
-        const bgColor = '#0a0a1a'; // ★テーマも宇宙に統一
+        const bgColor = '#0a0a1a'; 
         this.ctx.fillStyle = bgColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -228,7 +227,6 @@ export class CanvasBuilder {
 
         this.currentUniverse.nodes.forEach(node => {
             if (node !== this.grabbedNode) {
-                // 星がプカプカ浮かぶアニメーション
                 node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
                 node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
             } else {
@@ -279,11 +277,10 @@ export class CanvasBuilder {
             this.ctx.setLineDash([]);
         }
 
-        // ★星の描画を「1種類」にシンプル化＆美しく統一！
         this.currentUniverse.nodes.forEach(node => {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
-            drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5; // 呼吸するようなアニメーション
+            drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5;
 
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) {
@@ -318,7 +315,6 @@ export class CanvasBuilder {
                     this.ctx.fill();
                 }
             } else {
-                // 画像がない場合はシンプルな丸い星
                 this.ctx.fillStyle = node.color;
                 this.ctx.beginPath();
                 this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
