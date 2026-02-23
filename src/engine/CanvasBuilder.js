@@ -165,6 +165,7 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
+                // ★【スマホ対応】タッチ座標を確実に取得！
                 let clientX = event.clientX || 0;
                 let clientY = event.clientY || 0;
                 
@@ -277,6 +278,7 @@ export class CanvasBuilder {
             this.ctx.setLineDash([]);
         }
 
+        // ★星の描画を1種類（シンプルな丸）に統一！
         this.currentUniverse.nodes.forEach(node => {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
