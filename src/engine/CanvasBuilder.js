@@ -1,4 +1,4 @@
-// src/engine/CanvasBuilder.js
+// src/engine/CanvasBuilder.js// テスト
 import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
