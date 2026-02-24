@@ -1,6 +1,5 @@
-// Firebase接続に必要な部品をインポート
-import { db, auth } from '../security/Auth.js';
-import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// src/core/NodeGraph.js
+// ★ Firebaseのインポートを完全に削除しました！（絶対主権の確立）
 
 export class EntityNode {
     constructor(name, x, y, size, color, category = 'star') {
@@ -15,7 +14,7 @@ export class EntityNode {
         // ★セキュリティ機能：星に鍵をかけるための新属性
         this.isLocked = false;       // 鍵がかかっているか
         this.password = "";          // この星専用のパスワード
-        this.ownerId = auth.currentUser ? auth.currentUser.uid : ""; // 所有者ID
+        this.ownerId = "";           // ※ローカル主権のため、FirebaseのID依存を解除
 
         this.parentUniverse = null;
 
@@ -73,12 +72,12 @@ export class Universe {
 }
 
 export const DataManager = {
-    // クラウド保存（シリアライズに鍵情報を含める）
+    // 💾 【完全ローカル保存】クラウドへの送信はCanvasBuilderに任せ、ここでは端末内に爆速保存するのみ
     save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
-            isLocked: n.isLocked, password: n.password, ownerId: n.ownerId, // ★追加
+            isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
         const serializeUniverse = (u) => ({
@@ -94,38 +93,21 @@ export const DataManager = {
         };
 
         localStorage.setItem('my_universe_save_data', JSON.stringify(data));
-
-        if (auth.currentUser) {
-            try {
-                const userDoc = doc(db, "universes", auth.currentUser.uid);
-                await setDoc(userDoc, data);
-                console.log("☁️ クラウド同期完了！");
-            } catch (e) {
-                console.error("❌ クラウド同期失敗:", e);
-            }
-        }
+        // ★ Firebaseの setDoc 通信を完全に削除しました！
     },
 
-    // ★進化：クラウドからデータを取ってくるように変更
+    // 💾 【完全ローカル読込】起動時にCanvasBuilderが解読してくれたローカルデータを読み込む
     load: async () => {
-        let data = null;
-
-        // 1. ログインしていればクラウドから取得を試みる
-        if (auth.currentUser) {
-            console.log("☁️ クラウドから宇宙を取得中...");
-            const userDoc = await getDoc(doc(db, "universes", auth.currentUser.uid));
-            if (userDoc.exists()) {
-                data = userDoc.data();
-                console.log("✅ クラウドデータの読み込みに成功しました");
-            }
-        }
-
-        // 2. クラウドにない場合はローカルから取得
-        if (!data) {
-            const raw = localStorage.getItem('my_universe_save_data');
-            if (!raw) return null;
+        // ★ Firebaseへのアクセスを完全に削除！ローカル金庫からのみ読み込む。
+        const raw = localStorage.getItem('my_universe_save_data');
+        if (!raw) return null;
+        
+        let data;
+        try {
             data = JSON.parse(raw);
-            console.log("💾 ローカルデータの読み込みに成功しました");
+        } catch (e) {
+            console.error("データのパースに失敗しました", e);
+            return null;
         }
 
         const nodeMap = new Map();
@@ -138,7 +120,6 @@ export const DataManager = {
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
                 
-                // ★セキュリティ属性の復元
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
                 node.ownerId = nData.ownerId || "";
@@ -172,8 +153,8 @@ export const DataManager = {
             node.id = nData.id; 
             node.url = nData.url || ""; 
             node.iconUrl = nData.iconUrl || "";
-            node.isLocked = nData.isLocked || false; // 追加
-            node.password = nData.password || "";   // 追加
+            node.isLocked = nData.isLocked || false; 
+            node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
             return node;
         });
