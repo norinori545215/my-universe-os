@@ -3,6 +3,9 @@ import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
 
+// ★ 追加：クラウド暗号化同期モジュールをインポート
+import { saveEncryptedUniverse, loadEncryptedUniverse } from '../db/CloudSync.js';
+
 export class CanvasBuilder {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
@@ -25,6 +28,9 @@ export class CanvasBuilder {
         this.hasMovedNode = false;
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
+
+        // ★ 追加：クラウド保存を遅延させるためのタイマー
+        this.saveTimeout = null;
 
         this.appPresets = [
             { name: 'YouTube', url: 'https://youtube.com', icon: 'https://www.google.com/s2/favicons?domain=youtube.com&sz=128' },
@@ -65,9 +71,22 @@ export class CanvasBuilder {
 
     async init() {
         console.log("OS: データのロードを開始します...");
+        
+        // ★ クラウド暗号同期：起動時にクラウドから最新の暗号カプセルを取得して解読する
+        try {
+            const cloudData = await loadEncryptedUniverse();
+            if (cloudData) {
+                // 解読したデータをローカルに上書き保存し、DataManagerに読み込ませる準備をする
+                localStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
+                console.log("OS: ☁️ クラウドから最新の宇宙を同期しました。");
+            }
+        } catch (e) {
+            console.log("OS: 📱 オフライン、または新規創世のためローカル起動します。");
+        }
+
+        // ここから先は既存のロード処理（オフラインでもここから読み込まれる）
         const savedData = await DataManager.load();
         
-        // ★ Firebaseから登録されたアカウント名を取得
         let userName = "My Universe";
         try {
             const authModule = await import('../security/Auth.js');
@@ -86,14 +105,14 @@ export class CanvasBuilder {
             this.allNodesMap = savedData.nodeMap;
         } else {
             this.currentUniverse = new Universe(userName, 'space');
-            const galaxy = this.currentUniverse.addNode('アイデア', -150, -50, 30, '#9966ff', 'star');
+            const galaxy = this.currentUniverse.addNode('アイデア', -150, -50, 30, '#9966ff', 'galaxy');
             const star = this.currentUniverse.addNode('システム', 100, -100, 18, '#ffcc00', 'star');
             this.currentUniverse.addLink(galaxy, star);
             this.allNodesMap = new Map();
         }
         
         this.ui.updateBreadcrumbs();
-        console.log("OS: ロード完了。システムをオンラインにします。");
+        console.log("OS: ロード完了。事象の地平面、展開終了。");
     }
 
     async autoSave() {
@@ -103,7 +122,25 @@ export class CanvasBuilder {
             root = this.universeHistory[histIndex];
             histIndex--;
         }
+        
+        // 1. ローカルへの保存（爆速。153bpmを邪魔しない）
         await DataManager.save(root, this.wormholes, this.blackHole);
+
+        // 2. クラウドへの暗号化保存（3秒間の操作停止を待ってから裏側で実行）
+        if (this.saveTimeout) clearTimeout(this.saveTimeout);
+        
+        this.saveTimeout = setTimeout(async () => {
+            try {
+                // DataManagerが作った最新のローカルデータを横取りして暗号化する
+                const rawData = localStorage.getItem('my_universe_save_data');
+                if (rawData) {
+                    const dataObj = JSON.parse(rawData);
+                    await saveEncryptedUniverse(dataObj);
+                }
+            } catch (e) {
+                console.error("OS: クラウド同期エラー（一時的なオフライン）", e);
+            }
+        }, 3000); // 3000ミリ秒（3秒）
     }
 
     executeWarp(targetNode) {
