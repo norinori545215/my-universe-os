@@ -31,7 +31,6 @@
         }
         .auth-box button.primary-btn:hover { background: #fff; box-shadow: 0 0 15px #00ffcc; }
         
-        /* ★ Googleボタン用のスタイル */
         .google-btn {
             width: 100%; padding: 12px; margin-top: 15px; border-radius: 6px;
             background: #fff; color: #333; font-weight: bold; border: 1px solid #ddd;
@@ -45,15 +44,16 @@
 
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
+        /* ★ 修正：丸いボタンと重ならないように位置を少し左にずらしました */
         #btn-logout {
-            position: fixed; top: 20px; right: 20px;
+            position: fixed; top: 15px; right: 80px;
             background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; padding: 8px 15px; border-radius: 6px;
             cursor: pointer; z-index: 9998; font-size: 12px; display: none; transition: 0.3s;
         }
         #btn-logout:hover { border-color: #fff; background: rgba(50, 50, 50, 0.8); }
 
         #emergency-reset-btn {
-            position: fixed; bottom: 20px; right: 20px;
+            position: fixed; bottom: 15px; right: 80px;
             background: rgba(200, 30, 30, 0.8); color: #fff; border: 1px solid #ff4444; 
             padding: 10px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px;
         }
@@ -112,11 +112,7 @@
             }, 500);
         }
 
-        function showError(msg) { 
-            loginError.innerText = msg; 
-            loginError.style.display = 'block'; 
-            alert(msg); 
-        }
+        function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; alert(msg); }
 
         document.getElementById('toggle-auth').addEventListener('click', () => {
             isLoginMode = !isLoginMode;
@@ -129,7 +125,6 @@
             document.getElementById('remember-me-label').style.display = isLoginMode ? "block" : "none";
         });
 
-        // ★ Googleボタンが押された時
         document.getElementById('btn-google').addEventListener('click', async () => {
             const rememberMe = document.getElementById('remember-me').checked;
             const result = await loginWithGoogle(rememberMe);
@@ -137,7 +132,6 @@
             else showError(result.error);
         });
 
-        // メール/パスワードのボタンが押された時
         document.getElementById('btn-action').addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
@@ -168,10 +162,7 @@
         });
 
         onAuthStateChanged(auth, (user) => {
-            // Googleログインの場合は最初から emailVerified が true になっています
-            if (user && user.emailVerified) {
-                bootSystem();
-            }
+            if (user && user.emailVerified) bootSystem();
         });
 
         document.getElementById('emergency-reset-btn').addEventListener('click', async () => {
@@ -183,6 +174,10 @@
                 alert("初期化完了");
                 window.location.reload();
             } catch (error) { alert("エラーが発生しました。"); }
+        });
+
+        document.getElementById('login-pw').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('btn-action').click();
         });
     </script>
 </body>

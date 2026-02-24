@@ -1,47 +1,94 @@
 // src/ui/UIManager.js
 export class UIManager {
     constructor(app) {
-        this.app = app; // CanvasBuilder（本体）との連携用
+        this.app = app;
         this.createUI();
+    }
+
+    // ★ 魔法のドラッグ機能（画面外に出ないようにガード付き！）
+    makeDraggable(el) {
+        let isDragging = false, startX, startY, initX, initY, hasMoved = false;
+
+        const down = (e) => {
+            hasMoved = false;
+            const ev = e.touches ? e.touches[0] : e;
+            startX = ev.clientX; startY = ev.clientY;
+            const rect = el.getBoundingClientRect();
+            initX = rect.left; initY = rect.top;
+            isDragging = true;
+            el.style.transition = 'none';
+        };
+
+        const move = (e) => {
+            if (!isDragging) return;
+            const ev = e.touches ? e.touches[0] : e;
+            const dx = ev.clientX - startX; const dy = ev.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+            
+            let nx = initX + dx; let ny = initY + dy;
+            
+            // 画面外に飛び出さないためのガード計算
+            nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
+            ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+            
+            el.style.left = `${nx}px`;
+            el.style.top = `${ny}px`;
+            el.style.right = 'auto'; 
+            el.style.bottom = 'auto';
+        };
+
+        const up = () => {
+            if (isDragging) { isDragging = false; el.style.transition = '0.2s'; }
+        };
+
+        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
+        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
+        window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+
+        return () => hasMoved; // 動かしたかどうかの判定を返す
     }
 
     createUI() {
         const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
         const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
 
-        const centerTextEl = document.getElementById('center-text');
-        if (centerTextEl) {
-            centerTextEl.style.pointerEvents = 'auto'; 
-            centerTextEl.style.cursor = 'pointer';
-            centerTextEl.title = "クリックで現在の階層の名前を変更";
-            centerTextEl.onclick = () => {
-                const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
-                if (newName) {
-                    this.app.currentUniverse.name = newName;
-                    this.app.autoSave();
-                    this.updateBreadcrumbs(); 
-                }
-            };
-        }
+        // ★ 消えていた「中央のテキスト」をここで確実に生成！
+        this.centerTextEl = document.createElement('div');
+        this.centerTextEl.id = 'center-text';
+        this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
+        this.centerTextEl.title = "クリックで現在の階層の名前を変更";
+        this.centerTextEl.onclick = () => {
+            const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
+            if (newName) {
+                this.app.currentUniverse.name = newName;
+                this.app.autoSave();
+                this.updateBreadcrumbs(); 
+            }
+        };
+        document.body.appendChild(this.centerTextEl);
 
+        // ★ 消えていた「パンくずリスト（戻るボタン）」も生成！
         this.breadcrumbUI = document.createElement('div');
-        this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center;';
+        this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center; pointer-events:auto;';
         document.body.appendChild(this.breadcrumbUI);
 
+        // 🔍 検索ボタン（ドラッグ可能）
         const searchFab = document.createElement('div');
         searchFab.style.cssText = `${fabStyle} top:15px; right:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc;`;
         searchFab.innerText = '🔍';
         document.body.appendChild(searchFab);
 
         const searchUI = document.createElement('div');
-        searchUI.style.cssText = `${uiStyle} top:70px; right:15px; width:200px; display:none; flex-direction:column; gap:5px; transform-origin: top right;`;
+        searchUI.style.cssText = `${uiStyle} top:70px; right:15px; width:200px; display:none; flex-direction:column; gap:5px;`;
         searchUI.innerHTML = `
             <input type="text" id="radar-input" placeholder="星を探す..." style="background:rgba(0,0,0,0.5); color:white; border:1px solid #00ffcc; padding:5px; border-radius:4px; outline:none; font-size:12px;">
             <div id="radar-results" style="max-height:150px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:2px;"></div>
         `;
         document.body.appendChild(searchUI);
 
+        const isSearchDragged = this.makeDraggable(searchFab);
         searchFab.onclick = () => {
+            if (isSearchDragged()) return; // ドラッグした時はメニューを開かない
             const isHidden = searchUI.style.display === 'none';
             searchUI.style.display = isHidden ? 'flex' : 'none';
             searchFab.style.background = isHidden ? 'rgba(0,255,204,0.4)' : 'rgba(0,255,204,0.1)';
@@ -78,6 +125,7 @@ export class UIManager {
             searchUniverse(root);
         });
 
+        // 🛠️ ツールボタン（ドラッグ可能）
         const toolFab = document.createElement('div');
         toolFab.style.cssText = `${fabStyle} bottom:15px; left:15px; background:rgba(0,255,255,0.1); border:1px solid #00ffff; color:#00ffff;`;
         toolFab.innerText = '🛠️';
@@ -103,29 +151,21 @@ export class UIManager {
         `;
         document.body.appendChild(paletteUI);
 
+        const isToolDragged = this.makeDraggable(toolFab);
         toolFab.onclick = () => {
+            if (isToolDragged()) return;
             const isHidden = paletteUI.style.display === 'none';
             paletteUI.style.display = isHidden ? 'flex' : 'none';
             toolFab.style.background = isHidden ? 'rgba(0,255,255,0.4)' : 'rgba(0,255,255,0.1)';
         };
 
         const updateModeUI = () => {
-            const runBtn = document.getElementById('mode-run');
-            const linkBtn = document.getElementById('mode-link');
-            const editBtn = document.getElementById('mode-edit');
-
-            runBtn.style.background = this.app.appMode === 'RUN' ? '#00ffcc' : '#113344';
-            runBtn.style.color = this.app.appMode === 'RUN' ? '#000' : '#fff';
-            
-            linkBtn.style.background = this.app.appMode === 'LINK' ? '#ff00ff' : '#113344';
-            linkBtn.style.color = '#fff';
-
-            editBtn.style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
-            editBtn.style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
-            
-            this.hideMenu(); 
-            paletteUI.style.display = 'none';
-            toolFab.style.background = 'rgba(0,255,255,0.1)';
+            document.getElementById('mode-run').style.background = this.app.appMode === 'RUN' ? '#00ffcc' : '#113344';
+            document.getElementById('mode-run').style.color = this.app.appMode === 'RUN' ? '#000' : '#fff';
+            document.getElementById('mode-link').style.background = this.app.appMode === 'LINK' ? '#ff00ff' : '#113344';
+            document.getElementById('mode-edit').style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
+            document.getElementById('mode-edit').style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
+            this.hideMenu(); paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
         };
 
         document.getElementById('mode-run').onclick = () => { this.app.appMode = 'RUN'; updateModeUI(); };
@@ -136,14 +176,14 @@ export class UIManager {
             if (this.app.isZoomingIn) return;
             this.app.currentUniverse.addNode(name, -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, color, category);
             this.app.autoSave(); 
-            paletteUI.style.display = 'none';
-            toolFab.style.background = 'rgba(0,255,255,0.1)';
+            paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
         };
         document.getElementById('spawn-galaxy').onclick = () => spawnCenter('新規[銀河]', '#9966ff', 'galaxy');
         document.getElementById('spawn-star').onclick = () => spawnCenter('新規[星]', '#ffcc00', 'star');
         document.getElementById('spawn-life').onclick = () => spawnCenter('新規[生命]', '#ff6699', 'life');
         document.getElementById('spawn-microbe').onclick = () => spawnCenter('新規[微生物]', '#00ffcc', 'microbe');
 
+        // 🎒 亜空間ボタン（ドラッグ可能）
         const sysFab = document.createElement('div');
         sysFab.style.cssText = `${fabStyle} bottom:15px; right:15px; background:rgba(255,102,153,0.1); border:1px solid #ff6699; color:#ff6699;`;
         sysFab.innerText = '🎒';
@@ -154,30 +194,21 @@ export class UIManager {
         hintUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">データ管理</div>
             <button id="btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px 5px; cursor:pointer; border-radius:3px; font-weight:bold;">🎒 亜空間<br>(復元/消去)</button>
-            <button id="btn-reset-all" style="width:100%; background:#440000; color:#ff6666; border:1px solid #ff4444; padding:6px; cursor:pointer; border-radius:3px; font-size:10px; font-weight:bold;">⚠️ 全データリセット</button>
         `;
         document.body.appendChild(hintUI);
 
+        const isSysDragged = this.makeDraggable(sysFab);
         sysFab.onclick = () => {
+            if (isSysDragged()) return;
             const isHidden = hintUI.style.display === 'none';
             hintUI.style.display = isHidden ? 'flex' : 'none';
             sysFab.style.background = isHidden ? 'rgba(255,102,153,0.4)' : 'rgba(255,102,153,0.1)';
         };
 
         document.getElementById('btn-inventory').addEventListener('click', () => {
-            hintUI.style.display = 'none'; 
-            sysFab.style.background = 'rgba(255,102,153,0.1)';
+            hintUI.style.display = 'none'; sysFab.style.background = 'rgba(255,102,153,0.1)';
             if (this.app.blackHole.length === 0) return alert("ポケットは空です。");
             this.showInventoryUI();
-        });
-
-        document.getElementById('btn-reset-all').addEventListener('click', () => {
-            hintUI.style.display = 'none';
-            sysFab.style.background = 'rgba(255,102,153,0.1)';
-            if (confirm("⚠️ 【警告】\nすべてのデータが完全に消去されます。\n本当に最初からやり直しますか？")) {
-                localStorage.removeItem('my_universe_save_data');
-                location.reload(); // 一番安全なリセット方法は画面のリロード
-            }
         });
 
         this.inventoryModal = document.createElement('div');
@@ -424,14 +455,13 @@ export class UIManager {
             if (!isCurrent) {
                 const sep = document.createElement('span');
                 sep.innerText = '>';
-                sep.style.cssText = 'color:rgba(255,255,255,0.4); font-size:10px;';
+                sep.style.cssText = 'color:rgba(255,255,255,0.4); font-size:10px; margin: 0 5px;';
                 this.breadcrumbUI.appendChild(sep);
             }
         });
 
-        const centerTextEl = document.getElementById('center-text');
-        if (centerTextEl) {
-            centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.7;">✏️</span>`;
+        if (this.centerTextEl) {
+            this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.7;">✏️</span>`;
         }
     }
 }
