@@ -67,13 +67,24 @@ export class CanvasBuilder {
         console.log("OS: データのロードを開始します...");
         const savedData = await DataManager.load();
         
+        // ★ Firebaseから登録されたアカウント名を取得
+        let userName = "My Universe";
+        try {
+            const authModule = await import('../security/Auth.js');
+            const user = authModule.auth.currentUser;
+            if (user && user.displayName) {
+                userName = `${user.displayName}の宇宙`;
+            }
+        } catch (e) {
+            console.error("Authモジュールの読み込みに失敗しました:", e);
+        }
+        
         if (savedData) {
             this.currentUniverse = savedData.rootUniverse;
             this.wormholes = savedData.wormholes;
             this.blackHole = savedData.blackHole;
             this.allNodesMap = savedData.nodeMap;
         } else {
-            const userName = "My Universe";
             this.currentUniverse = new Universe(userName, 'space');
             const galaxy = this.currentUniverse.addNode('アイデア', -150, -50, 30, '#9966ff', 'star');
             const star = this.currentUniverse.addNode('システム', 100, -100, 18, '#ffcc00', 'star');
@@ -165,7 +176,6 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
-                // ★【スマホ対応】タッチ座標を確実に取得！
                 let clientX = event.clientX || 0;
                 let clientY = event.clientY || 0;
                 
@@ -278,7 +288,6 @@ export class CanvasBuilder {
             this.ctx.setLineDash([]);
         }
 
-        // ★星の描画を1種類（シンプルな丸）に統一！
         this.currentUniverse.nodes.forEach(node => {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
