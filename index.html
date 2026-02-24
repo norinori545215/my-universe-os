@@ -41,14 +41,14 @@
 
         .divider { display: flex; align-items: center; margin: 20px 0; color: #aaa; font-size: 12px; }
         .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #555; margin: 0 10px; }
-
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
-        /* ★ 修正：丸いボタンと重ならないように位置を少し左にずらしました */
+        /* ★ ドラッグ対応のため user-select と touch-action を追加 */
         #btn-logout {
             position: fixed; top: 15px; right: 80px;
             background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; padding: 8px 15px; border-radius: 6px;
-            cursor: pointer; z-index: 9998; font-size: 12px; display: none; transition: 0.3s;
+            cursor: pointer; z-index: 9998; font-size: 12px; display: none; transition: 0.2s;
+            user-select: none; touch-action: none;
         }
         #btn-logout:hover { border-color: #fff; background: rgba(50, 50, 50, 0.8); }
 
@@ -56,6 +56,7 @@
             position: fixed; bottom: 15px; right: 80px;
             background: rgba(200, 30, 30, 0.8); color: #fff; border: 1px solid #ff4444; 
             padding: 10px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px;
+            user-select: none; touch-action: none; transition: 0.2s;
         }
     </style>
 </head>
@@ -100,8 +101,55 @@
         const authScreen = document.getElementById('auth-screen');
         const loginError = document.getElementById('login-error');
         const btnLogout = document.getElementById('btn-logout');
+        const btnReset = document.getElementById('emergency-reset-btn');
         
         let isLoginMode = true;
+
+        // ★ ボタンをドラッグ可能にする魔法の関数
+        function makeDraggable(el) {
+            let isDragging = false, startX, startY, initX, initY, hasMoved = false;
+
+            const down = (e) => {
+                hasMoved = false;
+                const ev = e.touches ? e.touches[0] : e;
+                startX = ev.clientX; startY = ev.clientY;
+                const rect = el.getBoundingClientRect();
+                initX = rect.left; initY = rect.top;
+                isDragging = true;
+                el.style.transition = 'none'; // ドラッグ中はアニメーションを消す
+            };
+
+            const move = (e) => {
+                if (!isDragging) return;
+                const ev = e.touches ? e.touches[0] : e;
+                const dx = ev.clientX - startX; const dy = ev.clientY - startY;
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+                
+                let nx = initX + dx; let ny = initY + dy;
+                // 画面外に飛び出さないようにガード！
+                nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
+                ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+                
+                el.style.left = `${nx}px`;
+                el.style.top = `${ny}px`;
+                el.style.right = 'auto'; 
+                el.style.bottom = 'auto';
+            };
+
+            const up = () => {
+                if (isDragging) { isDragging = false; el.style.transition = '0.2s'; }
+            };
+
+            el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
+            window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
+            window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+
+            return () => hasMoved; // 動かしたかどうかの判定を返す
+        }
+
+        // ログアウトとリセットボタンをドラッグ対応に！
+        const isLogoutDragged = makeDraggable(btnLogout);
+        const isResetDragged = makeDraggable(btnReset);
 
         function bootSystem() {
             authScreen.style.opacity = '0';
@@ -148,15 +196,16 @@
 
                 const result = await createUniverseAccount(email, password, userName);
                 if (result.success) {
-                    alert("確認メールを送信しました！リンクをクリックしてからログインしてください。");
+                    alert("確認メールを送信しました！\n受信トレイを開いて、メール内のリンクをクリックしてから「ログイン」してください。");
                     document.getElementById('toggle-auth').click(); 
                 } else {
-                    showError("エラー: " + result.error);
+                    showError(result.error);
                 }
             }
         });
 
         btnLogout.addEventListener('click', async () => {
+            if (isLogoutDragged()) return; // ドラッグした時はログアウトしない！
             await logoutFromUniverse();
             window.location.reload(); 
         });
@@ -165,7 +214,8 @@
             if (user && user.emailVerified) bootSystem();
         });
 
-        document.getElementById('emergency-reset-btn').addEventListener('click', async () => {
+        btnReset.addEventListener('click', async () => {
+            if (isResetDragged()) return; // ドラッグした時はリセットしない！
             const confirmReset = confirm("完全に初期化しますか？");
             if (!confirmReset) return;
             try {
