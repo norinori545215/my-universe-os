@@ -10,9 +10,12 @@ import {
     browserSessionPersistence,
     signOut,
     updateProfile,
-    sendEmailVerification
+    sendEmailVerification,
+    GoogleAuthProvider, // ★追加: Googleログイン用
+    signInWithPopup     // ★追加: Googleログインのポップアップ画面用
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// ★追加: データベースにユーザー情報を保存するための機能
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjr1e3AYjQ7ZGqagb23HWqMdGjZaYcAmU",
@@ -27,17 +30,46 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider(); // ★Googleログインの準備
 
-// 🔵 ログイン処理（ログイン維持 ＆ メール確認チェック）
+// ユーザー情報をデータベースに保存・確認する共通関数
+async function saveUserProfile(user, userName) {
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+        // 初回登録時のみ、データベースに「無料プラン(free)」として記録する！
+        await setDoc(userRef, {
+            name: userName || user.displayName || "名無し",
+            email: user.email,
+            plan: "free", // 👑 管理者（あなた）が後からここを "premium" に書き換えられます
+            createdAt: new Date().toISOString()
+        });
+    }
+}
+
+// 🟡 新設！Googleでログイン（＆自動登録）
+export async function loginWithGoogle(rememberMe) {
+    try {
+        const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
+        await setPersistence(auth, persistence);
+        
+        const result = await signInWithPopup(auth, googleProvider);
+        await saveUserProfile(result.user, result.user.displayName); // DBにプランを記録
+        
+        return { success: true, user: result.user };
+    } catch (error) {
+        return { success: false, error: "Googleログインに失敗しました: " + error.message };
+    }
+}
+
+// 🔵 ログイン処理（既存のメアド用）
 export async function loginToUniverse(email, password, rememberMe) {
     try {
-        // rememberMeがtrueなら次回も自動ログイン、falseならブラウザを閉じたらログアウト
         const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
         await setPersistence(auth, persistence);
         
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-        // ★ 本物のメールアドレスかチェック（確認リンクを踏んでいないと弾く）
         if (!userCredential.user.emailVerified) {
             await signOut(auth);
             return { success: false, error: "メールの確認が完了していません。\n受信トレイのリンクをクリックしてください。" };
@@ -49,19 +81,15 @@ export async function loginToUniverse(email, password, rememberMe) {
     }
 }
 
-// 🟢 新規登録処理（アカウント名登録 ＆ 確認メール送信）
+// 🟢 新規登録処理（既存のメアド用）
 export async function createUniverseAccount(email, password, userName) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // アカウント名（表示名）をFirebaseに保存
         await updateProfile(user, { displayName: userName });
-
-        // ★ 登録したアドレス宛に「本物の確認メール」を送信
+        await saveUserProfile(user, userName); // DBにプランを記録
         await sendEmailVerification(user);
-
-        // 登録直後は強制的にログアウトさせ、メールを見に行かせる
         await signOut(auth);
 
         return { success: true };
