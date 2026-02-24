@@ -33,7 +33,6 @@
         
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
-        /* 🚪 ログアウトボタン */
         #btn-logout {
             position: fixed; top: 20px; right: 20px;
             background: rgba(0, 0, 0, 0.6); color: #fff;
@@ -96,14 +95,18 @@
             authScreen.style.opacity = '0';
             setTimeout(() => {
                 authScreen.style.display = 'none';
-                btnLogout.style.display = 'block'; // ログアウトボタンを表示
+                btnLogout.style.display = 'block';
                 window.app = new CanvasBuilder('universe-canvas');
             }, 500);
         }
 
-        function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
+        function showError(msg) { 
+            loginError.innerText = msg; 
+            loginError.style.display = 'block'; 
+            // ★ エラーが絶対に見逃されないようにポップアップを追加！
+            alert(msg); 
+        }
 
-        // 画面の切り替え（ログイン ⇔ 新規登録）
         document.getElementById('toggle-auth').addEventListener('click', () => {
             isLoginMode = !isLoginMode;
             loginError.style.display = 'none';
@@ -115,40 +118,35 @@
             document.getElementById('remember-me-label').style.display = isLoginMode ? "block" : "none";
         });
 
-        // 🔵 ボタンが押された時の処理
         document.getElementById('btn-action').addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
             loginError.style.display = 'none';
 
             if (isLoginMode) {
-                // 【ログイン処理】
                 const rememberMe = document.getElementById('remember-me').checked;
                 const result = await loginToUniverse(email, password, rememberMe);
                 if (result.success) bootSystem();
                 else showError(result.error);
             } else {
-                // 【新規登録処理】
                 const userName = document.getElementById('signup-name').value || "名無し";
                 if (password.length < 6) return showError("パスワードは6文字以上にしてください");
 
                 const result = await createUniverseAccount(email, password, userName);
                 if (result.success) {
                     alert("登録したメールアドレスに「確認メール」を送信しました！\n受信トレイを開いて、メール内のリンクをクリックしてからログインしてください。");
-                    document.getElementById('toggle-auth').click(); // ログイン画面に戻す
+                    document.getElementById('toggle-auth').click(); 
                 } else {
                     showError("エラー: " + result.error);
                 }
             }
         });
 
-        // 🚪 ログアウト処理
         btnLogout.addEventListener('click', async () => {
             await logoutFromUniverse();
-            window.location.reload(); // 画面を更新してログイン画面へ戻る
+            window.location.reload(); 
         });
 
-        // セッション維持（自動ログイン）※メール確認済みのアカウントのみ
         onAuthStateChanged(auth, (user) => {
             if (user && user.emailVerified) {
                 console.log("セッション維持による自動起動");
@@ -156,7 +154,6 @@
             }
         });
 
-        // 完全リセットボタン
         document.getElementById('emergency-reset-btn').addEventListener('click', async () => {
             const confirmReset = confirm("本当に宇宙を完全に初期化しますか？\n（クラウドの星もすべて消え去り、元には戻せません！）");
             if (!confirmReset) return;
@@ -166,6 +163,11 @@
                 alert("初期化完了");
                 window.location.reload();
             } catch (error) { alert("エラーが発生しました。"); }
+        });
+
+        // ★ Enterキーのバグを修正！（btn-login ➔ btn-action）
+        document.getElementById('login-pw').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('btn-action').click();
         });
     </script>
 </body>
