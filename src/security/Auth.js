@@ -31,6 +31,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider(); // ★Googleログインの準備
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // ユーザー情報をデータベースに保存・確認する共通関数
 async function saveUserProfile(user, userName) {
