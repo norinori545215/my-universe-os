@@ -8,32 +8,48 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050510; font-family: sans-serif; }
         canvas { display: block; }
         
-        #auth-screen {
+        /* 共通のオーバースクリーン設定 */
+        .fullscreen-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             z-index: 9999; color: white; backdrop-filter: blur(10px);
             transition: opacity 0.5s ease;
         }
+        
         .auth-box {
             background: rgba(20, 20, 30, 0.8); border: 1px solid #00ffcc;
             padding: 40px; border-radius: 12px; text-align: center;
             box-shadow: 0 10px 40px rgba(0, 255, 204, 0.2); width: 280px;
         }
-        .auth-box input {
+        
+        /* マスターキー専用の厳重なスタイル */
+        .vault-box {
+            background: rgba(10, 0, 15, 0.9); border: 1px solid #ff00ff;
+            padding: 40px; border-radius: 12px; text-align: center;
+            box-shadow: 0 10px 40px rgba(255, 0, 255, 0.2); width: 280px;
+        }
+
+        .auth-box input, .vault-box input {
             width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px;
             border: 1px solid #555; background: #111; color: white; box-sizing: border-box;
         }
-        .auth-box button.primary-btn {
+        
+        .primary-btn {
             width: 100%; padding: 12px; margin-top: 15px; border-radius: 6px;
             background: #00ffcc; color: #000; font-weight: bold; border: none;
             cursor: pointer; font-size: 14px; transition: 0.2s;
         }
-        /* ロック中（無効化）のボタンスタイル */
-        .auth-box button:disabled { background: #555 !important; color: #888 !important; cursor: not-allowed; box-shadow: none !important; border-color: #555 !important; }
+        .primary-btn:hover:not(:disabled) { background: #fff; box-shadow: 0 0 15px #00ffcc; }
+        .primary-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
 
-        .auth-box button.primary-btn:hover:not(:disabled) { background: #fff; box-shadow: 0 0 15px #00ffcc; }
-        
+        .vault-btn {
+            width: 100%; padding: 12px; margin-top: 15px; border-radius: 6px;
+            background: #ff00ff; color: #fff; font-weight: bold; border: none;
+            cursor: pointer; font-size: 14px; transition: 0.2s;
+        }
+        .vault-btn:hover:not(:disabled) { background: #fff; color: #000; box-shadow: 0 0 15px #ff00ff; }
+
         .google-btn {
             width: 100%; padding: 12px; margin-top: 15px; border-radius: 6px;
             background: #fff; color: #333; font-weight: bold; border: 1px solid #ddd;
@@ -46,25 +62,21 @@
         .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #555; margin: 0 10px; }
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
-        #btn-logout {
-            position: fixed; top: 15px; right: 80px;
-            background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; padding: 8px 15px; border-radius: 6px;
-            cursor: pointer; z-index: 9998; font-size: 12px; display: none; transition: 0.2s;
-            user-select: none; touch-action: none;
+        /* ドラッグ対応のシステムボタン */
+        #btn-logout, #emergency-reset-btn {
+            position: fixed; background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; 
+            padding: 8px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px; 
+            display: none; transition: 0.2s; user-select: none; touch-action: none;
         }
+        #btn-logout { top: 15px; right: 80px; }
         #btn-logout:hover { border-color: #fff; background: rgba(50, 50, 50, 0.8); }
-
-        #emergency-reset-btn {
-            position: fixed; bottom: 15px; right: 80px;
-            background: rgba(200, 30, 30, 0.8); color: #fff; border: 1px solid #ff4444; 
-            padding: 10px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px;
-            user-select: none; touch-action: none; transition: 0.2s;
-        }
+        
+        #emergency-reset-btn { bottom: 15px; right: 80px; border-color: #ff4444; color: #ff6666; }
     </style>
 </head>
 <body>
 
-    <div id="auth-screen">
+    <div id="auth-screen" class="fullscreen-overlay">
         <div class="auth-box">
             <h2 id="auth-title" style="margin-top:0; color:#00ffcc; letter-spacing: 2px;">LOGIN</h2>
             
@@ -79,13 +91,23 @@
             <input type="email" id="login-id" placeholder="メールアドレス">
             <input type="password" id="login-pw" placeholder="パスワード (6文字以上)">
             
-            <label id="remember-me-label" style="display:block; font-size:12px; color:#aaa; margin-top:10px; text-align:left; cursor:pointer;">
-                <input type="checkbox" id="remember-me" checked> 次回から自動的にログインする
-            </label>
-            
             <button id="btn-action" class="primary-btn">メールアドレスでログイン</button>
             <div id="toggle-auth" class="toggle-link">新規アカウント作成はこちら</div>
             <div id="login-error" style="color:#ff4444; font-size:11px; margin-top:15px; display:none;"></div>
+        </div>
+    </div>
+
+    <div id="master-key-screen" class="fullscreen-overlay" style="display:none; z-index: 10000;">
+        <div class="vault-box">
+            <h2 style="margin-top:0; color:#ff00ff; letter-spacing: 2px;">ABSOLUTE SECURE</h2>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 20px;">
+                宇宙を解読・暗号化するための<br>マスターパスワードを入力してください。<br>
+                <span style="color:#ff4444;">※忘れると二度と復元できません。</span>
+            </p>
+            
+            <input type="password" id="master-key-input" placeholder="マスターパスワード">
+            <button id="btn-unlock-universe" class="vault-btn">宇宙を創世 / 解読する</button>
+            <div id="key-status" style="color:#ff00ff; font-size:11px; margin-top:15px; display:none;"></div>
         </div>
     </div>
 
@@ -99,16 +121,20 @@
         import { auth, db, loginToUniverse, createUniverseAccount, logoutFromUniverse, loginWithGoogle } from './src/security/Auth.js';
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        
+        // ★ 暗号化コアをインポート！
+        import { deriveKey } from './src/security/CryptoCore.js';
 
         const authScreen = document.getElementById('auth-screen');
+        const masterKeyScreen = document.getElementById('master-key-screen');
         const loginError = document.getElementById('login-error');
         const btnLogout = document.getElementById('btn-logout');
         const btnReset = document.getElementById('emergency-reset-btn');
         const btnAction = document.getElementById('btn-action');
-        const btnGoogle = document.getElementById('btn-google');
         
         let isLoginMode = true;
 
+        // ドラッグ機能
         function makeDraggable(el) {
             let isDragging = false, startX, startY, initX, initY, hasMoved = false;
             const down = (e) => {
@@ -121,10 +147,9 @@
                 if (!isDragging) return; const ev = e.touches ? e.touches[0] : e;
                 const dx = ev.clientX - startX; const dy = ev.clientY - startY;
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-                let nx = initX + dx; let ny = initY + dy;
-                nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
-                ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
-                el.style.left = `${nx}px`; el.style.top = `${ny}px`; el.style.right = 'auto'; el.style.bottom = 'auto';
+                el.style.left = `${Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx))}px`; 
+                el.style.top = `${Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy))}px`; 
+                el.style.right = 'auto'; el.style.bottom = 'auto';
             };
             const up = () => { if (isDragging) { isDragging = false; el.style.transition = '0.2s'; } };
             el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
@@ -136,17 +161,9 @@
         const isLogoutDragged = makeDraggable(btnLogout);
         const isResetDragged = makeDraggable(btnReset);
 
-        function bootSystem() {
-            authScreen.style.opacity = '0';
-            setTimeout(() => {
-                authScreen.style.display = 'none';
-                btnLogout.style.display = 'block';
-                window.app = new CanvasBuilder('universe-canvas');
-            }, 500);
-        }
+        function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
 
-        function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; alert(msg); }
-
+        // 🔵 ログインUIの切り替え
         document.getElementById('toggle-auth').addEventListener('click', () => {
             isLoginMode = !isLoginMode;
             loginError.style.display = 'none';
@@ -154,77 +171,110 @@
             btnAction.innerText = isLoginMode ? "メールアドレスでログイン" : "メールアドレスで創世する";
             document.getElementById('toggle-auth').innerText = isLoginMode ? "新規アカウント作成はこちら" : "ログイン画面に戻る";
             document.getElementById('signup-name').style.display = isLoginMode ? "none" : "block";
-            document.getElementById('remember-me-label').style.display = isLoginMode ? "block" : "none";
         });
 
-        // ★ Googleボタン連打防止
-        btnGoogle.addEventListener('click', async () => {
-            btnGoogle.disabled = true;
-            const rememberMe = document.getElementById('remember-me').checked;
-            const result = await loginWithGoogle(rememberMe);
-            if (result.success) bootSystem();
-            else { showError(result.error); btnGoogle.disabled = false; }
+        // 🟢 Googleログイン
+        document.getElementById('btn-google').addEventListener('click', async () => {
+            document.getElementById('btn-google').disabled = true;
+            const result = await loginWithGoogle(true);
+            if (!result.success) { showError(result.error); document.getElementById('btn-google').disabled = false; }
+            // 成功時は onAuthStateChanged が発火するのでここでは何もしない
         });
 
-        // ★ メアドボタン連打防止
+        // 🟢 メールアドレスログイン
         btnAction.addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
             loginError.style.display = 'none';
-
-            // ボタンをロックして「通信中」にする
             btnAction.disabled = true;
             const originalText = btnAction.innerText;
             btnAction.innerText = "通信中...";
 
             if (isLoginMode) {
-                const rememberMe = document.getElementById('remember-me').checked;
-                const result = await loginToUniverse(email, password, rememberMe);
-                if (result.success) bootSystem();
-                else { showError(result.error); btnAction.disabled = false; btnAction.innerText = originalText; }
+                const result = await loginToUniverse(email, password, true);
+                if (!result.success) { showError(result.error); btnAction.disabled = false; btnAction.innerText = originalText; }
             } else {
                 const userName = document.getElementById('signup-name').value || "名無し";
-                if (password.length < 6) {
-                    showError("パスワードは6文字以上にしてください");
-                    btnAction.disabled = false; btnAction.innerText = originalText; return;
-                }
-
+                if (password.length < 6) { showError("パスワードは6文字以上にしてください"); btnAction.disabled = false; btnAction.innerText = originalText; return; }
                 const result = await createUniverseAccount(email, password, userName);
                 if (result.success) {
-                    alert("確認メールを送信しました！\n⚠️ もし見当たらない場合は「迷惑メールフォルダ」をご確認ください。\n\nメール内のリンクをクリックしてからログインしてください。");
+                    alert("確認メールを送信しました！受信トレイを確認し、リンクをクリックしてからログインしてください。");
                     document.getElementById('toggle-auth').click(); 
-                } else {
-                    showError(result.error);
-                }
-                btnAction.disabled = false;
-                btnAction.innerText = "メールアドレスでログイン";
+                } else { showError(result.error); }
+                btnAction.disabled = false; btnAction.innerText = "メールアドレスでログイン";
+            }
+        });
+
+        // 🚀 ★ 第一の扉を抜けたら、マスターキー画面を出す！
+        onAuthStateChanged(auth, (user) => {
+            if (user && user.emailVerified) {
+                authScreen.style.opacity = '0';
+                setTimeout(() => {
+                    authScreen.style.display = 'none';
+                    // マスターキー画面をフェードイン
+                    masterKeyScreen.style.display = 'flex';
+                    masterKeyScreen.style.opacity = '0';
+                    setTimeout(() => masterKeyScreen.style.opacity = '1', 50);
+                }, 500);
+            } else {
+                authScreen.style.display = 'flex';
+                authScreen.style.opacity = '1';
+                masterKeyScreen.style.display = 'none';
+            }
+        });
+
+        // 🗝️ ★ マスターキーで暗号鍵を生成して、ついに宇宙へ！
+        document.getElementById('btn-unlock-universe').addEventListener('click', async () => {
+            const masterPw = document.getElementById('master-key-input').value;
+            const statusText = document.getElementById('key-status');
+            
+            if (masterPw.length < 4) {
+                statusText.innerText = "⚠️ パスワードが短すぎます";
+                statusText.style.display = 'block';
+                return;
+            }
+
+            statusText.innerText = "暗号鍵を生成中...";
+            statusText.style.display = 'block';
+            document.getElementById('btn-unlock-universe').disabled = true;
+
+            try {
+                // CryptoCoreの魔法で、パスワードから256bitの鍵を練り上げる！
+                window.universeCryptoKey = await deriveKey(masterPw);
+                
+                statusText.innerText = "解読成功。事象の地平面へ接続します...";
+                
+                setTimeout(() => {
+                    masterKeyScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        masterKeyScreen.style.display = 'none';
+                        btnLogout.style.display = 'block';
+                        btnReset.style.display = 'block';
+                        // 宇宙起動！
+                        window.app = new CanvasBuilder('universe-canvas');
+                    }, 500);
+                }, 800);
+
+            } catch (error) {
+                statusText.innerText = "⚠️ エラーが発生しました。";
+                document.getElementById('btn-unlock-universe').disabled = false;
             }
         });
 
         btnLogout.addEventListener('click', async () => {
             if (isLogoutDragged()) return; 
+            window.universeCryptoKey = null; // ログアウト時にメモリ上の鍵も破棄
             await logoutFromUniverse();
             window.location.reload(); 
         });
 
-        onAuthStateChanged(auth, (user) => {
-            if (user && user.emailVerified) bootSystem();
-        });
-
         btnReset.addEventListener('click', async () => {
             if (isResetDragged()) return; 
-            const confirmReset = confirm("完全に初期化しますか？");
-            if (!confirmReset) return;
-            try {
+            if (confirm("完全に初期化しますか？暗号化されたデータも消去されます。")) {
                 if (auth.currentUser) await deleteDoc(doc(db, "universes", auth.currentUser.uid));
                 localStorage.clear();
-                alert("初期化完了");
                 window.location.reload();
-            } catch (error) { alert("エラーが発生しました。"); }
-        });
-
-        document.getElementById('login-pw').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !btnAction.disabled) btnAction.click();
+            }
         });
     </script>
 </body>
