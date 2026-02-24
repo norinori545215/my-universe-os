@@ -8,7 +8,7 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050510; font-family: sans-serif; }
         canvas { display: block; }
         
-        /* 🚪 ログイン＆2FA画面の共通スタイル */
+        /* 🚪 ログイン＆新規登録画面 */
         #auth-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
@@ -25,21 +25,18 @@
             width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px;
             border: 1px solid #555; background: #111; color: white; box-sizing: border-box;
         }
+        .btn-group {
+            display: flex; gap: 10px; margin-top: 20px;
+        }
         .auth-box button {
-            width: 100%; padding: 12px; margin-top: 20px; border-radius: 6px;
-            background: #00ffcc; color: #000; font-weight: bold; border: none;
-            cursor: pointer; font-size: 16px; transition: 0.2s;
+            flex: 1; padding: 12px; border-radius: 6px; font-weight: bold; border: none;
+            cursor: pointer; font-size: 14px; transition: 0.2s;
         }
-        .auth-box button:hover { background: #fff; box-shadow: 0 0 15px #00ffcc; }
-
-        /* 🔐 2FA専用のスタイル上書き */
-        #mfa-box { border-color: #ffaa00; box-shadow: 0 10px 40px rgba(255, 170, 0, 0.2); }
-        #mfa-box button { background: #ffaa00; }
-        #mfa-box button:hover { box-shadow: 0 0 15px #ffaa00; }
-        #mfa-code { 
-            text-align: center; font-size: 24px; letter-spacing: 12px; 
-            font-weight: bold; background: #000; color: #ffaa00; border-color: #ffaa00;
-        }
+        #btn-login { background: #00ffcc; color: #000; }
+        #btn-login:hover { background: #fff; box-shadow: 0 0 15px #00ffcc; }
+        
+        #btn-signup { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; }
+        #btn-signup:hover { background: rgba(0, 255, 204, 0.2); }
 
         #center-text {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -47,7 +44,7 @@
             pointer-events: none; user-select: none; z-index: 10; white-space: nowrap;
         }
 
-        /* ★ 新設！クラウド完全消去ボタン */
+        /* 🚨 クラウド完全消去ボタン */
         #emergency-reset-btn {
             position: fixed; bottom: 20px; right: 20px;
             background: rgba(200, 30, 30, 0.8); color: #fff;
@@ -65,23 +62,16 @@
     <div id="auth-screen">
         <div id="login-box" class="auth-box">
             <h2 style="margin-top:0; color:#00ffcc; letter-spacing: 2px;">UNIVERSE OS</h2>
-            <p style="font-size:12px; color:#aaa;">クラウド同期を利用するために<br>ログインしてください</p>
+            <p style="font-size:12px; color:#aaa;">あなただけの宇宙へアクセス</p>
             
             <input type="email" id="login-id" placeholder="メールアドレス">
-            <input type="password" id="login-pw" placeholder="パスワード">
+            <input type="password" id="login-pw" placeholder="パスワード (6文字以上)">
             
-            <button id="btn-login">認証を開始</button>
-            <div id="login-error" style="color:#ff4444; font-size:11px; margin-top:10px; display:none;">認証に失敗しました</div>
-        </div>
-
-        <div id="mfa-box" class="auth-box" style="display:none;">
-            <h2 style="margin-top:0; color:#ffaa00; letter-spacing: 2px;">2FA SECURE</h2>
-            <p style="font-size:12px; color:#aaa;">セキュリティコードを入力してください</p>
-            
-            <input type="text" id="mfa-code" placeholder="----" maxlength="4" autocomplete="off">
-            
-            <button id="btn-verify-mfa">システムを承認</button>
-            <div id="mfa-error" style="color:#ff4444; font-size:12px; margin-top:10px; display:none;">コードが一致しません</div>
+            <div class="btn-group">
+                <button id="btn-login">ログイン</button>
+                <button id="btn-signup">新規登録</button>
+            </div>
+            <div id="login-error" style="color:#ff4444; font-size:11px; margin-top:15px; display:none;"></div>
         </div>
     </div>
 
@@ -92,20 +82,15 @@
 
     <script type="module">
         import { CanvasBuilder } from './src/engine/CanvasBuilder.js';
-        // ★ db をインポートに追加
-        import { auth, db, loginToUniverse } from './src/security/Auth.js';
+        // ★ createUniverseAccount も読み込むように追加
+        import { auth, db, loginToUniverse, createUniverseAccount } from './src/security/Auth.js';
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        // ★ Firebaseのデータ削除魔法を追加
         import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const authScreen = document.getElementById('auth-screen');
-        const loginBox = document.getElementById('login-box');
-        const mfaBox = document.getElementById('mfa-box');
         const loginError = document.getElementById('login-error');
-        
-        let currentMfaCode = "";
 
-        // システム起動の共通処理
+        // システム起動処理
         function bootSystem() {
             authScreen.style.opacity = '0';
             setTimeout(() => {
@@ -114,38 +99,48 @@
             }, 500);
         }
 
-        // STEP 1: Firebaseログインボタン
+        // エラー表示用関数
+        function showError(msg) {
+            loginError.innerText = msg;
+            loginError.style.display = 'block';
+        }
+
+        // 🔵 ログイン処理
         document.getElementById('btn-login').addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
-
             loginError.style.display = 'none';
+
+            if (!email || !password) {
+                showError("メールアドレスとパスワードを入力してください");
+                return;
+            }
+
             const result = await loginToUniverse(email, password);
-
             if (result.success) {
-                loginBox.style.display = 'none';
-                mfaBox.style.display = 'block';
-
-                currentMfaCode = Math.floor(1000 + Math.random() * 9000).toString();
-                setTimeout(() => {
-                    alert(`📱 【2FA認証コード】\n\nコード: [ ${currentMfaCode} ]\n\n※この数字を画面に入力してください。`);
-                }, 500);
+                bootSystem();
             } else {
-                loginError.innerText = "エラー: " + result.error;
-                loginError.style.display = 'block';
-                document.getElementById('login-pw').value = '';
+                showError("ログイン失敗: アドレスかパスワードが違います");
             }
         });
 
-        // STEP 2: 二段階認証コードの検証
-        document.getElementById('btn-verify-mfa').addEventListener('click', () => {
-            const inputCode = document.getElementById('mfa-code').value;
+        // 🟢 新規登録処理（マルチユーザーの要！）
+        document.getElementById('btn-signup').addEventListener('click', async () => {
+            const email = document.getElementById('login-id').value;
+            const password = document.getElementById('login-pw').value;
+            loginError.style.display = 'none';
 
-            if (inputCode === currentMfaCode) {
+            if (password.length < 6) {
+                showError("エラー: パスワードは6文字以上にしてください");
+                return;
+            }
+
+            const result = await createUniverseAccount(email, password);
+            if (result.success) {
+                alert("あなただけの宇宙が誕生しました！\nシステムを起動します。");
                 bootSystem();
             } else {
-                document.getElementById('mfa-error').style.display = 'block';
-                document.getElementById('mfa-code').value = '';
+                showError("登録エラー: " + result.error);
             }
         });
 
@@ -157,23 +152,18 @@
             }
         });
 
-        // ★ 完全リセットボタンの処理（クラウド対応）
+        // ★ 完全リセットボタンの処理
         document.getElementById('emergency-reset-btn').addEventListener('click', async () => {
             const confirmReset = confirm("本当に宇宙を完全に初期化しますか？\n（クラウドの星もすべて消え去り、元には戻せません！）");
             if (!confirmReset) return;
 
             try {
-                // 1. クラウド(Firebase)のデータを吹き飛ばす
                 const user = auth.currentUser;
                 if (user) {
                     await deleteDoc(doc(db, "universes", user.uid));
                     console.log("☁️ クラウドデータを消去しました");
                 }
-                
-                // 2. スマホ・PC本体のデータも吹き飛ばす
                 localStorage.clear();
-                
-                // 3. 画面をリロード
                 alert("宇宙の初期化が完了しました。まっさらな宇宙へワープします！");
                 window.location.reload();
             } catch (error) {
@@ -185,9 +175,6 @@
         // Enterキー対応
         document.getElementById('login-pw').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') document.getElementById('btn-login').click();
-        });
-        document.getElementById('mfa-code').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') document.getElementById('btn-verify-mfa').click();
         });
     </script>
 </body>
