@@ -29,21 +29,23 @@
             background: #00ffcc; color: #000; font-weight: bold; border: none;
             cursor: pointer; font-size: 14px; transition: 0.2s;
         }
-        .auth-box button.primary-btn:hover { background: #fff; box-shadow: 0 0 15px #00ffcc; }
+        /* ロック中（無効化）のボタンスタイル */
+        .auth-box button:disabled { background: #555 !important; color: #888 !important; cursor: not-allowed; box-shadow: none !important; border-color: #555 !important; }
+
+        .auth-box button.primary-btn:hover:not(:disabled) { background: #fff; box-shadow: 0 0 15px #00ffcc; }
         
         .google-btn {
             width: 100%; padding: 12px; margin-top: 15px; border-radius: 6px;
             background: #fff; color: #333; font-weight: bold; border: 1px solid #ddd;
             cursor: pointer; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px;
         }
-        .google-btn:hover { background: #f0f0f0; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        .google-btn:hover:not(:disabled) { background: #f0f0f0; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         .google-icon { width: 18px; height: 18px; }
 
         .divider { display: flex; align-items: center; margin: 20px 0; color: #aaa; font-size: 12px; }
         .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #555; margin: 0 10px; }
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
-        /* ★ ドラッグ対応のため user-select と touch-action を追加 */
         #btn-logout {
             position: fixed; top: 15px; right: 80px;
             background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; padding: 8px 15px; border-radius: 6px;
@@ -102,52 +104,35 @@
         const loginError = document.getElementById('login-error');
         const btnLogout = document.getElementById('btn-logout');
         const btnReset = document.getElementById('emergency-reset-btn');
+        const btnAction = document.getElementById('btn-action');
+        const btnGoogle = document.getElementById('btn-google');
         
         let isLoginMode = true;
 
-        // ★ ボタンをドラッグ可能にする魔法の関数
         function makeDraggable(el) {
             let isDragging = false, startX, startY, initX, initY, hasMoved = false;
-
             const down = (e) => {
-                hasMoved = false;
-                const ev = e.touches ? e.touches[0] : e;
+                hasMoved = false; const ev = e.touches ? e.touches[0] : e;
                 startX = ev.clientX; startY = ev.clientY;
-                const rect = el.getBoundingClientRect();
-                initX = rect.left; initY = rect.top;
-                isDragging = true;
-                el.style.transition = 'none'; // ドラッグ中はアニメーションを消す
+                const rect = el.getBoundingClientRect(); initX = rect.left; initY = rect.top;
+                isDragging = true; el.style.transition = 'none';
             };
-
             const move = (e) => {
-                if (!isDragging) return;
-                const ev = e.touches ? e.touches[0] : e;
+                if (!isDragging) return; const ev = e.touches ? e.touches[0] : e;
                 const dx = ev.clientX - startX; const dy = ev.clientY - startY;
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-                
                 let nx = initX + dx; let ny = initY + dy;
-                // 画面外に飛び出さないようにガード！
                 nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
                 ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
-                
-                el.style.left = `${nx}px`;
-                el.style.top = `${ny}px`;
-                el.style.right = 'auto'; 
-                el.style.bottom = 'auto';
+                el.style.left = `${nx}px`; el.style.top = `${ny}px`; el.style.right = 'auto'; el.style.bottom = 'auto';
             };
-
-            const up = () => {
-                if (isDragging) { isDragging = false; el.style.transition = '0.2s'; }
-            };
-
+            const up = () => { if (isDragging) { isDragging = false; el.style.transition = '0.2s'; } };
             el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
             window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
             window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-
-            return () => hasMoved; // 動かしたかどうかの判定を返す
+            return () => hasMoved;
         }
 
-        // ログアウトとリセットボタンをドラッグ対応に！
         const isLogoutDragged = makeDraggable(btnLogout);
         const isResetDragged = makeDraggable(btnReset);
 
@@ -166,46 +151,58 @@
             isLoginMode = !isLoginMode;
             loginError.style.display = 'none';
             document.getElementById('auth-title').innerText = isLoginMode ? "LOGIN" : "SIGN UP";
-            document.getElementById('btn-action').innerText = isLoginMode ? "メールアドレスでログイン" : "メールアドレスで創世する";
+            btnAction.innerText = isLoginMode ? "メールアドレスでログイン" : "メールアドレスで創世する";
             document.getElementById('toggle-auth').innerText = isLoginMode ? "新規アカウント作成はこちら" : "ログイン画面に戻る";
-            
             document.getElementById('signup-name').style.display = isLoginMode ? "none" : "block";
             document.getElementById('remember-me-label').style.display = isLoginMode ? "block" : "none";
         });
 
-        document.getElementById('btn-google').addEventListener('click', async () => {
+        // ★ Googleボタン連打防止
+        btnGoogle.addEventListener('click', async () => {
+            btnGoogle.disabled = true;
             const rememberMe = document.getElementById('remember-me').checked;
             const result = await loginWithGoogle(rememberMe);
             if (result.success) bootSystem();
-            else showError(result.error);
+            else { showError(result.error); btnGoogle.disabled = false; }
         });
 
-        document.getElementById('btn-action').addEventListener('click', async () => {
+        // ★ メアドボタン連打防止
+        btnAction.addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
             loginError.style.display = 'none';
+
+            // ボタンをロックして「通信中」にする
+            btnAction.disabled = true;
+            const originalText = btnAction.innerText;
+            btnAction.innerText = "通信中...";
 
             if (isLoginMode) {
                 const rememberMe = document.getElementById('remember-me').checked;
                 const result = await loginToUniverse(email, password, rememberMe);
                 if (result.success) bootSystem();
-                else showError(result.error);
+                else { showError(result.error); btnAction.disabled = false; btnAction.innerText = originalText; }
             } else {
                 const userName = document.getElementById('signup-name').value || "名無し";
-                if (password.length < 6) return showError("パスワードは6文字以上にしてください");
+                if (password.length < 6) {
+                    showError("パスワードは6文字以上にしてください");
+                    btnAction.disabled = false; btnAction.innerText = originalText; return;
+                }
 
                 const result = await createUniverseAccount(email, password, userName);
                 if (result.success) {
-                    alert("確認メールを送信しました！\n受信トレイを開いて、メール内のリンクをクリックしてから「ログイン」してください。");
+                    alert("確認メールを送信しました！\n⚠️ もし見当たらない場合は「迷惑メールフォルダ」をご確認ください。\n\nメール内のリンクをクリックしてからログインしてください。");
                     document.getElementById('toggle-auth').click(); 
                 } else {
                     showError(result.error);
                 }
+                btnAction.disabled = false;
+                btnAction.innerText = "メールアドレスでログイン";
             }
         });
 
         btnLogout.addEventListener('click', async () => {
-            if (isLogoutDragged()) return; // ドラッグした時はログアウトしない！
+            if (isLogoutDragged()) return; 
             await logoutFromUniverse();
             window.location.reload(); 
         });
@@ -215,7 +212,7 @@
         });
 
         btnReset.addEventListener('click', async () => {
-            if (isResetDragged()) return; // ドラッグした時はリセットしない！
+            if (isResetDragged()) return; 
             const confirmReset = confirm("完全に初期化しますか？");
             if (!confirmReset) return;
             try {
@@ -227,7 +224,7 @@
         });
 
         document.getElementById('login-pw').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') document.getElementById('btn-action').click();
+            if (e.key === 'Enter' && !btnAction.disabled) btnAction.click();
         });
     </script>
 </body>

@@ -25,6 +25,7 @@ export const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+// ユーザープロフィール保存（プラン管理の土台）
 async function saveUserProfile(user, userName) {
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
@@ -38,37 +39,40 @@ async function saveUserProfile(user, userName) {
     }
 }
 
+// 🟡 Googleログイン（アカウント選択機能付き）
 export async function loginWithGoogle(rememberMe) {
     try {
         const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
         await setPersistence(auth, persistence);
-        
         const result = await signInWithPopup(auth, googleProvider);
         await saveUserProfile(result.user, result.user.displayName);
         return { success: true, user: result.user };
     } catch (error) {
-        return { success: false, error: "Googleログインにキャンセルされたか、失敗しました。" };
+        return { success: false, error: "Googleログインが中断されました。" };
     }
 }
 
+// 🔵 ログイン処理（救済機能：未認証ならメール再送）
 export async function loginToUniverse(email, password, rememberMe) {
     try {
         const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
         await setPersistence(auth, persistence);
         
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        
+        // ★救済：パスワードは合っているが、メール未確認の場合
         if (!userCredential.user.emailVerified) {
+            await sendEmailVerification(userCredential.user); // 確認メールを再送
             await signOut(auth);
-            return { success: false, error: "⚠️ メールの確認が完了していません。\nご自身のメールの受信トレイを開き、届いているリンクをクリックしてから再度ログインしてください。" };
+            return { success: false, error: "⚠️ メール確認が完了していません。\n今、確認メールを「再送」しました。受信トレイ（または迷惑メールフォルダ）を確認してください。" };
         }
         return { success: true, user: userCredential.user };
     } catch (error) {
-        let msg = "ログインに失敗しました。アドレスかパスワードが違います。";
-        if (error.code === 'auth/too-many-requests') msg = "失敗が多すぎます。しばらく待ってからやり直してください。";
-        return { success: false, error: msg };
+        return { success: false, error: "ログイン失敗。アドレスかパスワードが違います。" };
     }
 }
 
+// 🟢 新規登録処理（エラー日本語翻訳付き）
 export async function createUniverseAccount(email, password, userName) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -80,14 +84,13 @@ export async function createUniverseAccount(email, password, userName) {
         await signOut(auth);
         return { success: true };
     } catch (error) {
-        // ★ 英語のエラーを分かりやすい日本語に翻訳して返す！
         let msg = "エラーが発生しました。";
         if (error.code === 'auth/email-already-in-use') {
-            msg = "このメールアドレスは既に登録されています！\n下の「ログイン画面に戻る」を押して、ログインしてください。";
+            msg = "このメールアドレスは既に登録されています！\n「ログイン」に切り替えて進んでください。未確認の場合はメールが再送されます。";
         } else if (error.code === 'auth/invalid-email') {
-            msg = "メールアドレスの形式が正しくありません。";
+            msg = "アドレスの形式が正しくありません。";
         } else if (error.code === 'auth/weak-password') {
-            msg = "パスワードが弱すぎます。6文字以上で設定してください。";
+            msg = "パスワードは6文字以上にしてください。";
         }
         return { success: false, error: msg };
     }
