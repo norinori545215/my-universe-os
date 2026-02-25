@@ -9,15 +9,13 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.createUI();
         
-        // index.htmlの古い浮遊ボタンを強制的に隠す（統合パネルから操作するため）
+        // 古いボタンを隠す
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
             const oldReset = document.getElementById('emergency-reset-btn');
-            if(oldLogout) oldLogout.style.opacity = '0';
-            if(oldLogout) oldLogout.style.pointerEvents = 'none';
-            if(oldReset) oldReset.style.opacity = '0';
-            if(oldReset) oldReset.style.pointerEvents = 'none';
-        }, 1000);
+            if(oldLogout) oldLogout.style.display = 'none';
+            if(oldReset) oldReset.style.display = 'none';
+        }, 500);
     }
 
     makeDraggable(el) {
@@ -73,7 +71,7 @@ export class UIManager {
     }
 
     createUI() {
-        // 中央テキスト
+        // 中央の透かしテキスト（階層名）
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
@@ -88,17 +86,24 @@ export class UIManager {
         };
         document.body.appendChild(this.centerTextEl);
 
-        // パンくずリスト
-        this.breadcrumbUI = document.createElement('div');
-        this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center; pointer-events:auto;';
-        this.protectUI(this.breadcrumbUI);
-        document.body.appendChild(this.breadcrumbUI);
+        // ★★★ 究極の「フローティング・システムカプセル」 ★★★
+        this.systemCapsule = document.createElement('div');
+        this.systemCapsule.style.cssText = 'position:fixed; top:20px; left:20px; z-index:9000; display:flex; align-items:center; background:rgba(10,15,25,0.85); border:1px solid rgba(0,255,204,0.5); border-radius:30px; padding:5px 15px 5px 5px; box-shadow:0 10px 30px rgba(0,255,204,0.2); backdrop-filter:blur(10px); pointer-events:auto; user-select:none; max-width:90vw; overflow-x:auto;';
+        
+        // カプセル全体のドラッグを有効化（ドラッグ判定関数を保存しておく）
+        this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
+        document.body.appendChild(this.systemCapsule);
 
-        // ★★★ 自由に動かせる「統合コア・ボタン」 ★★★
-        const coreFab = document.createElement('div');
-        coreFab.style.cssText = 'position:fixed; bottom:30px; right:30px; z-index:9000; display:flex; justify-content:center; align-items:center; width:56px; height:56px; border-radius:50%; background:rgba(0,255,204,0.15); border:2px solid #00ffcc; color:#00ffcc; font-size:28px; cursor:pointer; backdrop-filter:blur(5px); box-shadow:0 0 20px rgba(0,255,204,0.4); transition:background 0.2s; user-select:none; pointer-events:auto;';
-        coreFab.innerText = '🌌';
-        document.body.appendChild(coreFab);
+        // カプセル左側：コア・ボタン（メニュー開閉）
+        const coreBtn = document.createElement('div');
+        coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s;';
+        coreBtn.innerText = '🌌';
+        this.systemCapsule.appendChild(coreBtn);
+
+        // カプセル右側：パンくずリスト（階層表示）
+        this.breadcrumbUI = document.createElement('div');
+        this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
+        this.systemCapsule.appendChild(this.breadcrumbUI);
 
         // ★★★ 統合コントロールパネル ★★★
         const controlPanel = document.createElement('div');
@@ -106,7 +111,7 @@ export class UIManager {
         this.protectUI(controlPanel);
         document.body.appendChild(controlPanel);
 
-        // パネルの中身の構築
+        // パネル中身
         controlPanel.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:10px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#00ffcc; font-size:16px; letter-spacing:1px;">CORE SYSTEM</h3>
@@ -151,15 +156,13 @@ export class UIManager {
             </div>
         `;
 
-        // コアボタンのドラッグ＆クリック判定
-        const isCoreDragged = this.makeDraggable(coreFab);
-        coreFab.onclick = (e) => {
+        // コアボタンクリック（ドラッグ直後は発動させない）
+        coreBtn.onclick = (e) => {
             e.stopPropagation();
-            if (isCoreDragged()) return;
+            if (this.isCapsuleDragged()) return;
             controlPanel.style.display = controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
 
-        // パネルを閉じる
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
 
         // 🔍 レーダー処理
@@ -225,14 +228,12 @@ export class UIManager {
             }
         };
 
-        // ⚙️ システム設定（既存のindex.htmlのボタンを裏でクリックさせる）
+        // ⚙️ システム設定
         document.getElementById('cp-btn-logout').onclick = () => {
-            const btn = document.getElementById('btn-logout');
-            if (btn) btn.click();
+            sessionStorage.clear(); localStorage.clear(); window.location.reload();
         };
         document.getElementById('cp-btn-reset').onclick = () => {
-            const btn = document.getElementById('emergency-reset-btn');
-            if (btn) btn.click();
+            if(confirm("本当に初期化しますか？")){ sessionStorage.clear(); localStorage.clear(); window.location.reload(); }
         };
 
         // 各種モーダル
@@ -259,7 +260,7 @@ export class UIManager {
         return el;
     }
 
-    // --- 既存のメニュー・ノート・パンくず・亜空間・ライブラリの処理（変更なし・すべて保持） ---
+    // メニューなどその他のUI操作（変更なし）
     showMenu(node, screenX, screenY) {
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
@@ -308,9 +309,13 @@ export class UIManager {
             const b = document.createElement('button');
             const isLast = (i === path.length - 1);
             b.innerText = (i === 0) ? `👤 ${uni.name}` : uni.name;
-            b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.2' : '0.05'}); color:${isLast ? '#fff' : '#aaa'}; border:1px solid rgba(255,255,255,0.3); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;`;
+            b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.2' : '0.0'}); color:${isLast ? '#fff' : '#aaa'}; border:none; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:${isLast ? 'bold' : 'normal'};`;
+            
             b.onclick = (e) => { 
                 e.stopPropagation();
+                // ★カプセル全体をドラッグした直後はクリックを無視する
+                if(this.isCapsuleDragged && this.isCapsuleDragged()) return;
+                
                 if(!isLast){
                     this.app.currentUniverse = this.app.universeHistory[i]; 
                     this.app.universeHistory = this.app.universeHistory.slice(0, i); 
@@ -318,7 +323,7 @@ export class UIManager {
                 } 
             };
             this.breadcrumbUI.appendChild(b);
-            if(!isLast) { const s = document.createElement('span'); s.innerText = '>'; s.style.cssText = 'color:#555; margin:0 5px;'; this.breadcrumbUI.appendChild(s); }
+            if(!isLast) { const s = document.createElement('span'); s.innerText = '>'; s.style.cssText = 'color:#555; margin:0 2px;'; this.breadcrumbUI.appendChild(s); }
         });
         if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.5;">✏️</span>`;
     }
