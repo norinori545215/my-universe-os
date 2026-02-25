@@ -1,68 +1,88 @@
 // src/db/CloudSync.js
 
 /**
- * ☁️ My Universe OS - ゼロ知識クラウド同期 (CloudSync)
- * Firebaseに保存する直前にデータを暗号化し、読み込む直後に復号する。
- * Googleのサーバーには「暗号カプセル」しか送らないため、絶対的なプライバシーが守られる。
+ * ☁️ My Universe OS - ゼロ知識クラウド同期 & 地下金庫 (ハイブリッド版)
+ * Firebaseに保存する直前にデータを暗号化し、クラウドとローカルの両方に保管。
+ * 圏外時は自動的に地下金庫（LocalVault）から宇宙を展開する。
  */
 
 import { auth, db } from '../security/Auth.js';
-// ★ 修正点：getDoc を getDocFromServer に変更！（スマホのサボり癖を直すため）
 import { doc, setDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { encryptUniverseData, decryptUniverseData } from '../security/CryptoCore.js';
+// ★ 地下金庫をインポート
+import { LocalVault } from './LocalVault.js';
 
-// 📦 宇宙のデータを暗号化してFirebaseへ保存する
+// 📦 宇宙のデータを暗号化してFirebaseと地下金庫へ保存する
 export async function saveEncryptedUniverse(universeData) {
-    // ログインしていない、またはマスターキー（暗号鍵）がない場合は保存しない
     if (!auth.currentUser || !window.universeCryptoKey) return false;
 
     try {
         // 1. データを「意味不明な暗号カプセル」に変換！
         const encryptedCapsule = await encryptUniverseData(universeData, window.universeCryptoKey);
         
-        // 2. カプセルだけをFirebaseに送信（Googleには中身は絶対に見えない）
+        // ★ 2. まずはオフライン用に「地下金庫(LocalVault)」へ即座に保存！
+        await LocalVault.save(encryptedCapsule);
+
+        // 3. カプセルだけをFirebaseに送信（Googleには中身は絶対に見えない）
         const userRef = doc(db, "universes", auth.currentUser.uid);
         await setDoc(userRef, {
             encryptedData: encryptedCapsule.cipher,
-            iv: encryptedCapsule.iv, // 復号に必要な初期化ベクトル
+            iv: encryptedCapsule.iv,
             updatedAt: new Date().toISOString()
         });
         
-        console.log("🔒 宇宙を暗号化して亜空間（クラウド）へ保存しました。");
+        console.log("🔒 宇宙を暗号化してクラウドと地下金庫に保存しました。");
         return true;
     } catch (error) {
-        console.error("⚠️ 暗号化セーブ失敗:", error);
+        console.warn("⚠️ クラウド保存に失敗しましたが、地下金庫には保存されている可能性があります:", error);
         return false;
     }
 }
 
-// 🌌 Firebaseから暗号カプセルを取り出し、ローカルで復元する
+// 🌌 Firebase(または地下金庫)から暗号カプセルを取り出し、ローカルで復元する
 export async function loadEncryptedUniverse() {
     if (!auth.currentUser || !window.universeCryptoKey) return null;
+
+    let capsule = null;
 
     try {
         const userRef = doc(db, "universes", auth.currentUser.uid);
         
-        // ★ ここが超重要！スマホの古いキャッシュを無視し、強制的に最新のクラウドを確認させる！
+        // 1. まずクラウドの最新情報を確認しにいく（サボり防止の getDocFromServer）
         const docSnap = await getDocFromServer(userRef);
         
-        // Firebaseにデータが存在し、かつ暗号化データがある場合
         if (docSnap.exists() && docSnap.data().encryptedData) {
-            const capsule = {
+            capsule = {
                 cipher: docSnap.data().encryptedData,
                 iv: docSnap.data().iv
             };
-            
-            // 3. 端末内（ローカル）で、マスターキーを使ってカプセルを解読！
+            // クラウドから最新データが取れたら、地下金庫も最新にアップデートしておく！
+            await LocalVault.save(capsule);
+            console.log("☁️ クラウドから暗号カプセルを取得しました。");
+        }
+    } catch (error) {
+        console.warn("📡 クラウドに接続できません（圏外）。地下金庫からの展開に切り替えます...");
+    }
+
+    // 2. クラウドがダメ（圏外）だった場合は、地下金庫からカプセルを取り出す
+    if (!capsule) {
+        capsule = await LocalVault.load();
+        if (capsule) {
+            console.log("📦 地下金庫から暗号カプセルを発見しました！");
+        }
+    }
+
+    // 3. カプセルが見つかっていれば、マスターキーを使って解読！
+    if (capsule) {
+        try {
             const decryptedData = await decryptUniverseData(capsule, window.universeCryptoKey);
             console.log("🔓 宇宙の解読に成功しました。");
             return decryptedData;
+        } catch (error) {
+            console.error("⚠️ 復号ロード失敗:", error);
+            throw new Error("Decryption failed");
         }
-        
-        return null; // まだ宇宙が創世されていない（初回ログイン時）
-    } catch (error) {
-        console.error("⚠️ 復号ロード失敗:", error);
-        // パスワードが違う場合、ここでエラーが弾けます（門番に知らせるためにエラーを投げる）
-        throw new Error("Decryption failed");
     }
+    
+    return null; // どこにもデータがない場合（初回起動時）
 }
