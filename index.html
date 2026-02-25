@@ -121,9 +121,10 @@
         import { auth, db, loginToUniverse, createUniverseAccount, logoutFromUniverse, loginWithGoogle } from './src/security/Auth.js';
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        
-        // ★ 暗号化コアをインポート！
         import { deriveKey } from './src/security/CryptoCore.js';
+        
+        // ★ 門番が解読テストを行うためにインポート
+        import { loadEncryptedUniverse } from './src/db/CloudSync.js';
 
         const authScreen = document.getElementById('auth-screen');
         const masterKeyScreen = document.getElementById('master-key-screen');
@@ -134,7 +135,6 @@
         
         let isLoginMode = true;
 
-        // ドラッグ機能
         function makeDraggable(el) {
             let isDragging = false, startX, startY, initX, initY, hasMoved = false;
             const down = (e) => {
@@ -163,7 +163,6 @@
 
         function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
 
-        // 🔵 ログインUIの切り替え
         document.getElementById('toggle-auth').addEventListener('click', () => {
             isLoginMode = !isLoginMode;
             loginError.style.display = 'none';
@@ -173,15 +172,12 @@
             document.getElementById('signup-name').style.display = isLoginMode ? "none" : "block";
         });
 
-        // 🟢 Googleログイン
         document.getElementById('btn-google').addEventListener('click', async () => {
             document.getElementById('btn-google').disabled = true;
             const result = await loginWithGoogle(true);
             if (!result.success) { showError(result.error); document.getElementById('btn-google').disabled = false; }
-            // 成功時は onAuthStateChanged が発火するのでここでは何もしない
         });
 
-        // 🟢 メールアドレスログイン
         btnAction.addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
@@ -205,13 +201,11 @@
             }
         });
 
-        // 🚀 ★ 第一の扉を抜けたら、マスターキー画面を出す！
         onAuthStateChanged(auth, (user) => {
             if (user && user.emailVerified) {
                 authScreen.style.opacity = '0';
                 setTimeout(() => {
                     authScreen.style.display = 'none';
-                    // マスターキー画面をフェードイン
                     masterKeyScreen.style.display = 'flex';
                     masterKeyScreen.style.opacity = '0';
                     setTimeout(() => masterKeyScreen.style.opacity = '1', 50);
@@ -223,7 +217,7 @@
             }
         });
 
-        // 🗝️ ★ マスターキーで暗号鍵を生成して、ついに宇宙へ！
+        // 🗝️ ★ 究極の防衛ゲート：パスワードチェック
         document.getElementById('btn-unlock-universe').addEventListener('click', async () => {
             const masterPw = document.getElementById('master-key-input').value;
             const statusText = document.getElementById('key-status');
@@ -239,10 +233,18 @@
             document.getElementById('btn-unlock-universe').disabled = true;
 
             try {
-                // CryptoCoreの魔法で、パスワードから256bitの鍵を練り上げる！
                 window.universeCryptoKey = await deriveKey(masterPw);
+                statusText.innerText = "クラウドの暗号層と照合中...";
                 
-                statusText.innerText = "解読成功。事象の地平面へ接続します...";
+                // ★ ここが真骨頂！実際に解読できるか門番がテストする！
+                const cloudData = await loadEncryptedUniverse();
+                
+                if (cloudData) {
+                    // 解読成功なら、OSが起動しやすいようにローカル金庫に入れておく
+                    localStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
+                }
+
+                statusText.innerText = "アクセス承認。事象の地平面へ接続します...";
                 
                 setTimeout(() => {
                     masterKeyScreen.style.opacity = '0';
@@ -250,20 +252,21 @@
                         masterKeyScreen.style.display = 'none';
                         btnLogout.style.display = 'block';
                         btnReset.style.display = 'block';
-                        // 宇宙起動！
                         window.app = new CanvasBuilder('universe-canvas');
                     }, 500);
                 }, 800);
 
             } catch (error) {
-                statusText.innerText = "⚠️ エラーが発生しました。";
+                // 🚨 解読失敗！偽の鍵と判定して突き返す！
+                statusText.innerText = "⚠️ 拒絶されました：パスワードが違います";
                 document.getElementById('btn-unlock-universe').disabled = false;
+                window.universeCryptoKey = null; // メモリ上の偽鍵を破棄
             }
         });
 
         btnLogout.addEventListener('click', async () => {
             if (isLogoutDragged()) return; 
-            window.universeCryptoKey = null; // ログアウト時にメモリ上の鍵も破棄
+            window.universeCryptoKey = null; 
             await logoutFromUniverse();
             window.location.reload(); 
         });

@@ -3,8 +3,8 @@ import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
 
-// ★ 追加：クラウド暗号化同期モジュールをインポート
-import { saveEncryptedUniverse, loadEncryptedUniverse } from '../db/CloudSync.js';
+// ★ クラウド暗号化保存モジュールをインポート
+import { saveEncryptedUniverse } from '../db/CloudSync.js';
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -72,19 +72,7 @@ export class CanvasBuilder {
     async init() {
         console.log("OS: データのロードを開始します...");
         
-        // ★ クラウド暗号同期：起動時にクラウドから最新の暗号カプセルを取得して解読する
-        try {
-            const cloudData = await loadEncryptedUniverse();
-            if (cloudData) {
-                // 解読したデータをローカルに上書き保存し、DataManagerに読み込ませる準備をする
-                localStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
-                console.log("OS: ☁️ クラウドから最新の宇宙を同期しました。");
-            }
-        } catch (e) {
-            console.log("OS: 📱 オフライン、または新規創世のためローカル起動します。");
-        }
-
-        // ここから先は既存のロード処理（オフラインでもここから読み込まれる）
+        // ★ 門番(index.html)が既にクラウドから解読してくれているので、ローカルから読み込むだけ！
         const savedData = await DataManager.load();
         
         let userName = "My Universe";
