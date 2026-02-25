@@ -27,7 +27,6 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // 星を自然に掴むための計算用変数（瞬間移動を防ぐ）
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -35,15 +34,15 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
+        // ★ 長押し判定用のタイマー変数
+        this.pressTimer = null;
+        this.isLongPressed = false;
+
         this.appPresets = [
             { name: 'YouTube', url: 'https://youtube.com', icon: 'https://www.google.com/s2/favicons?domain=youtube.com&sz=128' },
             { name: 'X(Twitter)', url: 'https://x.com', icon: 'https://www.google.com/s2/favicons?domain=x.com&sz=128' },
             { name: 'Instagram', url: 'https://instagram.com', icon: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=128' },
-            { name: 'LINE', url: 'line://', icon: 'https://www.google.com/s2/favicons?domain=line.me&sz=128' },
-            { name: 'ChatGPT', url: 'https://chatgpt.com', icon: 'https://www.google.com/s2/favicons?domain=chatgpt.com&sz=128' },
-            { name: 'Notion', url: 'https://notion.so', icon: 'https://www.google.com/s2/favicons?domain=notion.so&sz=128' },
-            { name: 'Google Maps', url: 'https://maps.google.com', icon: 'https://www.google.com/s2/favicons?domain=maps.google.com&sz=128' },
-            { name: 'Spotify', url: 'https://open.spotify.com', icon: 'https://www.google.com/s2/favicons?domain=open.spotify.com&sz=128' }
+            { name: 'LINE', url: 'line://', icon: 'https://www.google.com/s2/favicons?domain=line.me&sz=128' }
         ];
 
         this.ui = new UIManager(this);
@@ -55,8 +54,45 @@ export class CanvasBuilder {
             onLinkEnd: (x, y) => this.endLink(x, y),
             isLinking: () => this.isLinking,
             isLinkModeActive: () => this.appMode === 'LINK',
-            onNodeGrabStart: (x, y) => this.grabNode(x, y),
+            
+            // ★ 修正：掴んだ瞬間に「長押しタイマー」をスタート！
+            onNodeGrabStart: (x, y, e) => {
+                const grabbed = this.grabNode(x, y);
+                if (grabbed && this.appMode === 'RUN' && this.grabbedNode) {
+                    this.isLongPressed = false;
+                    
+                    // クリック位置を取得して記憶しておく（長押し成功時にそこにメニューを出すため）
+                    let clientX = e.clientX || 0; let clientY = e.clientY || 0;
+                    if (e.changedTouches && e.changedTouches.length > 0) {
+                        clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+                    } else if (e.touches && e.touches.length > 0) {
+                        clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
+                    }
+                    
+                    // 500ミリ秒後に「長押し」と判定する
+                    this.pressTimer = setTimeout(() => {
+                        // もし指が動いていなかったら長押し成功！
+                        if (!this.hasMovedNode) {
+                            this.isLongPressed = true;
+                            // 軽い振動（スマホのみ有効）
+                            if (navigator.vibrate) navigator.vibrate(50);
+                            
+                            // ノート（メモ）がある場合のみ、特製UIを表示
+                            if (this.grabbedNode.note && this.grabbedNode.note.trim() !== "") {
+                                this.ui.showQuickNote(this.grabbedNode, clientX, clientY);
+                            } else {
+                                // メモがない場合は通常のメニューを出す
+                                this.ui.showMenu(this.grabbedNode, clientX, clientY);
+                            }
+                        }
+                    }, 500); // 0.5秒
+                }
+                return grabbed;
+            },
+            
+            // ★ 修正：離した時にタイマーをキャンセル
             onNodeGrabEnd: () => { 
+                if (this.pressTimer) clearTimeout(this.pressTimer);
                 this.grabbedNode = null; 
                 if (this.hasMovedNode) this.autoSave(); 
             },
@@ -64,11 +100,12 @@ export class CanvasBuilder {
             onMouseMove: (x, y) => this.handleMouseMove(x, y)
         });
 
-        // ★ 接着剤バグを防止する安全装置：クリックだけでドラッグしなかった場合、確実に星を離す！
         window.addEventListener('mouseup', () => {
+            if (this.pressTimer) clearTimeout(this.pressTimer);
             if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
         });
         window.addEventListener('touchend', () => {
+            if (this.pressTimer) clearTimeout(this.pressTimer);
             if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
         });
 
@@ -149,14 +186,12 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // ★ 修正：すべてのモードで星を自然に掴む（中心へのワープを防止）
     grabNode(x, y) {
+        if (this.appMode === 'EDIT') return false; 
         const node = this.getNodeAt(x, y);
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
-            
-            // 掴んだ場所の「ズレ」を記憶する
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
@@ -166,21 +201,20 @@ export class CanvasBuilder {
         return false;
     }
 
-    // ★ 修正：少しの指のブレでは動かさない（タップとドラッグを完璧に区別）
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
         if (this.grabbedNode) {
-            // まだドラッグ判定されていない場合、一定距離動いたかチェック
             if (!this.hasMovedNode) {
                 const dx = x - this.grabStartX;
                 const dy = y - this.grabStartY;
-                if (dx * dx + dy * dy > 64) { // 8ピクセル以上動かして初めて「ドラッグ」とみなす
+                if (dx * dx + dy * dy > 64) { 
                     this.hasMovedNode = true;
+                    // ★ 動かしたら長押し判定はキャンセル！
+                    if (this.pressTimer) clearTimeout(this.pressTimer);
                 }
             }
 
-            // ドラッグが確定したら、ズレを維持したまま吸い付くように移動
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -199,7 +233,6 @@ export class CanvasBuilder {
             if (targetNode && targetNode !== this.linkSourceNode) {
                 this.currentUniverse.addLink(this.linkSourceNode, targetNode);
                 this.autoSave(); 
-                if(window.universeLogger) window.universeLogger.log("NODE_LINKED", { source: this.linkSourceNode.name, target: targetNode.name });
             }
         }
         this.isLinking = false; this.linkSourceNode = null;
@@ -217,11 +250,16 @@ export class CanvasBuilder {
         this.currentUniverse = this.universeHistory.pop();
         this.camera.reset();
         this.ui.updateBreadcrumbs();
-        if(window.universeLogger) window.universeLogger.log("ASCEND_UNIVERSE", { destination: this.currentUniverse.name });
     }
 
     handleNodeClick(worldX, worldY, event) {
-        this.grabbedNode = null; // ★ 念のためクリック時にも確実に離す
+        // ★ 長押し判定されていたら、クリック処理（潜る・リンク移動）は無効にする！
+        if (this.isLongPressed) {
+            this.isLongPressed = false;
+            return;
+        }
+
+        this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
             this.ui.hideMenu(); 
@@ -232,32 +270,26 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
-                let clientX = event.clientX || 0;
-                let clientY = event.clientY || 0;
-                
+                let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
-                    clientX = event.changedTouches[0].clientX;
-                    clientY = event.changedTouches[0].clientY;
+                    clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
                 } else if (event.touches && event.touches.length > 0) {
-                    clientX = event.touches[0].clientX;
-                    clientY = event.touches[0].clientY;
+                    clientX = event.touches[0].clientX; clientY = event.touches[0].clientY;
                 }
-
                 let posX = clientX + 15; let posY = clientY + 15;
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
                 this.ui.showMenu(target, posX, posY);
             } 
             else if (this.appMode === 'RUN') {
+                // ★ 軽くタップした時は、ここに直行してリンクに飛ぶか、潜る！
                 if (target.url) {
                     const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                     window.open(target.url, targetWin);
-                    if(window.universeLogger) window.universeLogger.log("EXECUTE_LINK", { url: target.url });
                 } else {
                     this.isZoomingIn = true;
                     this.targetUniverse = target.innerUniverse;
                     this.camera.zoomTo(target.x, target.y);
-                    if(window.universeLogger) window.universeLogger.log("DIVE_INTO_NODE", { target: target.name });
                 }
             }
         } else {
@@ -295,12 +327,8 @@ export class CanvasBuilder {
         });
 
         this.currentUniverse.nodes.forEach(node => {
-            if (node !== this.grabbedNode) {
-                node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
-                node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
-            } else {
-                node.x = node.baseX; node.y = node.baseY;
-            }
+            node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
+            node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
         });
 
         this.ctx.lineWidth = 3;

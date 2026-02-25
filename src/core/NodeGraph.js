@@ -11,7 +11,10 @@ export class EntityNode {
         this.url = ""; 
         this.iconUrl = "";
         
-        // ★セキュリティ機能：星に鍵をかけるための新属性
+        // ★ メモ機能：星の中に刻まれるテキストデータ
+        this.note = ""; 
+        
+        // ★ セキュリティ機能：星に鍵をかけるための属性
         this.isLocked = false;       // 鍵がかかっているか
         this.password = "";          // この星専用のパスワード
         this.ownerId = "";           // ※ローカル主権のため、FirebaseのID依存を解除
@@ -72,11 +75,12 @@ export class Universe {
 }
 
 export const DataManager = {
-    // 💾 【完全ローカル保存】クラウドへの送信はCanvasBuilderに任せ、ここでは端末内に爆速保存するのみ
+    // 💾 【完全ローカル保存】
     save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
+            note: n.note, // ★ 保存対象に追加！
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -92,13 +96,11 @@ export const DataManager = {
             blackHole: blackHole.map(serializeNode)
         };
 
-        // ★ localStorage から sessionStorage に変更！（画面を閉じたら消滅）
         sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
     },
 
-    // 💾 【完全ローカル読込】起動時にCanvasBuilderが解読してくれたローカルデータを読み込む
+    // 💾 【完全ローカル読込】
     load: async () => {
-        // ★ localStorage から sessionStorage に変更！
         const raw = sessionStorage.getItem('my_universe_save_data');
         if (!raw) return null;
         
@@ -119,6 +121,7 @@ export const DataManager = {
                 node.id = nData.id;
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
+                node.note = nData.note || ""; // ★ 読み込み対象に追加！
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -153,6 +156,7 @@ export const DataManager = {
             node.id = nData.id; 
             node.url = nData.url || ""; 
             node.iconUrl = nData.iconUrl || "";
+            node.note = nData.note || ""; // ★ 亜空間データも対応！
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
