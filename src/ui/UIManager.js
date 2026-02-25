@@ -1,4 +1,7 @@
 // src/ui/UIManager.js
+import { Singularity } from '../db/Singularity.js';
+import { saveEncryptedUniverse } from '../db/CloudSync.js';
+
 export class UIManager {
     constructor(app) {
         this.app = app;
@@ -127,7 +130,6 @@ export class UIManager {
 
         const paletteUI = document.createElement('div');
         paletteUI.style.cssText = `${uiStyle} bottom:70px; left:15px; display:none; flex-direction:column; gap:8px; max-width: 170px;`;
-        // ★ 天才的なアイデアを採用！カテゴリを消し、色を選んで作るだけの美しいUIに！
         paletteUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">🔄 操作モード</div>
             <div style="display:flex; gap:3px;">
@@ -165,7 +167,6 @@ export class UIManager {
         document.getElementById('mode-link').onclick = () => { this.app.appMode = 'LINK'; updateModeUI(); };
         document.getElementById('mode-edit').onclick = () => { this.app.appMode = 'EDIT'; updateModeUI(); };
 
-        // ★ 色を選んで作成するシンプルなロジック
         document.getElementById('spawn-btn').onclick = () => {
             if (this.app.isZoomingIn) return;
             const selectedColor = document.getElementById('spawn-color').value;
@@ -179,11 +180,17 @@ export class UIManager {
         sysFab.innerText = '🎒';
         document.body.appendChild(sysFab);
 
+        // ★ ここに特異点圧縮（エクスポート＆インポート）のUIを追加！
         const hintUI = document.createElement('div');
         hintUI.style.cssText = `${uiStyle} bottom:70px; right:15px; display:none; flex-direction:column; gap:8px; max-width: 150px;`;
         hintUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">データ管理</div>
             <button id="btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px 5px; cursor:pointer; border-radius:3px; font-weight:bold;">🎒 亜空間<br>(復元/消去)</button>
+            <hr style="border-color:rgba(255,255,255,0.2); margin:2px 0;">
+            <div style="font-size:11px; color:#aaa; text-align:center;">特異点圧縮 (.universe)</div>
+            <button id="btn-export" style="width:100%; background:#112244; color:#66aaff; border:1px solid #66aaff; padding:8px 5px; cursor:pointer; border-radius:3px; font-size:11px; font-weight:bold;">💾 宇宙を出力</button>
+            <button id="btn-import" style="width:100%; background:#442211; color:#ffaa66; border:1px solid #ffaa66; padding:8px 5px; cursor:pointer; border-radius:3px; font-size:11px; font-weight:bold;">📂 宇宙を読込</button>
+            <input type="file" id="import-file" accept=".universe" style="display:none;">
         `;
         document.body.appendChild(hintUI);
 
@@ -200,6 +207,38 @@ export class UIManager {
             if (this.app.blackHole.length === 0) return alert("ポケットは空です。");
             this.showInventoryUI();
         });
+
+        // ★ エクスポートボタンの処理
+        document.getElementById('btn-export').onclick = () => {
+            if (confirm("現在の宇宙を暗号化された物理ファイル(.universe)としてダウンロードしますか？")) {
+                Singularity.export();
+            }
+        };
+
+        // ★ インポートボタンの処理
+        const fileInput = document.getElementById('import-file');
+        document.getElementById('btn-import').onclick = () => fileInput.click();
+        
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (confirm(`「${file.name}」を展開し、現在の宇宙を上書きしますか？\n※この操作は取り消せません。`)) {
+                try {
+                    // 1. ファイルを読み込み、現在のパスワードで復号できるかチェック
+                    const encryptedData = await Singularity.importAndVerify(file);
+                    
+                    // 2. クラウド（Firebase）のデータも上書き保存
+                    await saveEncryptedUniverse(encryptedData);
+                    
+                    alert("特異点からの宇宙展開に成功しました！再起動します。");
+                    window.location.reload(); // 画面を再起動して新しい宇宙をロード！
+                } catch (err) {
+                    alert(err);
+                }
+            }
+            fileInput.value = '';
+            hintUI.style.display = 'none';
+        };
 
         this.inventoryModal = document.createElement('div');
         this.inventoryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #ff6699; padding:20px; border-radius:10px; z-index:300; min-width:320px; color:white; box-shadow: 0 10px 30px rgba(255,102,153,0.3);';
