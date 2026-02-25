@@ -27,6 +27,7 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
+        // 星を自然に掴むための計算用変数
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -34,7 +35,7 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
-        // ★ 長押し判定用のタイマー変数
+        // 長押し判定用のタイマー変数
         this.pressTimer = null;
         this.isLongPressed = false;
 
@@ -55,13 +56,12 @@ export class CanvasBuilder {
             isLinking: () => this.isLinking,
             isLinkModeActive: () => this.appMode === 'LINK',
             
-            // ★ 修正：掴んだ瞬間に「長押しタイマー」をスタート！
+            // ★星を掴んだ時の処理（長押しタイマーのスタート）
             onNodeGrabStart: (x, y, e) => {
                 const grabbed = this.grabNode(x, y);
                 if (grabbed && this.appMode === 'RUN' && this.grabbedNode) {
                     this.isLongPressed = false;
                     
-                    // クリック位置を取得して記憶しておく（長押し成功時にそこにメニューを出すため）
                     let clientX = e.clientX || 0; let clientY = e.clientY || 0;
                     if (e.changedTouches && e.changedTouches.length > 0) {
                         clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
@@ -69,37 +69,37 @@ export class CanvasBuilder {
                         clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
                     }
                     
-                    // 500ミリ秒後に「長押し」と判定する
+                    // 500ミリ秒後に長押し判定
                     this.pressTimer = setTimeout(() => {
-                        // もし指が動いていなかったら長押し成功！
                         if (!this.hasMovedNode) {
                             this.isLongPressed = true;
-                            // 軽い振動（スマホのみ有効）
                             if (navigator.vibrate) navigator.vibrate(50);
                             
-                            // ノート（メモ）がある場合のみ、特製UIを表示
+                            // メモがあればUIを表示（UI側のshowQuickNoteは後で実装します。今はshowMenuで代用）
                             if (this.grabbedNode.note && this.grabbedNode.note.trim() !== "") {
-                                this.ui.showQuickNote(this.grabbedNode, clientX, clientY);
+                                this.ui.showMenu(this.grabbedNode, clientX, clientY);
                             } else {
-                                // メモがない場合は通常のメニューを出す
                                 this.ui.showMenu(this.grabbedNode, clientX, clientY);
                             }
                         }
-                    }, 500); // 0.5秒
+                    }, 500); 
                 }
                 return grabbed;
             },
             
-            // ★ 修正：離した時にタイマーをキャンセル
+            // 離した時の処理（タイマーのキャンセル）
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
                 this.grabbedNode = null; 
                 if (this.hasMovedNode) this.autoSave(); 
             },
             wasDragging: () => this.hasMovedNode,
+            
+            // ★ ここで「星を動かす処理」を呼び出します
             onMouseMove: (x, y) => this.handleMouseMove(x, y)
         });
 
+        // 接着剤バグを防止する安全装置
         window.addEventListener('mouseup', () => {
             if (this.pressTimer) clearTimeout(this.pressTimer);
             if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
@@ -192,6 +192,7 @@ export class CanvasBuilder {
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
+            
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
@@ -201,6 +202,7 @@ export class CanvasBuilder {
         return false;
     }
 
+    // ★ 修正：消えていた「星を動かす処理」を完全復活させました！！
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
@@ -210,11 +212,12 @@ export class CanvasBuilder {
                 const dy = y - this.grabStartY;
                 if (dx * dx + dy * dy > 64) { 
                     this.hasMovedNode = true;
-                    // ★ 動かしたら長押し判定はキャンセル！
+                    // 動かしたら長押し判定はキャンセル！
                     if (this.pressTimer) clearTimeout(this.pressTimer);
                 }
             }
 
+            // ★ ここが消えていたせいで動かなくなっていました！
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -253,7 +256,7 @@ export class CanvasBuilder {
     }
 
     handleNodeClick(worldX, worldY, event) {
-        // ★ 長押し判定されていたら、クリック処理（潜る・リンク移動）は無効にする！
+        // 長押し判定されていたら、クリック処理（潜る・リンク移動）は無効にする
         if (this.isLongPressed) {
             this.isLongPressed = false;
             return;
@@ -282,7 +285,7 @@ export class CanvasBuilder {
                 this.ui.showMenu(target, posX, posY);
             } 
             else if (this.appMode === 'RUN') {
-                // ★ 軽くタップした時は、ここに直行してリンクに飛ぶか、潜る！
+                // 軽くタップした時は、ここに直行してリンクに飛ぶか、潜る
                 if (target.url) {
                     const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                     window.open(target.url, targetWin);
