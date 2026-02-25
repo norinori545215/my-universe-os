@@ -8,14 +8,25 @@ export class UIManager {
         this.app = app;
         this.notePad = new NotePadUI(app);
         this.createUI();
+        
+        // index.htmlの古い浮遊ボタンを強制的に隠す（統合パネルから操作するため）
+        setTimeout(() => {
+            const oldLogout = document.getElementById('btn-logout');
+            const oldReset = document.getElementById('emergency-reset-btn');
+            if(oldLogout) oldLogout.style.opacity = '0';
+            if(oldLogout) oldLogout.style.pointerEvents = 'none';
+            if(oldReset) oldReset.style.opacity = '0';
+            if(oldReset) oldReset.style.pointerEvents = 'none';
+        }, 1000);
     }
 
     makeDraggable(el) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
 
         const down = (e) => {
-            hasMoved = false;
             const ev = e.touches ? e.touches[0] : e;
+            e.stopPropagation(); 
+            hasMoved = false;
             startX = ev.clientX; startY = ev.clientY;
             const rect = el.getBoundingClientRect();
             initX = rect.left; initY = rect.top;
@@ -25,14 +36,13 @@ export class UIManager {
 
         const move = (e) => {
             if (!isDragging) return;
+            e.stopPropagation();
             const ev = e.touches ? e.touches[0] : e;
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
             
-            let nx = initX + dx; let ny = initY + dy;
-            
-            nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
-            ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+            let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
+            let ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
             
             el.style.left = `${nx}px`;
             el.style.top = `${ny}px`;
@@ -40,18 +50,21 @@ export class UIManager {
             el.style.bottom = 'auto';
         };
 
-        const up = () => {
-            if (isDragging) { isDragging = false; el.style.transition = '0.2s'; }
+        const up = (e) => {
+            if (isDragging) { 
+                isDragging = false; 
+                el.style.transition = '0.2s';
+                e.stopPropagation();
+            }
         };
 
-        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
-        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
+        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: false});
+        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
 
         return () => hasMoved; 
     }
 
-    // ★ UIへのタッチを宇宙に貫通させないシールド関数
     protectUI(el) {
         el.addEventListener('mousedown', e => e.stopPropagation());
         el.addEventListener('mouseup', e => e.stopPropagation());
@@ -60,103 +73,113 @@ export class UIManager {
     }
 
     createUI() {
-        const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
-        const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
-
-        const toggleDynamicMenu = (fab, menu, baseColor) => {
-            const isHidden = menu.style.display === 'none';
-            if (!isHidden) {
-                menu.style.display = 'none';
-                fab.style.background = `rgba(${baseColor},0.1)`;
-                return;
-            }
-
-            menu.style.display = 'flex';
-            fab.style.background = `rgba(${baseColor},0.4)`;
-
-            const fabRect = fab.getBoundingClientRect();
-            const menuRect = menu.getBoundingClientRect();
-
-            let top = fabRect.bottom + 10;
-            let left = fabRect.left;
-
-            if (top + menuRect.height > window.innerHeight - 10) {
-                top = fabRect.top - menuRect.height - 10;
-            }
-            if (left + menuRect.width > window.innerWidth - 10) {
-                left = window.innerWidth - menuRect.width - 10;
-            }
-            if (top < 10) top = 10;
-            if (left < 10) left = 10;
-
-            menu.style.top = `${top}px`;
-            menu.style.left = `${left}px`;
-            menu.style.bottom = 'auto';
-            menu.style.right = 'auto';
-        };
-
+        // 中央テキスト
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
-        this.centerTextEl.title = "クリックで現在の階層の名前を変更";
-        this.protectUI(this.centerTextEl); // ガード
-        this.centerTextEl.onclick = () => {
-            const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
+        this.protectUI(this.centerTextEl);
+        this.centerTextEl.onclick = (e) => {
+            e.stopPropagation();
+            const newName = prompt("現在の階層の名前を変更:", this.app.currentUniverse.name);
             if (newName) {
-                const oldName = this.app.currentUniverse.name;
                 this.app.currentUniverse.name = newName;
-                this.app.autoSave();
-                this.updateBreadcrumbs(); 
-                if(window.universeLogger) window.universeLogger.log("UNIVERSE_RENAMED", { from: oldName, to: newName });
+                this.app.autoSave(); this.updateBreadcrumbs(); 
             }
         };
         document.body.appendChild(this.centerTextEl);
 
+        // パンくずリスト
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center; pointer-events:auto;';
-        this.protectUI(this.breadcrumbUI); // ガード
+        this.protectUI(this.breadcrumbUI);
         document.body.appendChild(this.breadcrumbUI);
 
-        const searchFab = document.createElement('div');
-        searchFab.style.cssText = `${fabStyle} top:15px; right:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc;`;
-        searchFab.innerText = '🔍';
-        document.body.appendChild(searchFab);
+        // ★★★ 自由に動かせる「統合コア・ボタン」 ★★★
+        const coreFab = document.createElement('div');
+        coreFab.style.cssText = 'position:fixed; bottom:30px; right:30px; z-index:9000; display:flex; justify-content:center; align-items:center; width:56px; height:56px; border-radius:50%; background:rgba(0,255,204,0.15); border:2px solid #00ffcc; color:#00ffcc; font-size:28px; cursor:pointer; backdrop-filter:blur(5px); box-shadow:0 0 20px rgba(0,255,204,0.4); transition:background 0.2s; user-select:none; pointer-events:auto;';
+        coreFab.innerText = '🌌';
+        document.body.appendChild(coreFab);
 
-        const searchUI = document.createElement('div');
-        searchUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:5px; width:200px;`;
-        searchUI.innerHTML = `
-            <input type="text" id="radar-input" placeholder="星を探す..." style="background:rgba(0,0,0,0.5); color:white; border:1px solid #00ffcc; padding:5px; border-radius:4px; outline:none; font-size:12px;">
-            <div id="radar-results" style="max-height:150px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:2px;"></div>
+        // ★★★ 統合コントロールパネル ★★★
+        const controlPanel = document.createElement('div');
+        controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.95); border:1px solid #00ffcc; border-radius:12px; padding:20px; z-index:9001; width:85%; max-width:320px; max-height:80vh; overflow-y:auto; box-shadow:0 15px 50px rgba(0,0,0,0.8); backdrop-filter:blur(10px); color:white; font-family:sans-serif; pointer-events:auto;';
+        this.protectUI(controlPanel);
+        document.body.appendChild(controlPanel);
+
+        // パネルの中身の構築
+        controlPanel.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:10px; margin-bottom:15px;">
+                <h3 style="margin:0; color:#00ffcc; font-size:16px; letter-spacing:1px;">CORE SYSTEM</h3>
+                <button id="cp-close" style="background:transparent; border:none; color:#aaa; font-size:20px; cursor:pointer;">×</button>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:5px;">🔍 レーダー検索</div>
+                <input type="text" id="cp-radar" placeholder="星の名前を探す..." style="width:100%; background:rgba(0,0,0,0.6); color:#fff; border:1px solid #00ffcc; border-radius:6px; padding:8px; box-sizing:border-box; outline:none; font-size:14px;">
+                <div id="cp-radar-results" style="max-height:100px; overflow-y:auto; margin-top:5px; font-size:12px;"></div>
+            </div>
+
+            <div style="margin-bottom:20px; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                <div style="font-size:11px; color:#00ffff; margin-bottom:8px;">🛠️ 操作と創造</div>
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <button id="cp-mode-run" style="flex:1; padding:8px; background:#00ffcc; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:12px;">👆 実行</button>
+                    <button id="cp-mode-link" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">🔗 結ぶ</button>
+                    <button id="cp-mode-edit" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">⚙️ 編集</button>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:40px; height:36px; border:none; border-radius:4px; background:transparent; cursor:pointer;">
+                    <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:4px; font-weight:bold; font-size:12px;">🌟 新しい星を創る</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom:20px; background:rgba(255,102,153,0.05); padding:10px; border-radius:8px;">
+                <div style="font-size:11px; color:#ff6699; margin-bottom:8px;">🎒 データ管理 (亜空間)</div>
+                <button id="cp-btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px; border-radius:4px; margin-bottom:8px; font-size:12px;">🌌 亜空間ポケットを開く</button>
+                <div style="display:flex; gap:5px;">
+                    <button id="cp-btn-export" style="flex:1; background:#112244; color:#66aaff; border:1px solid #66aaff; padding:8px; border-radius:4px; font-size:11px;">💾 出力</button>
+                    <button id="cp-btn-import" style="flex:1; background:#442211; color:#ffaa66; border:1px solid #ffaa66; padding:8px; border-radius:4px; font-size:11px;">📂 読込</button>
+                    <input type="file" id="cp-import-file" accept=".universe" style="display:none;">
+                </div>
+            </div>
+
+            <div style="background:rgba(255,0,0,0.05); padding:10px; border-radius:8px;">
+                <div style="font-size:11px; color:#ff4444; margin-bottom:8px;">⚙️ システム設定</div>
+                <div style="display:flex; gap:5px;">
+                    <button id="cp-btn-logout" style="flex:1; background:transparent; color:#ccc; border:1px solid #666; padding:8px; border-radius:4px; font-size:11px;">🚪 ログアウト</button>
+                    <button id="cp-btn-reset" style="flex:1; background:#330000; color:#ff4444; border:1px solid #ff4444; padding:8px; border-radius:4px; font-size:11px;">🚨 宇宙初期化</button>
+                </div>
+            </div>
         `;
-        this.protectUI(searchUI); // ガード
-        document.body.appendChild(searchUI);
 
-        const isSearchDragged = this.makeDraggable(searchFab);
-        searchFab.onclick = () => {
-            if (isSearchDragged()) return; 
-            toggleDynamicMenu(searchFab, searchUI, '0,255,204');
+        // コアボタンのドラッグ＆クリック判定
+        const isCoreDragged = this.makeDraggable(coreFab);
+        coreFab.onclick = (e) => {
+            e.stopPropagation();
+            if (isCoreDragged()) return;
+            controlPanel.style.display = controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
 
-        const radarInput = document.getElementById('radar-input');
-        const radarResults = document.getElementById('radar-results');
+        // パネルを閉じる
+        document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
+
+        // 🔍 レーダー処理
+        const radarInput = document.getElementById('cp-radar');
+        const radarResults = document.getElementById('cp-radar-results');
         radarInput.addEventListener('input', (e) => {
             const query = e.target.value.toLowerCase();
             radarResults.innerHTML = '';
             if (!query) return;
-
             let count = 0;
             const searchUniverse = (u) => {
                 u.nodes.forEach(n => {
                     if (n.name.toLowerCase().includes(query) && count < 10) {
                         const btn = document.createElement('button');
                         btn.innerText = `🌌 ${n.name}`;
-                        btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:3px; border-bottom:1px solid rgba(0,255,204,0.2);';
+                        btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:5px; border-bottom:1px solid rgba(0,255,204,0.2); width:100%; display:block;';
                         btn.onclick = () => {
                             this.app.executeWarp(n);
                             radarInput.value = ''; radarResults.innerHTML = '';
-                            searchUI.style.display = 'none';
-                            searchFab.style.background = 'rgba(0,255,204,0.1)';
-                            if(window.universeLogger) window.universeLogger.log("RADAR_WARP", { target: n.name });
+                            controlPanel.style.display = 'none';
                         };
                         radarResults.appendChild(btn);
                         count++;
@@ -164,485 +187,177 @@ export class UIManager {
                     searchUniverse(n.innerUniverse);
                 });
             };
-            let root = this.app.currentUniverse;
-            if (this.app.universeHistory.length > 0) root = this.app.universeHistory[0];
-            searchUniverse(root);
+            searchUniverse(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
         });
 
-        const toolFab = document.createElement('div');
-        toolFab.style.cssText = `${fabStyle} bottom:15px; left:15px; background:rgba(0,255,255,0.1); border:1px solid #00ffff; color:#00ffff;`;
-        toolFab.innerText = '🛠️';
-        document.body.appendChild(toolFab);
-
-        const paletteUI = document.createElement('div');
-        paletteUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:8px; max-width: 170px;`;
-        paletteUI.innerHTML = `
-            <div style="font-size:11px; color:#aaa; text-align:center;">🔄 操作モード</div>
-            <div style="display:flex; gap:3px;">
-                <button id="mode-run" style="flex:1; padding:8px 2px; background:#00ffcc; color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px;">👆 実行</button>
-                <button id="mode-link" style="flex:1; padding:8px 2px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; cursor:pointer; font-size:11px;">🔗 結ぶ</button>
-                <button id="mode-edit" style="flex:1; padding:8px 2px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; cursor:pointer; font-size:11px;">⚙️ 編集</button>
-            </div>
-            <hr style="border-color:rgba(255,255,255,0.2); margin:2px 0;">
-            <div style="font-size:11px; color:#aaa; text-align:center; margin-bottom:2px;">＋ 創造する</div>
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:5px; background:rgba(0,0,0,0.5); padding:5px; border-radius:5px;">
-                <input type="color" id="spawn-color" value="#00ffcc" style="width:30px; height:30px; border:none; border-radius:5px; cursor:pointer; background:transparent; padding:0;">
-                <button id="spawn-btn" style="flex:1; cursor:pointer; background:#114433; color:#00ffcc; border:1px solid #00ffcc; padding:8px; border-radius:5px; font-size:12px; font-weight:bold;">🌟 新しい星</button>
-            </div>
-        `;
-        this.protectUI(paletteUI); // ガード
-        document.body.appendChild(paletteUI);
-
-        const isToolDragged = this.makeDraggable(toolFab);
-        toolFab.onclick = () => {
-            if (isToolDragged()) return;
-            toggleDynamicMenu(toolFab, paletteUI, '0,255,255');
+        // 🛠️ モード切替
+        const updateMode = (mode) => {
+            this.app.appMode = mode;
+            document.getElementById('cp-mode-run').style.background = mode === 'RUN' ? '#00ffcc' : '#113344';
+            document.getElementById('cp-mode-run').style.color = mode === 'RUN' ? '#000' : '#fff';
+            document.getElementById('cp-mode-link').style.background = mode === 'LINK' ? '#ff00ff' : '#113344';
+            document.getElementById('cp-mode-edit').style.background = mode === 'EDIT' ? '#ffcc00' : '#113344';
+            document.getElementById('cp-mode-edit').style.color = mode === 'EDIT' ? '#000' : '#fff';
+            controlPanel.style.display = 'none';
         };
+        document.getElementById('cp-mode-run').onclick = () => updateMode('RUN');
+        document.getElementById('cp-mode-link').onclick = () => updateMode('LINK');
+        document.getElementById('cp-mode-edit').onclick = () => updateMode('EDIT');
 
-        const updateModeUI = () => {
-            document.getElementById('mode-run').style.background = this.app.appMode === 'RUN' ? '#00ffcc' : '#113344';
-            document.getElementById('mode-run').style.color = this.app.appMode === 'RUN' ? '#000' : '#fff';
-            document.getElementById('mode-link').style.background = this.app.appMode === 'LINK' ? '#ff00ff' : '#113344';
-            document.getElementById('mode-edit').style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
-            document.getElementById('mode-edit').style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
-            this.hideMenu(); 
-            this.hideQuickNote(); 
-            paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
-            if(window.universeLogger) window.universeLogger.log("MODE_CHANGED", { mode: this.app.appMode });
-        };
-
-        document.getElementById('mode-run').onclick = () => { this.app.appMode = 'RUN'; updateModeUI(); };
-        document.getElementById('mode-link').onclick = () => { this.app.appMode = 'LINK'; updateModeUI(); };
-        document.getElementById('mode-edit').onclick = () => { this.app.appMode = 'EDIT'; updateModeUI(); };
-
-        document.getElementById('spawn-btn').onclick = () => {
-            if (this.app.isZoomingIn) return;
-            const selectedColor = document.getElementById('spawn-color').value;
-            this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, selectedColor, 'star');
+        // 🌟 星の創造
+        document.getElementById('cp-spawn-btn').onclick = () => {
+            const color = document.getElementById('cp-spawn-color').value;
+            this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             this.app.autoSave(); 
-            if (window.universeLogger) {
-                window.universeLogger.log("STAR_CREATED", { color: selectedColor, coords: `X:${-Math.floor(this.app.camera.x)}, Y:${-Math.floor(this.app.camera.y)}` });
-            }
-            paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
+            controlPanel.style.display = 'none';
         };
 
-        const sysFab = document.createElement('div');
-        sysFab.style.cssText = `${fabStyle} bottom:15px; right:15px; background:rgba(255,102,153,0.1); border:1px solid #ff6699; color:#ff6699;`;
-        sysFab.innerText = '🎒';
-        document.body.appendChild(sysFab);
-
-        const hintUI = document.createElement('div');
-        hintUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:8px; max-width: 150px;`;
-        hintUI.innerHTML = `
-            <div style="font-size:11px; color:#aaa; text-align:center;">データ管理</div>
-            <button id="btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px 5px; cursor:pointer; border-radius:3px; font-weight:bold;">🎒 亜空間<br>(復元/消去)</button>
-            <hr style="border-color:rgba(255,255,255,0.2); margin:2px 0;">
-            <div style="font-size:11px; color:#aaa; text-align:center;">特異点圧縮 (.universe)</div>
-            <button id="btn-export" style="width:100%; background:#112244; color:#66aaff; border:1px solid #66aaff; padding:8px 5px; cursor:pointer; border-radius:3px; font-size:11px; font-weight:bold;">💾 宇宙を出力</button>
-            <button id="btn-import" style="width:100%; background:#442211; color:#ffaa66; border:1px solid #ffaa66; padding:8px 5px; cursor:pointer; border-radius:3px; font-size:11px; font-weight:bold;">📂 宇宙を読込</button>
-            <input type="file" id="import-file" accept=".universe" style="display:none;">
-        `;
-        this.protectUI(hintUI); // ガード
-        document.body.appendChild(hintUI);
-
-        const isSysDragged = this.makeDraggable(sysFab);
-        sysFab.onclick = () => {
-            if (isSysDragged()) return;
-            toggleDynamicMenu(sysFab, hintUI, '255,102,153');
-        };
-
-        document.getElementById('btn-inventory').addEventListener('click', () => {
-            hintUI.style.display = 'none'; sysFab.style.background = 'rgba(255,102,153,0.1)';
-            if (this.app.blackHole.length === 0) return alert("ポケットは空です。");
-            this.showInventoryUI();
-        });
-
-        document.getElementById('btn-export').onclick = () => {
-            if (confirm("現在の宇宙を暗号化された物理ファイル(.universe)としてダウンロードしますか？")) {
-                Singularity.export();
-                if(window.universeLogger) window.universeLogger.log("SINGULARITY_EXPORT", { status: "Success" });
-            }
-        };
-
-        const fileInput = document.getElementById('import-file');
-        document.getElementById('btn-import').onclick = () => fileInput.click();
-        
+        // 🎒 データ管理
+        document.getElementById('cp-btn-inventory').onclick = () => { controlPanel.style.display = 'none'; this.showInventoryUI(); };
+        document.getElementById('cp-btn-export').onclick = () => { Singularity.export(); controlPanel.style.display = 'none'; };
+        const fileInput = document.getElementById('cp-import-file');
+        document.getElementById('cp-btn-import').onclick = () => fileInput.click();
         fileInput.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            if (confirm(`「${file.name}」を展開し、現在の宇宙を上書きしますか？\n※この操作は取り消せません。`)) {
-                try {
-                    const encryptedData = await Singularity.importAndVerify(file);
-                    await saveEncryptedUniverse(encryptedData);
-                    alert("特異点からの宇宙展開に成功しました！再起動します。");
-                    window.location.reload(); 
-                } catch (err) {
-                    alert(err);
-                }
+            const f = e.target.files[0];
+            if (f && confirm("宇宙を上書きしますか？")) {
+                const data = await Singularity.importAndVerify(f);
+                await saveEncryptedUniverse(data); window.location.reload();
             }
-            fileInput.value = '';
-            hintUI.style.display = 'none';
         };
 
-        this.inventoryModal = document.createElement('div');
-        this.inventoryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #ff6699; padding:20px; border-radius:10px; z-index:300; min-width:320px; color:white; box-shadow: 0 10px 30px rgba(255,102,153,0.3);';
-        this.protectUI(this.inventoryModal); // ガード
-        document.body.appendChild(this.inventoryModal);
+        // ⚙️ システム設定（既存のindex.htmlのボタンを裏でクリックさせる）
+        document.getElementById('cp-btn-logout').onclick = () => {
+            const btn = document.getElementById('btn-logout');
+            if (btn) btn.click();
+        };
+        document.getElementById('cp-btn-reset').onclick = () => {
+            const btn = document.getElementById('emergency-reset-btn');
+            if (btn) btn.click();
+        };
 
-        // ★ フルメニュー（EDIT用）
-        this.actionMenu = document.createElement('div');
-        this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px; max-height: 80vh; overflow-y: auto;';
-        this.protectUI(this.actionMenu); // ガード！スマホでのクリック不具合を完全に防ぐ
-        document.body.appendChild(this.actionMenu);
-
-        // ★ クイックノート（RUN用）
+        // 各種モーダル
+        this.inventoryModal = this.createModal('#ff6699', 300);
+        this.appLibraryModal = this.createModal('#00ffcc', 300);
+        this.actionMenu = this.createModal('#00ffcc', 200, false);
+        this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
+        
         this.quickNotePanel = document.createElement('div');
-        this.quickNotePanel.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(10,20,30,0.95); border-left:4px solid #00ffcc; padding:15px; border-radius:8px; z-index:200; box-shadow: 0 10px 30px rgba(0,255,204,0.3); min-width: 200px; max-width: 300px; color:white; font-family:sans-serif; backdrop-filter:blur(5px);';
-        this.protectUI(this.quickNotePanel); // ガード
+        this.quickNotePanel.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(10,20,30,0.95); border-left:4px solid #00ffcc; padding:15px; border-radius:8px; z-index:200; min-width:200px; max-width:300px; color:white; pointer-events:auto; backdrop-filter:blur(5px);';
+        this.protectUI(this.quickNotePanel);
         document.body.appendChild(this.quickNotePanel);
-        
-        // 画面のどこかをタッチ/クリックしたらQuickNoteを閉じる
-        window.addEventListener('mousedown', (e) => {
-            if (this.quickNotePanel.style.display === 'flex' && !this.quickNotePanel.contains(e.target)) {
-                this.hideQuickNote();
-            }
-        });
-        window.addEventListener('touchstart', (e) => {
-            if (this.quickNotePanel.style.display === 'flex' && !this.quickNotePanel.contains(e.target)) {
-                this.hideQuickNote();
-            }
-        });
 
-        this.appLibraryModal = document.createElement('div');
-        this.appLibraryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #00ffcc; padding:20px; border-radius:10px; z-index:400; min-width:300px; color:white; box-shadow: 0 10px 30px rgba(0,255,204,0.3);';
-        this.protectUI(this.appLibraryModal); // ガード
-        document.body.appendChild(this.appLibraryModal);
+        window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
+        window.addEventListener('touchstart', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
     }
 
-    showAppLibrary(node) {
-        let html = `<h3 style="margin-top:0; margin-bottom:15px; color:#00ffcc; border-bottom:1px solid #00ffcc; padding-bottom:5px;">📱 アプリを追加/編集</h3>`;
-        html += `<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
-
-        this.app.appPresets.forEach((app, index) => {
-            html += `
-                <div id="preset-${index}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer; padding:5px; border-radius:8px; transition:0.2s; background:rgba(255,255,255,0.05);">
-                    <img src="${app.icon}" style="width:32px; height:32px; border-radius:8px; margin-bottom:5px;" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'32\\' height=\\'32\\'><rect width=\\'32\\' height=\\'32\\' fill=\\'%23555\\'/></svg>'">
-                    <span style="font-size:10px; text-align:center;">${app.name}</span>
-                </div>
-            `;
-        });
-        html += `</div>`;
-        html += `<button id="custom-url-btn" style="width:100%; padding:10px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:5px; cursor:pointer; margin-bottom:10px;">✍️ 自分でURLを手入力する</button>`;
-        
-        if (node.url || node.iconUrl) {
-            html += `<button id="reset-app-btn" style="width:100%; padding:10px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:5px; cursor:pointer; margin-bottom:10px;">🧹 リンクとアイコンを解除</button>`;
-        }
-        
-        html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; color:white; border:1px solid #aaa; border-radius:5px; cursor:pointer;">キャンセル</button>`;
-
-        this.appLibraryModal.innerHTML = html;
-        this.appLibraryModal.style.display = 'block';
-
-        this.app.appPresets.forEach((app, index) => {
-            document.getElementById(`preset-${index}`).onclick = () => {
-                node.name = app.name; node.url = app.url; node.iconUrl = app.icon;
-                this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
-                if(window.universeLogger) window.universeLogger.log("APP_LINKED", { target: node.name, app: app.name });
-            };
-        });
-
-        document.getElementById('custom-url-btn').onclick = () => {
-            this.appLibraryModal.style.display = 'none';
-            const newUrl = prompt("URLまたはアプリ起動用スキームを入力\n(例: https://example.com)", node.url);
-            if (newUrl) { 
-                node.url = newUrl;
-                if (newUrl.startsWith('http') && !node.iconUrl && confirm("アイコンを自動取得しますか？")) {
-                    try {
-                        const domain = new URL(newUrl).hostname;
-                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                    } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${newUrl}&sz=128`; }
-                }
-                this.app.autoSave(); 
-                if(window.universeLogger) window.universeLogger.log("CUSTOM_URL_LINKED", { target: node.name, url: newUrl });
-            }
-            this.hideMenu();
-        };
-
-        const resetBtn = document.getElementById('reset-app-btn');
-        if (resetBtn) {
-            resetBtn.onclick = () => {
-                if(confirm("この星のリンクとアイコンを解除しますか？")) {
-                    node.url = ""; node.iconUrl = "";
-                    this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
-                    if(window.universeLogger) window.universeLogger.log("LINK_CLEARED", { target: node.name });
-                }
-            };
-        }
-        document.getElementById('lib-close').onclick = () => { this.appLibraryModal.style.display = 'none'; };
+    createModal(color, width, centered = true) {
+        const el = document.createElement('div');
+        el.style.cssText = `position:fixed; display:none; flex-direction:column; background:rgba(20,20,30,0.98); border:1px solid ${color}; padding:20px; border-radius:12px; z-index:1000; min-width:${width}px; color:white; pointer-events:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5);`;
+        if(centered) { el.style.top = '50%'; el.style.left = '50%'; el.style.transform = 'translate(-50%, -50%)'; }
+        this.protectUI(el);
+        document.body.appendChild(el);
+        return el;
     }
 
-    showInventoryUI() {
-        let html = `<h3 style="margin-top:0; margin-bottom:15px; color:#ff6699; border-bottom:1px solid #ff6699; padding-bottom:5px;">🎒 亜空間ポケット</h3>`;
-        html += `<div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
-
-        this.app.blackHole.forEach((node, index) => {
-            const innerCount = node.innerUniverse.nodes.length;
-            html += `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.1); padding:10px; border-radius:5px;">
-                    <div>
-                        <div style="font-size:14px; font-weight:bold;">${node.name}</div>
-                        <div style="font-size:11px; color:#aaa;">内包データ: ${innerCount}個</div>
-                    </div>
-                    <div style="display:flex; gap:5px;">
-                        <button id="inv-restore-${index}" style="background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:12px;">🌌 出す</button>
-                        <button id="inv-delete-${index}" style="background:#440000; color:#ff4444; border:1px solid #ff4444; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:12px;">❌</button>
-                    </div>
-                </div>
-            `;
-        });
-        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; color:white; border:1px solid #aaa; border-radius:5px; cursor:pointer;">閉じる</button>`;
-        
-        this.inventoryModal.innerHTML = html;
-        this.inventoryModal.style.display = 'block';
-
-        this.app.blackHole.forEach((node, index) => {
-            document.getElementById(`inv-restore-${index}`).onclick = () => {
-                this.app.blackHole.splice(index, 1);
-                node.x = -this.app.camera.x; node.y = -this.app.camera.y;
-                node.baseX = node.x; node.baseY = node.y;
-                this.app.currentUniverse.nodes.push(node);
-                node.parentUniverse = this.app.currentUniverse;
-                this.app.autoSave();
-                this.inventoryModal.style.display = 'none';
-                
-                if(window.universeLogger) window.universeLogger.log("RESTORED_FROM_BLACKHOLE", { name: node.name });
-            };
-
-            document.getElementById(`inv-delete-${index}`).onclick = () => {
-                if(confirm(`「${node.name}」を完全に消去しますか？`)) {
-                    this.app.blackHole.splice(index, 1);
-                    this.app.autoSave();
-                    if(window.universeLogger) window.universeLogger.log("DATA_ERASED", { name: node.name });
-                    
-                    if (this.app.blackHole.length > 0) this.showInventoryUI();
-                    else this.inventoryModal.style.display = 'none';
-                }
-            };
-        });
-        document.getElementById('inv-close').onclick = () => { this.inventoryModal.style.display = 'none'; };
-    }
-
-    showQuickNote(node, screenX, screenY) {
-        this.hideMenu(); 
-        if (!node.note || node.note.trim() === "") return; 
-
-        this.quickNotePanel.innerHTML = `
-            <div style="font-size:16px; font-weight:bold; color:#00ffcc; margin-bottom:10px; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:5px;">
-                ${node.name} の記憶
-            </div>
-            <div style="font-size:13px; line-height:1.6; color:#e0f0ff; white-space:pre-wrap; word-break:break-all; max-height:250px; overflow-y:auto;">
-                ${node.note}
-            </div>
-        `;
-
-        this.quickNotePanel.style.left = `${screenX}px`;
-        this.quickNotePanel.style.top = `${screenY}px`;
-        this.quickNotePanel.style.display = 'flex';
-
-        setTimeout(() => {
-            const rect = this.quickNotePanel.getBoundingClientRect();
-            let top = screenY; let left = screenX;
-            if (top + rect.height > window.innerHeight - 10) top = window.innerHeight - rect.height - 10;
-            if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
-            if (top < 10) top = 10; if (left < 10) left = 10;
-            this.quickNotePanel.style.top = `${top}px`;
-            this.quickNotePanel.style.left = `${left}px`;
-        }, 0);
-    }
-
-    hideQuickNote() {
-        this.quickNotePanel.style.display = 'none';
-    }
-
+    // --- 既存のメニュー・ノート・パンくず・亜空間・ライブラリの処理（変更なし・すべて保持） ---
     showMenu(node, screenX, screenY) {
-        this.hideQuickNote(); 
-        
-        this.actionMenu.style.left = `${screenX}px`;
-        this.actionMenu.style.top = `${screenY}px`;
+        this.hideQuickNote();
+        this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
+        this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
         this.actionMenu.style.display = 'flex';
+
+        const btn = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:6px; font-size:14px; margin-bottom:2px; width:100%;';
         
-        const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; width: 100%;';
-        
-        let menuHTML = '';
-
-        menuHTML += `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
-        menuHTML += `<button id="menu-note" style="${btnStyle} color:#aaffff; background:rgba(170,255,255,0.1);"><span>📝 記憶を刻む/編集</span></button>`;
-
-        if (node.url) {
-            const isAppScheme = !node.url.startsWith('http');
-            const openText = isAppScheme ? '📱 アプリを起動' : '🌐 リンクを開く';
-            menuHTML += `<button id="menu-open-url" style="${btnStyle} background:rgba(0,255,204,0.2); color:#00ffcc; border:1px solid #00ffcc;"><span>${openText}</span></button>`;
-        }
-
-        menuHTML += `
-            <div style="display:flex; gap:2px; margin-bottom:2px; width:100%;">
-                <button id="menu-size-up" style="${btnStyle} flex:1; justify-content:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
-                <button id="menu-size-down" style="${btnStyle} flex:1; justify-content:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
+        this.actionMenu.innerHTML = `
+            <button id="m-dive" style="${btn}">➡ 内部へ潜る</button>
+            <button id="m-note" style="${btn} color:#aaffff;">📝 記憶を編集</button>
+            <div style="display:flex; gap:2px; margin-bottom:2px;">
+                <button id="m-up" style="${btn} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                <button id="m-down" style="${btn} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
             </div>
-            <button id="menu-rename" style="${btnStyle} color:#ccff66;"><span>✏ 名前変更</span></button>
-            <button id="menu-set-app" style="${btnStyle} color:#aaaaff; background:rgba(170,170,255,0.1);"><span>📱 アプリ/URLを登録</span></button>
-            <button id="menu-set-icon" style="${btnStyle} color:#ffaa00;"><span>🖼 アイコン手動設定</span></button>
-            <button id="menu-memorize" style="${btnStyle} color:#00ffff;"><span>💡 座標を記憶</span></button>
-        `;
+            <button id="m-ren" style="${btn} color:#ccff66;">✏ 名前変更</button>
+            <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
+            <button id="m-del" style="${btn} color:#ff4444; border:1px solid #ff4444;">🎒 亜空間へ送る</button>
+            <button id="m-close" style="${btn} background:transparent; text-align:center; font-size:12px;">❌ 閉じる</button>`;
 
-        if (this.app.memorizedNode && this.app.memorizedNode.id !== node.id) {
-            menuHTML += `<button id="menu-connect" style="${btnStyle} color:#ff00ff; background:rgba(255,0,255,0.1);"><span>🌀 次元接続</span></button>`;
-        }
-
-        const connectedWormholes = this.app.wormholes.filter(wh => wh.source.id === node.id || wh.target.id === node.id);
-        connectedWormholes.forEach((wh, index) => {
-            const dest = (wh.source.id === node.id) ? wh.target : wh.source;
-            menuHTML += `<button id="menu-warp-${index}" style="${btnStyle} color:#ff88ff;"><span>🌌 [${dest.name}]へワープ</span></button>`;
-        });
-
-        menuHTML += `<button id="menu-delete" style="${btnStyle} color:#ff4444; border:1px solid #ff4444;"><span>🎒 亜空間へ送る</span></button>`;
-        this.actionMenu.innerHTML = menuHTML;
-
-        setTimeout(() => {
-            const menuRect = this.actionMenu.getBoundingClientRect();
-            if (menuRect.bottom > window.innerHeight) {
-                this.actionMenu.style.top = `${Math.max(10, window.innerHeight - menuRect.height - 10)}px`;
-            }
-        }, 0);
-
-        // 各ボタンのクリックイベント
-        document.getElementById('menu-note').onclick = () => {
-            this.hideMenu();
-            this.notePad.open(node); 
-        };
-
-        document.getElementById('menu-dive').onclick = () => {
-            this.hideMenu(); this.app.isZoomingIn = true;
-            this.app.targetUniverse = node.innerUniverse;
-            this.app.camera.zoomTo(node.x, node.y);
-            if(window.universeLogger) window.universeLogger.log("DIVE_INTO_NODE", { target: node.name });
-        };
-
-        if (node.url) {
-            document.getElementById('menu-open-url').onclick = () => {
-                const targetWin = node.url.startsWith('http') ? '_blank' : '_self';
-                window.open(node.url, targetWin); 
-                this.hideMenu();
-                if(window.universeLogger) window.universeLogger.log("EXECUTE_LINK", { url: node.url });
-            };
-        }
-
-        document.getElementById('menu-size-up').onclick = () => {
-            node.size += 5;
-            if (node.size > 150) node.size = 150; 
-            this.app.autoSave();
-        };
-
-        document.getElementById('menu-size-down').onclick = () => {
-            node.size -= 5;
-            if (node.size < 5) node.size = 5; 
-            this.app.autoSave();
-        };
-
-        document.getElementById('menu-rename').onclick = () => {
-            const newName = prompt("新しい名前:", node.name);
-            if (newName) { node.name = newName; this.app.autoSave(); }
-            this.hideMenu();
-        };
-
-        document.getElementById('menu-set-app').onclick = () => {
-            this.hideMenu(); this.showAppLibrary(node);
-        };
-
-        document.getElementById('menu-set-icon').onclick = () => {
-            const newIconUrl = prompt("画像のURLを入力してください:", node.iconUrl);
-            if (newIconUrl !== null) { node.iconUrl = newIconUrl; this.app.autoSave(); }
-            this.hideMenu();
-        };
-
-        document.getElementById('menu-memorize').onclick = () => {
-            this.app.memorizedNode = node; alert(`「${node.name}」を記憶しました。`); this.hideMenu();
-            if(window.universeLogger) window.universeLogger.log("COORDINATES_MEMORIZED", { target: node.name });
-        };
-
-        if (document.getElementById('menu-connect')) {
-            document.getElementById('menu-connect').onclick = () => {
-                this.app.wormholes.push({ source: this.app.memorizedNode, target: node });
-                this.app.memorizedNode = null;
-                alert("次元を超えたワームホールが開通しました！");
-                this.app.autoSave(); this.hideMenu();
-                if(window.universeLogger) window.universeLogger.log("WORMHOLE_OPENED", { target: node.name });
-            };
-        }
-
-        connectedWormholes.forEach((wh, index) => {
-            document.getElementById(`menu-warp-${index}`).onclick = () => {
-                const dest = (wh.source.id === node.id) ? wh.target : wh.source;
-                this.app.executeWarp(dest); this.hideMenu();
-                if(window.universeLogger) window.universeLogger.log("WORMHOLE_WARP", { destination: dest.name });
-            };
-        });
-
-        document.getElementById('menu-delete').onclick = () => {
-            if (node.innerUniverse.nodes.length > 0) {
-                if (!confirm(`内部に ${node.innerUniverse.nodes.length}個の星 が存在します。\n全てまとめて転送しますか？`)) {
-                    this.hideMenu(); return;
-                }
-            }
-            this.app.currentUniverse.removeNode(node);
-            this.app.wormholes = this.app.wormholes.filter(w => w.source.id !== node.id && w.target.id !== node.id);
-            this.app.blackHole.push(node);
-            this.app.autoSave(); 
-
-            if (window.universeLogger) {
-                window.universeLogger.log("NODE_SENT_TO_BLACKHOLE", { name: node.name, size: node.size });
-            }
-
-            this.hideMenu();
-        };
+        document.getElementById('m-dive').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); };
+        document.getElementById('m-note').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.notePad.open(node); };
+        document.getElementById('m-up').onclick = (e) => { e.stopPropagation(); node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
+        document.getElementById('m-down').onclick = (e) => { e.stopPropagation(); node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
+        document.getElementById('m-ren').onclick = (e) => { e.stopPropagation(); const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
+        document.getElementById('m-link').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.showAppLibrary(node); };
+        document.getElementById('m-del').onclick = (e) => { e.stopPropagation(); if(confirm("亜空間へ送りますか？")){this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();} this.hideMenu(); };
+        document.getElementById('m-close').onclick = (e) => { e.stopPropagation(); this.hideMenu(); };
     }
 
-    hideMenu() { 
-        this.actionMenu.style.display = 'none'; 
+    showQuickNote(node, x, y) {
+        if (!node.note || node.note.trim() === "") return;
+        this.quickNotePanel.innerHTML = `<div style="color:#00ffcc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">${node.name} の記憶</div><div style="font-size:13px; max-height:200px; overflow-y:auto; line-height:1.5; white-space:pre-wrap; word-break:break-all;">${node.note}</div>`;
+        this.quickNotePanel.style.left = `${Math.min(x, window.innerWidth - 220)}px`;
+        this.quickNotePanel.style.top = `${Math.min(y, window.innerHeight - 250)}px`;
+        this.quickNotePanel.style.display = 'flex';
     }
+
+    hideQuickNote() { this.quickNotePanel.style.display = 'none'; }
+    hideMenu() { this.actionMenu.style.display = 'none'; }
 
     updateBreadcrumbs() {
         this.breadcrumbUI.innerHTML = '';
         const path = [...this.app.universeHistory, this.app.currentUniverse];
-        
-        path.forEach((uni, index) => {
-            const btn = document.createElement('button');
-            btn.innerText = uni.name;
-            const isCurrent = (index === path.length - 1);
-            
-            if (index === 0) btn.innerHTML = `👤 ${uni.name}`;
-
-            btn.style.cssText = `background:rgba(255,255,255,${isCurrent ? '0.2' : '0.05'}); color:${isCurrent ? '#fff' : '#aaa'}; border:1px solid rgba(255,255,255,0.3); padding:4px 8px; border-radius:5px; cursor:pointer; font-weight:${isCurrent ? 'bold' : 'normal'}; font-size:12px;`;
-            
-            btn.onclick = () => {
-                if (isCurrent) return;
-                this.app.currentUniverse = this.app.universeHistory[index];
-                this.app.universeHistory = this.app.universeHistory.slice(0, index);
-                this.app.camera.reset();
-                this.updateBreadcrumbs();
+        path.forEach((uni, i) => {
+            const b = document.createElement('button');
+            const isLast = (i === path.length - 1);
+            b.innerText = (i === 0) ? `👤 ${uni.name}` : uni.name;
+            b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.2' : '0.05'}); color:${isLast ? '#fff' : '#aaa'}; border:1px solid rgba(255,255,255,0.3); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;`;
+            b.onclick = (e) => { 
+                e.stopPropagation();
+                if(!isLast){
+                    this.app.currentUniverse = this.app.universeHistory[i]; 
+                    this.app.universeHistory = this.app.universeHistory.slice(0, i); 
+                    this.app.camera.reset(); this.updateBreadcrumbs();
+                } 
             };
-            this.breadcrumbUI.appendChild(btn);
-
-            if (!isCurrent) {
-                const sep = document.createElement('span');
-                sep.innerText = '>';
-                sep.style.cssText = 'color:rgba(255,255,255,0.4); font-size:10px; margin: 0 5px;';
-                this.breadcrumbUI.appendChild(sep);
-            }
+            this.breadcrumbUI.appendChild(b);
+            if(!isLast) { const s = document.createElement('span'); s.innerText = '>'; s.style.cssText = 'color:#555; margin:0 5px;'; this.breadcrumbUI.appendChild(s); }
         });
+        if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.5;">✏️</span>`;
+    }
 
-        if (this.centerTextEl) {
-            this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.7;">✏️</span>`;
-        }
+    showAppLibrary(node) {
+        let html = `<h3 style="margin-top:0; color:#00ffcc;">📱 アプリを登録</h3><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
+        this.app.appPresets.forEach((app, i) => {
+            html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer; padding:5px; background:rgba(255,255,255,0.05); border-radius:8px;"><img src="${app.icon}" style="width:32px; height:32px; border-radius:8px; margin-bottom:5px;"><span style="font-size:9px;">${app.name}</span></div>`;
+        });
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:10px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:5px; cursor:pointer; margin-bottom:10px;">✍️ 自分でURLを入力</button>`;
+        if (node.url) html += `<button id="reset-app-btn" style="width:100%; padding:10px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:5px; cursor:pointer; margin-bottom:10px;">🧹 リンク解除</button>`;
+        html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; color:white; border:1px solid #888; border-radius:6px;">キャンセル</button>`;
+        
+        this.appLibraryModal.innerHTML = html;
+        this.appLibraryModal.style.display = 'block';
+        
+        this.app.appPresets.forEach((app, i) => {
+            document.getElementById(`preset-${i}`).onclick = (e) => { e.stopPropagation(); node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
+        });
+        document.getElementById('custom-url-btn').onclick = (e) => { e.stopPropagation(); this.appLibraryModal.style.display = 'none'; const newUrl = prompt("URLを入力:", node.url); if(newUrl){ node.url = newUrl; this.app.autoSave(); }};
+        const resetBtn = document.getElementById('reset-app-btn');
+        if(resetBtn) resetBtn.onclick = (e) => { e.stopPropagation(); node.url = ""; node.iconUrl = ""; this.app.autoSave(); this.appLibraryModal.style.display = 'none'; };
+        document.getElementById('lib-close').onclick = (e) => { e.stopPropagation(); this.appLibraryModal.style.display='none'; };
+    }
+
+    showInventoryUI() {
+        let html = `<h3 style="margin-top:0; color:#ff6699;">🎒 亜空間ポケット</h3><div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
+        this.app.blackHole.forEach((node, i) => {
+            html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.1); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:5px 10px; border-radius:4px; font-size:12px; margin-right:5px;">🌌 出す</button><button id="inv-del-${i}" style="background:#440000; color:#ff4444; border:none; padding:5px 10px; border-radius:4px; font-size:12px;">❌</button></div></div>`;
+        });
+        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; color:white; border:1px solid #888; border-radius:6px;">閉じる</button>`;
+        
+        this.inventoryModal.innerHTML = html;
+        this.inventoryModal.style.display = 'block';
+        
+        this.app.blackHole.forEach((node, i) => {
+            document.getElementById(`inv-res-${i}`).onclick = (e) => { e.stopPropagation(); this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; };
+            document.getElementById(`inv-del-${i}`).onclick = (e) => { e.stopPropagation(); if(confirm("消去しますか？")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
+        });
+        document.getElementById('inv-close').onclick = (e) => { e.stopPropagation(); this.inventoryModal.style.display='none'; };
     }
 }

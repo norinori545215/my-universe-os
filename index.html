@@ -6,7 +6,7 @@
     <title>My Universe OS</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050510; font-family: sans-serif; }
-        canvas { display: block; }
+        canvas { display: block; touch-action: none; }
         
         .fullscreen-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -60,15 +60,10 @@
         .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #555; margin: 0 10px; }
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
+        /* ★ ここが重要！古いむき出しのボタンを完全に非表示にする */
         #btn-logout, #emergency-reset-btn {
-            position: fixed; background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; 
-            padding: 8px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px; 
-            display: none; transition: 0.2s; user-select: none; touch-action: none;
+            display: none !important; 
         }
-        #btn-logout { top: 15px; right: 80px; }
-        #btn-logout:hover { border-color: #fff; background: rgba(50, 50, 50, 0.8); }
-        
-        #emergency-reset-btn { bottom: 15px; right: 80px; border-color: #ff4444; color: #ff6666; }
     </style>
 </head>
 <body>
@@ -133,7 +128,6 @@
         import { LocalVault } from './src/db/LocalVault.js';
         import { LoggerUI } from './src/ui/LoggerUI.js';
 
-        // ★ システム全体で使えるようにグローバル変数として監視塔を建てる
         window.universeLogger = new LoggerUI(LocalVault);
         window.universeLogger.log("SYSTEM_BOOT", { status: "Online", OS_Version: "Phase 3" });
 
@@ -145,32 +139,6 @@
         const btnAction = document.getElementById('btn-action');
         
         let isLoginMode = true;
-
-        function makeDraggable(el) {
-            let isDragging = false, startX, startY, initX, initY, hasMoved = false;
-            const down = (e) => {
-                hasMoved = false; const ev = e.touches ? e.touches[0] : e;
-                startX = ev.clientX; startY = ev.clientY;
-                const rect = el.getBoundingClientRect(); initX = rect.left; initY = rect.top;
-                isDragging = true; el.style.transition = 'none';
-            };
-            const move = (e) => {
-                if (!isDragging) return; const ev = e.touches ? e.touches[0] : e;
-                const dx = ev.clientX - startX; const dy = ev.clientY - startY;
-                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-                el.style.left = `${Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx))}px`; 
-                el.style.top = `${Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy))}px`; 
-                el.style.right = 'auto'; el.style.bottom = 'auto';
-            };
-            const up = () => { if (isDragging) { isDragging = false; el.style.transition = '0.2s'; } };
-            el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
-            window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
-            window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-            return () => hasMoved;
-        }
-
-        const isLogoutDragged = makeDraggable(btnLogout);
-        const isResetDragged = makeDraggable(btnReset);
 
         function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
 
@@ -268,8 +236,6 @@
                     masterKeyScreen.style.opacity = '0';
                     setTimeout(() => {
                         masterKeyScreen.style.display = 'none';
-                        btnLogout.style.display = 'block';
-                        btnReset.style.display = 'block';
                         window.app = new CanvasBuilder('universe-canvas');
                         
                         if(window.universeLogger) window.universeLogger.log("ACCESS_GRANTED", { user: "Authenticated" });
@@ -291,7 +257,6 @@
         });
 
         btnLogout.addEventListener('click', async () => {
-            if (isLogoutDragged()) return; 
             window.universeCryptoKey = null; 
             sessionStorage.clear();
             localStorage.clear(); 
@@ -300,7 +265,6 @@
         });
 
         btnReset.addEventListener('click', async () => {
-            if (isResetDragged()) return; 
             if (confirm("完全に初期化しますか？暗号化されたデータも消去されます。")) {
                 if (auth.currentUser) await deleteDoc(doc(db, "universes", auth.currentUser.uid));
                 sessionStorage.clear();
