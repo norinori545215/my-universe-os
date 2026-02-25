@@ -92,14 +92,14 @@ export const DataManager = {
             blackHole: blackHole.map(serializeNode)
         };
 
-        localStorage.setItem('my_universe_save_data', JSON.stringify(data));
-        // ★ Firebaseの setDoc 通信を完全に削除しました！
+        // ★ localStorage から sessionStorage に変更！（画面を閉じたら消滅）
+        sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
     },
 
     // 💾 【完全ローカル読込】起動時にCanvasBuilderが解読してくれたローカルデータを読み込む
     load: async () => {
-        // ★ Firebaseへのアクセスを完全に削除！ローカル金庫からのみ読み込む。
-        const raw = localStorage.getItem('my_universe_save_data');
+        // ★ localStorage から sessionStorage に変更！
+        const raw = sessionStorage.getItem('my_universe_save_data');
         if (!raw) return null;
         
         let data;

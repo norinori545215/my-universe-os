@@ -240,8 +240,8 @@
                 const cloudData = await loadEncryptedUniverse();
                 
                 if (cloudData) {
-                    // 解読成功なら、OSが起動しやすいようにローカル金庫に入れておく
-                    localStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
+                    // ★ localStorage から sessionStorage に変更！
+                    sessionStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
                 }
 
                 statusText.innerText = "アクセス承認。事象の地平面へ接続します...";
@@ -267,6 +267,9 @@
         btnLogout.addEventListener('click', async () => {
             if (isLogoutDragged()) return; 
             window.universeCryptoKey = null; 
+            // ★ ログアウト時にキャッシュを完全破壊（古い遺物も消去）
+            sessionStorage.clear();
+            localStorage.clear(); 
             await logoutFromUniverse();
             window.location.reload(); 
         });
@@ -275,6 +278,8 @@
             if (isResetDragged()) return; 
             if (confirm("完全に初期化しますか？暗号化されたデータも消去されます。")) {
                 if (auth.currentUser) await deleteDoc(doc(db, "universes", auth.currentUser.uid));
+                // ★ 緊急初期化時もキャッシュを完全破壊
+                sessionStorage.clear();
                 localStorage.clear();
                 window.location.reload();
             }

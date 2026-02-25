@@ -7,7 +7,8 @@
  */
 
 import { auth, db } from '../security/Auth.js';
-import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// ★ 修正点：getDoc を getDocFromServer に変更！（スマホのサボり癖を直すため）
+import { doc, setDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { encryptUniverseData, decryptUniverseData } from '../security/CryptoCore.js';
 
 // 📦 宇宙のデータを暗号化してFirebaseへ保存する
@@ -41,7 +42,9 @@ export async function loadEncryptedUniverse() {
 
     try {
         const userRef = doc(db, "universes", auth.currentUser.uid);
-        const docSnap = await getDoc(userRef);
+        
+        // ★ ここが超重要！スマホの古いキャッシュを無視し、強制的に最新のクラウドを確認させる！
+        const docSnap = await getDocFromServer(userRef);
         
         // Firebaseにデータが存在し、かつ暗号化データがある場合
         if (docSnap.exists() && docSnap.data().encryptedData) {
@@ -59,8 +62,7 @@ export async function loadEncryptedUniverse() {
         return null; // まだ宇宙が創世されていない（初回ログイン時）
     } catch (error) {
         console.error("⚠️ 復号ロード失敗:", error);
-        // パスワードが違う場合、ここでエラーが弾けます
-        alert("⚠️ 致命的エラー：マスターパスワードが間違っているか、宇宙のデータが破損しています。解読できません。");
+        // パスワードが違う場合、ここでエラーが弾けます（門番に知らせるためにエラーを投げる）
         throw new Error("Decryption failed");
     }
 }

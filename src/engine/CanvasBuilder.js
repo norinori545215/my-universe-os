@@ -119,8 +119,8 @@ export class CanvasBuilder {
         
         this.saveTimeout = setTimeout(async () => {
             try {
-                // DataManagerが作った最新のローカルデータを横取りして暗号化する
-                const rawData = localStorage.getItem('my_universe_save_data');
+                // ★ localStorage から sessionStorage に変更！
+                const rawData = sessionStorage.getItem('my_universe_save_data');
                 if (rawData) {
                     const dataObj = JSON.parse(rawData);
                     await saveEncryptedUniverse(dataObj);
