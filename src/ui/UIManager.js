@@ -1,13 +1,11 @@
 // src/ui/UIManager.js
 import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
-// ★ 新しく作ったノートパッドをインポート
 import { NotePadUI } from './NotePadUI.js';
 
 export class UIManager {
     constructor(app) {
         this.app = app;
-        // ★ ノートパッドをシステムに組み込む
         this.notePad = new NotePadUI(app);
         this.createUI();
     }
@@ -276,7 +274,7 @@ export class UIManager {
         document.body.appendChild(this.inventoryModal);
 
         this.actionMenu = document.createElement('div');
-        this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px;';
+        this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px; max-height: 80vh; overflow-y: auto;';
         document.body.appendChild(this.actionMenu);
 
         this.appLibraryModal = document.createElement('div');
@@ -398,16 +396,26 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
+        // メニューが画面下部にはみ出さないよう座標を補正
         this.actionMenu.style.left = `${screenX}px`;
         this.actionMenu.style.top = `${screenY}px`;
         this.actionMenu.style.display = 'flex';
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;';
         
-        let menuHTML = `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
+        let menuHTML = '';
 
-        // ★ 新機能：記憶を刻むボタン
-        menuHTML += `<button id="menu-note" style="${btnStyle} color:#aaffff; background:rgba(170,255,255,0.1);"><span>📝 記憶を刻む (Note)</span></button>`;
+        // ★ 新機能：もし星にメモ（記憶）があれば、メニューの最上部にプレビューとして表示！
+        if (node.note && node.note.trim() !== "") {
+            menuHTML += `
+                <div style="background:rgba(0, 30, 20, 0.9); border-left:4px solid #00ffcc; padding:10px; margin-bottom:8px; border-radius:4px; font-size:12px; color:#e0f0ff; max-height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; line-height:1.4; box-shadow:inset 0 0 10px rgba(0,0,0,0.5);">
+                    ${node.note}
+                </div>
+            `;
+        }
+
+        menuHTML += `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
+        menuHTML += `<button id="menu-note" style="${btnStyle} color:#aaffff; background:rgba(170,255,255,0.1);"><span>📝 記憶を刻む/編集</span></button>`;
 
         if (node.url) {
             const isAppScheme = !node.url.startsWith('http');
@@ -439,10 +447,17 @@ export class UIManager {
         menuHTML += `<button id="menu-delete" style="${btnStyle} color:#ff4444; border:1px solid #ff4444;"><span>🎒 亜空間へ送る</span></button>`;
         this.actionMenu.innerHTML = menuHTML;
 
-        // ★ イベントのバインド
+        // メニューが画面下にはみ出ないように再計算
+        setTimeout(() => {
+            const menuRect = this.actionMenu.getBoundingClientRect();
+            if (menuRect.bottom > window.innerHeight) {
+                this.actionMenu.style.top = `${Math.max(10, window.innerHeight - menuRect.height - 10)}px`;
+            }
+        }, 0);
+
         document.getElementById('menu-note').onclick = () => {
             this.hideMenu();
-            this.notePad.open(node); // ノートパッドを開く！
+            this.notePad.open(node); 
         };
 
         document.getElementById('menu-dive').onclick = () => {
