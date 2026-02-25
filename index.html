@@ -108,6 +108,10 @@
             <input type="password" id="master-key-input" placeholder="マスターパスワード">
             <button id="btn-unlock-universe" class="vault-btn">宇宙を創世 / 解読する</button>
             <div id="key-status" style="color:#ff00ff; font-size:11px; margin-top:15px; display:none;"></div>
+
+            <div id="btn-switch-account" style="color:#888; font-size:11px; margin-top:25px; cursor:pointer; text-decoration:underline;">
+                🚪 別のアカウントでログインし直す（ログアウト）
+            </div>
         </div>
     </div>
 
@@ -123,7 +127,6 @@
         import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { deriveKey } from './src/security/CryptoCore.js';
         
-        // ★ 門番が解読テストを行うためにインポート
         import { loadEncryptedUniverse } from './src/db/CloudSync.js';
 
         const authScreen = document.getElementById('auth-screen');
@@ -178,6 +181,7 @@
             if (!result.success) { showError(result.error); document.getElementById('btn-google').disabled = false; }
         });
 
+        // ★ ここが探偵モード！エラーを隠さずに全て表示します
         btnAction.addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
@@ -192,11 +196,22 @@
             } else {
                 const userName = document.getElementById('signup-name').value || "名無し";
                 if (password.length < 6) { showError("パスワードは6文字以上にしてください"); btnAction.disabled = false; btnAction.innerText = originalText; return; }
-                const result = await createUniverseAccount(email, password, userName);
-                if (result.success) {
-                    alert("確認メールを送信しました！受信トレイを確認し、リンクをクリックしてからログインしてください。");
-                    document.getElementById('toggle-auth').click(); 
-                } else { showError(result.error); }
+                
+                try {
+                    const result = await createUniverseAccount(email, password, userName);
+                    if (result && result.success) {
+                        alert("確認メールを送信しました！受信トレイを確認し、リンクをクリックしてからログインしてください。");
+                        document.getElementById('toggle-auth').click(); 
+                    } else {
+                        // 🚨 Firebaseから返ってきた本物のエラーをそのまま表示
+                        const rawError = result ? JSON.stringify(result) : "詳細不明";
+                        showError("🚨真のエラー原因: " + rawError); 
+                    }
+                } catch (e) {
+                    // 🔥 プログラム自体が途中で落ちた場合
+                    showError("🔥致命的クラッシュ: " + e.message);
+                }
+                
                 btnAction.disabled = false; btnAction.innerText = "メールアドレスでログイン";
             }
         });
@@ -217,7 +232,6 @@
             }
         });
 
-        // 🗝️ ★ 究極の防衛ゲート：パスワードチェック
         document.getElementById('btn-unlock-universe').addEventListener('click', async () => {
             const masterPw = document.getElementById('master-key-input').value;
             const statusText = document.getElementById('key-status');
@@ -236,11 +250,9 @@
                 window.universeCryptoKey = await deriveKey(masterPw);
                 statusText.innerText = "クラウドの暗号層と照合中...";
                 
-                // ★ ここが真骨頂！実際に解読できるか門番がテストする！
                 const cloudData = await loadEncryptedUniverse();
                 
                 if (cloudData) {
-                    // ★ localStorage から sessionStorage に変更！
                     sessionStorage.setItem('my_universe_save_data', JSON.stringify(cloudData));
                 }
 
@@ -257,17 +269,22 @@
                 }, 800);
 
             } catch (error) {
-                // 🚨 解読失敗！偽の鍵と判定して突き返す！
                 statusText.innerText = "⚠️ 拒絶されました：パスワードが違います";
                 document.getElementById('btn-unlock-universe').disabled = false;
-                window.universeCryptoKey = null; // メモリ上の偽鍵を破棄
+                window.universeCryptoKey = null; 
             }
+        });
+
+        document.getElementById('btn-switch-account').addEventListener('click', async () => {
+            sessionStorage.clear();
+            localStorage.clear();
+            await logoutFromUniverse();
+            window.location.reload(); 
         });
 
         btnLogout.addEventListener('click', async () => {
             if (isLogoutDragged()) return; 
             window.universeCryptoKey = null; 
-            // ★ ログアウト時にキャッシュを完全破壊（古い遺物も消去）
             sessionStorage.clear();
             localStorage.clear(); 
             await logoutFromUniverse();
@@ -278,7 +295,6 @@
             if (isResetDragged()) return; 
             if (confirm("完全に初期化しますか？暗号化されたデータも消去されます。")) {
                 if (auth.currentUser) await deleteDoc(doc(db, "universes", auth.currentUser.uid));
-                // ★ 緊急初期化時もキャッシュを完全破壊
                 sessionStorage.clear();
                 localStorage.clear();
                 window.location.reload();
