@@ -129,6 +129,14 @@
         import { deriveKey } from './src/security/CryptoCore.js';
         import { loadEncryptedUniverse } from './src/db/CloudSync.js';
 
+        // ★ 監視塔と地下金庫を読み込み！
+        import { LocalVault } from './src/db/LocalVault.js';
+        import { LoggerUI } from './src/ui/LoggerUI.js';
+
+        // ★ システム全体で使えるようにグローバル変数として監視塔を建てる
+        window.universeLogger = new LoggerUI(LocalVault);
+        window.universeLogger.log("SYSTEM_BOOT", { status: "Online", OS_Version: "Phase 3" });
+
         const authScreen = document.getElementById('auth-screen');
         const masterKeyScreen = document.getElementById('master-key-screen');
         const loginError = document.getElementById('login-error');
@@ -166,7 +174,6 @@
 
         function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
 
-        // ★ 圏外モード用のボタン動作：Firebase認証をスキップして直接マスターキー画面へ！
         document.getElementById('btn-offline-boot').addEventListener('click', () => {
             authScreen.style.opacity = '0';
             setTimeout(() => {
@@ -264,6 +271,9 @@
                         btnLogout.style.display = 'block';
                         btnReset.style.display = 'block';
                         window.app = new CanvasBuilder('universe-canvas');
+                        
+                        // ★ ログイン成功のログ
+                        if(window.universeLogger) window.universeLogger.log("ACCESS_GRANTED", { user: "Authenticated" });
                     }, 500);
                 }, 800);
 

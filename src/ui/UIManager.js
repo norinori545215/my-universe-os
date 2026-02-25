@@ -53,6 +53,44 @@ export class UIManager {
         const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
         const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
 
+        // ★ 新機能：ボタンの現在地にメニューを確実に出すスマート・ポップアップ計算機
+        const toggleDynamicMenu = (fab, menu, baseColor) => {
+            const isHidden = menu.style.display === 'none';
+            if (!isHidden) {
+                menu.style.display = 'none';
+                fab.style.background = `rgba(${baseColor},0.1)`;
+                return;
+            }
+
+            // まず表示してサイズを測る
+            menu.style.display = 'flex';
+            fab.style.background = `rgba(${baseColor},0.4)`;
+
+            const fabRect = fab.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+
+            // 基本はボタンの真下に出す
+            let top = fabRect.bottom + 10;
+            let left = fabRect.left;
+
+            // もし画面下にはみ出るなら、ボタンの上に出す
+            if (top + menuRect.height > window.innerHeight - 10) {
+                top = fabRect.top - menuRect.height - 10;
+            }
+            // もし画面右にはみ出るなら、画面内に収める
+            if (left + menuRect.width > window.innerWidth - 10) {
+                left = window.innerWidth - menuRect.width - 10;
+            }
+            // 左・上にはみ出さないように最終ガード
+            if (top < 10) top = 10;
+            if (left < 10) left = 10;
+
+            menu.style.top = `${top}px`;
+            menu.style.left = `${left}px`;
+            menu.style.bottom = 'auto';
+            menu.style.right = 'auto';
+        };
+
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
@@ -60,9 +98,11 @@ export class UIManager {
         this.centerTextEl.onclick = () => {
             const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
             if (newName) {
+                const oldName = this.app.currentUniverse.name;
                 this.app.currentUniverse.name = newName;
                 this.app.autoSave();
                 this.updateBreadcrumbs(); 
+                if(window.universeLogger) window.universeLogger.log("UNIVERSE_RENAMED", { from: oldName, to: newName });
             }
         };
         document.body.appendChild(this.centerTextEl);
@@ -77,7 +117,7 @@ export class UIManager {
         document.body.appendChild(searchFab);
 
         const searchUI = document.createElement('div');
-        searchUI.style.cssText = `${uiStyle} top:70px; right:15px; width:200px; display:none; flex-direction:column; gap:5px;`;
+        searchUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:5px; width:200px;`;
         searchUI.innerHTML = `
             <input type="text" id="radar-input" placeholder="星を探す..." style="background:rgba(0,0,0,0.5); color:white; border:1px solid #00ffcc; padding:5px; border-radius:4px; outline:none; font-size:12px;">
             <div id="radar-results" style="max-height:150px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:2px;"></div>
@@ -87,9 +127,7 @@ export class UIManager {
         const isSearchDragged = this.makeDraggable(searchFab);
         searchFab.onclick = () => {
             if (isSearchDragged()) return; 
-            const isHidden = searchUI.style.display === 'none';
-            searchUI.style.display = isHidden ? 'flex' : 'none';
-            searchFab.style.background = isHidden ? 'rgba(0,255,204,0.4)' : 'rgba(0,255,204,0.1)';
+            toggleDynamicMenu(searchFab, searchUI, '0,255,204');
         };
 
         const radarInput = document.getElementById('radar-input');
@@ -111,6 +149,7 @@ export class UIManager {
                             radarInput.value = ''; radarResults.innerHTML = '';
                             searchUI.style.display = 'none';
                             searchFab.style.background = 'rgba(0,255,204,0.1)';
+                            if(window.universeLogger) window.universeLogger.log("RADAR_WARP", { target: n.name });
                         };
                         radarResults.appendChild(btn);
                         count++;
@@ -129,7 +168,7 @@ export class UIManager {
         document.body.appendChild(toolFab);
 
         const paletteUI = document.createElement('div');
-        paletteUI.style.cssText = `${uiStyle} bottom:70px; left:15px; display:none; flex-direction:column; gap:8px; max-width: 170px;`;
+        paletteUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:8px; max-width: 170px;`;
         paletteUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">🔄 操作モード</div>
             <div style="display:flex; gap:3px;">
@@ -149,9 +188,7 @@ export class UIManager {
         const isToolDragged = this.makeDraggable(toolFab);
         toolFab.onclick = () => {
             if (isToolDragged()) return;
-            const isHidden = paletteUI.style.display === 'none';
-            paletteUI.style.display = isHidden ? 'flex' : 'none';
-            toolFab.style.background = isHidden ? 'rgba(0,255,255,0.4)' : 'rgba(0,255,255,0.1)';
+            toggleDynamicMenu(toolFab, paletteUI, '0,255,255');
         };
 
         const updateModeUI = () => {
@@ -161,6 +198,7 @@ export class UIManager {
             document.getElementById('mode-edit').style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
             document.getElementById('mode-edit').style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
             this.hideMenu(); paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
+            if(window.universeLogger) window.universeLogger.log("MODE_CHANGED", { mode: this.app.appMode });
         };
 
         document.getElementById('mode-run').onclick = () => { this.app.appMode = 'RUN'; updateModeUI(); };
@@ -172,6 +210,9 @@ export class UIManager {
             const selectedColor = document.getElementById('spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, selectedColor, 'star');
             this.app.autoSave(); 
+            if (window.universeLogger) {
+                window.universeLogger.log("STAR_CREATED", { color: selectedColor, coords: `X:${-Math.floor(this.app.camera.x)}, Y:${-Math.floor(this.app.camera.y)}` });
+            }
             paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
         };
 
@@ -180,9 +221,8 @@ export class UIManager {
         sysFab.innerText = '🎒';
         document.body.appendChild(sysFab);
 
-        // ★ ここに特異点圧縮（エクスポート＆インポート）のUIを追加！
         const hintUI = document.createElement('div');
-        hintUI.style.cssText = `${uiStyle} bottom:70px; right:15px; display:none; flex-direction:column; gap:8px; max-width: 150px;`;
+        hintUI.style.cssText = `${uiStyle} display:none; flex-direction:column; gap:8px; max-width: 150px;`;
         hintUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">データ管理</div>
             <button id="btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px 5px; cursor:pointer; border-radius:3px; font-weight:bold;">🎒 亜空間<br>(復元/消去)</button>
@@ -197,9 +237,7 @@ export class UIManager {
         const isSysDragged = this.makeDraggable(sysFab);
         sysFab.onclick = () => {
             if (isSysDragged()) return;
-            const isHidden = hintUI.style.display === 'none';
-            hintUI.style.display = isHidden ? 'flex' : 'none';
-            sysFab.style.background = isHidden ? 'rgba(255,102,153,0.4)' : 'rgba(255,102,153,0.1)';
+            toggleDynamicMenu(sysFab, hintUI, '255,102,153');
         };
 
         document.getElementById('btn-inventory').addEventListener('click', () => {
@@ -208,14 +246,13 @@ export class UIManager {
             this.showInventoryUI();
         });
 
-        // ★ エクスポートボタンの処理
         document.getElementById('btn-export').onclick = () => {
             if (confirm("現在の宇宙を暗号化された物理ファイル(.universe)としてダウンロードしますか？")) {
                 Singularity.export();
+                if(window.universeLogger) window.universeLogger.log("SINGULARITY_EXPORT", { status: "Success" });
             }
         };
 
-        // ★ インポートボタンの処理
         const fileInput = document.getElementById('import-file');
         document.getElementById('btn-import').onclick = () => fileInput.click();
         
@@ -224,14 +261,10 @@ export class UIManager {
             if (!file) return;
             if (confirm(`「${file.name}」を展開し、現在の宇宙を上書きしますか？\n※この操作は取り消せません。`)) {
                 try {
-                    // 1. ファイルを読み込み、現在のパスワードで復号できるかチェック
                     const encryptedData = await Singularity.importAndVerify(file);
-                    
-                    // 2. クラウド（Firebase）のデータも上書き保存
                     await saveEncryptedUniverse(encryptedData);
-                    
                     alert("特異点からの宇宙展開に成功しました！再起動します。");
-                    window.location.reload(); // 画面を再起動して新しい宇宙をロード！
+                    window.location.reload(); 
                 } catch (err) {
                     alert(err);
                 }
@@ -281,6 +314,7 @@ export class UIManager {
             document.getElementById(`preset-${index}`).onclick = () => {
                 node.name = app.name; node.url = app.url; node.iconUrl = app.icon;
                 this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
+                if(window.universeLogger) window.universeLogger.log("APP_LINKED", { target: node.name, app: app.name });
             };
         });
 
@@ -296,6 +330,7 @@ export class UIManager {
                     } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${newUrl}&sz=128`; }
                 }
                 this.app.autoSave(); 
+                if(window.universeLogger) window.universeLogger.log("CUSTOM_URL_LINKED", { target: node.name, url: newUrl });
             }
             this.hideMenu();
         };
@@ -306,6 +341,7 @@ export class UIManager {
                 if(confirm("この星のリンクとアイコンを解除しますか？")) {
                     node.url = ""; node.iconUrl = "";
                     this.app.autoSave(); this.appLibraryModal.style.display = 'none'; this.hideMenu();
+                    if(window.universeLogger) window.universeLogger.log("LINK_CLEARED", { target: node.name });
                 }
             };
         }
@@ -345,12 +381,16 @@ export class UIManager {
                 node.parentUniverse = this.app.currentUniverse;
                 this.app.autoSave();
                 this.inventoryModal.style.display = 'none';
+                
+                if(window.universeLogger) window.universeLogger.log("RESTORED_FROM_BLACKHOLE", { name: node.name });
             };
 
             document.getElementById(`inv-delete-${index}`).onclick = () => {
                 if(confirm(`「${node.name}」を完全に消去しますか？`)) {
                     this.app.blackHole.splice(index, 1);
                     this.app.autoSave();
+                    if(window.universeLogger) window.universeLogger.log("DATA_ERASED", { name: node.name });
+                    
                     if (this.app.blackHole.length > 0) this.showInventoryUI();
                     else this.inventoryModal.style.display = 'none';
                 }
@@ -402,6 +442,7 @@ export class UIManager {
             this.hideMenu(); this.app.isZoomingIn = true;
             this.app.targetUniverse = node.innerUniverse;
             this.app.camera.zoomTo(node.x, node.y);
+            if(window.universeLogger) window.universeLogger.log("DIVE_INTO_NODE", { target: node.name });
         };
 
         if (node.url) {
@@ -409,6 +450,7 @@ export class UIManager {
                 const targetWin = node.url.startsWith('http') ? '_blank' : '_self';
                 window.open(node.url, targetWin); 
                 this.hideMenu();
+                if(window.universeLogger) window.universeLogger.log("EXECUTE_LINK", { url: node.url });
             };
         }
 
@@ -442,6 +484,7 @@ export class UIManager {
 
         document.getElementById('menu-memorize').onclick = () => {
             this.app.memorizedNode = node; alert(`「${node.name}」を記憶しました。`); this.hideMenu();
+            if(window.universeLogger) window.universeLogger.log("COORDINATES_MEMORIZED", { target: node.name });
         };
 
         if (document.getElementById('menu-connect')) {
@@ -450,6 +493,7 @@ export class UIManager {
                 this.app.memorizedNode = null;
                 alert("次元を超えたワームホールが開通しました！");
                 this.app.autoSave(); this.hideMenu();
+                if(window.universeLogger) window.universeLogger.log("WORMHOLE_OPENED", { target: node.name });
             };
         }
 
@@ -457,6 +501,7 @@ export class UIManager {
             document.getElementById(`menu-warp-${index}`).onclick = () => {
                 const dest = (wh.source.id === node.id) ? wh.target : wh.source;
                 this.app.executeWarp(dest); this.hideMenu();
+                if(window.universeLogger) window.universeLogger.log("WORMHOLE_WARP", { destination: dest.name });
             };
         });
 
@@ -469,7 +514,13 @@ export class UIManager {
             this.app.currentUniverse.removeNode(node);
             this.app.wormholes = this.app.wormholes.filter(w => w.source.id !== node.id && w.target.id !== node.id);
             this.app.blackHole.push(node);
-            this.app.autoSave(); this.hideMenu();
+            this.app.autoSave(); 
+
+            if (window.universeLogger) {
+                window.universeLogger.log("NODE_SENT_TO_BLACKHOLE", { name: node.name, size: node.size });
+            }
+
+            this.hideMenu();
         };
     }
 
