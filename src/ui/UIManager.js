@@ -1,10 +1,14 @@
 // src/ui/UIManager.js
 import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
+// ★ 新しく作ったノートパッドをインポート
+import { NotePadUI } from './NotePadUI.js';
 
 export class UIManager {
     constructor(app) {
         this.app = app;
+        // ★ ノートパッドをシステムに組み込む
+        this.notePad = new NotePadUI(app);
         this.createUI();
     }
 
@@ -53,7 +57,6 @@ export class UIManager {
         const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
         const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
 
-        // ★ 新機能：ボタンの現在地にメニューを確実に出すスマート・ポップアップ計算機
         const toggleDynamicMenu = (fab, menu, baseColor) => {
             const isHidden = menu.style.display === 'none';
             if (!isHidden) {
@@ -62,26 +65,21 @@ export class UIManager {
                 return;
             }
 
-            // まず表示してサイズを測る
             menu.style.display = 'flex';
             fab.style.background = `rgba(${baseColor},0.4)`;
 
             const fabRect = fab.getBoundingClientRect();
             const menuRect = menu.getBoundingClientRect();
 
-            // 基本はボタンの真下に出す
             let top = fabRect.bottom + 10;
             let left = fabRect.left;
 
-            // もし画面下にはみ出るなら、ボタンの上に出す
             if (top + menuRect.height > window.innerHeight - 10) {
                 top = fabRect.top - menuRect.height - 10;
             }
-            // もし画面右にはみ出るなら、画面内に収める
             if (left + menuRect.width > window.innerWidth - 10) {
                 left = window.innerWidth - menuRect.width - 10;
             }
-            // 左・上にはみ出さないように最終ガード
             if (top < 10) top = 10;
             if (left < 10) left = 10;
 
@@ -408,6 +406,9 @@ export class UIManager {
         
         let menuHTML = `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
 
+        // ★ 新機能：記憶を刻むボタン
+        menuHTML += `<button id="menu-note" style="${btnStyle} color:#aaffff; background:rgba(170,255,255,0.1);"><span>📝 記憶を刻む (Note)</span></button>`;
+
         if (node.url) {
             const isAppScheme = !node.url.startsWith('http');
             const openText = isAppScheme ? '📱 アプリを起動' : '🌐 リンクを開く';
@@ -437,6 +438,12 @@ export class UIManager {
 
         menuHTML += `<button id="menu-delete" style="${btnStyle} color:#ff4444; border:1px solid #ff4444;"><span>🎒 亜空間へ送る</span></button>`;
         this.actionMenu.innerHTML = menuHTML;
+
+        // ★ イベントのバインド
+        document.getElementById('menu-note').onclick = () => {
+            this.hideMenu();
+            this.notePad.open(node); // ノートパッドを開く！
+        };
 
         document.getElementById('menu-dive').onclick = () => {
             this.hideMenu(); this.app.isZoomingIn = true;
