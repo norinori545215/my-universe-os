@@ -8,7 +8,6 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050510; font-family: sans-serif; }
         canvas { display: block; }
         
-        /* 共通のオーバースクリーン設定 */
         .fullscreen-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
@@ -23,7 +22,6 @@
             box-shadow: 0 10px 40px rgba(0, 255, 204, 0.2); width: 280px;
         }
         
-        /* マスターキー専用の厳重なスタイル */
         .vault-box {
             background: rgba(10, 0, 15, 0.9); border: 1px solid #ff00ff;
             padding: 40px; border-radius: 12px; text-align: center;
@@ -62,7 +60,6 @@
         .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #555; margin: 0 10px; }
         .toggle-link { color: #00ffcc; font-size: 12px; margin-top: 15px; cursor: pointer; text-decoration: underline; }
 
-        /* ドラッグ対応のシステムボタン */
         #btn-logout, #emergency-reset-btn {
             position: fixed; background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid #777; 
             padding: 8px 15px; border-radius: 6px; cursor: pointer; z-index: 9998; font-size: 12px; 
@@ -94,6 +91,10 @@
             <button id="btn-action" class="primary-btn">メールアドレスでログイン</button>
             <div id="toggle-auth" class="toggle-link">新規アカウント作成はこちら</div>
             <div id="login-error" style="color:#ff4444; font-size:11px; margin-top:15px; display:none;"></div>
+
+            <button id="btn-offline-boot" class="primary-btn" style="background:#111; color:#00ffcc; border:1px dashed #00ffcc; margin-top:25px;">
+                ✈️ 圏外モードで緊急起動 (Local Vault)
+            </button>
         </div>
     </div>
 
@@ -126,7 +127,6 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { deriveKey } from './src/security/CryptoCore.js';
-        
         import { loadEncryptedUniverse } from './src/db/CloudSync.js';
 
         const authScreen = document.getElementById('auth-screen');
@@ -166,6 +166,17 @@
 
         function showError(msg) { loginError.innerText = msg; loginError.style.display = 'block'; }
 
+        // ★ 圏外モード用のボタン動作：Firebase認証をスキップして直接マスターキー画面へ！
+        document.getElementById('btn-offline-boot').addEventListener('click', () => {
+            authScreen.style.opacity = '0';
+            setTimeout(() => {
+                authScreen.style.display = 'none';
+                masterKeyScreen.style.display = 'flex';
+                masterKeyScreen.style.opacity = '0';
+                setTimeout(() => masterKeyScreen.style.opacity = '1', 50);
+            }, 500);
+        });
+
         document.getElementById('toggle-auth').addEventListener('click', () => {
             isLoginMode = !isLoginMode;
             loginError.style.display = 'none';
@@ -181,7 +192,6 @@
             if (!result.success) { showError(result.error); document.getElementById('btn-google').disabled = false; }
         });
 
-        // ★ ここが探偵モード！エラーを隠さずに全て表示します
         btnAction.addEventListener('click', async () => {
             const email = document.getElementById('login-id').value;
             const password = document.getElementById('login-pw').value;
@@ -196,22 +206,11 @@
             } else {
                 const userName = document.getElementById('signup-name').value || "名無し";
                 if (password.length < 6) { showError("パスワードは6文字以上にしてください"); btnAction.disabled = false; btnAction.innerText = originalText; return; }
-                
-                try {
-                    const result = await createUniverseAccount(email, password, userName);
-                    if (result && result.success) {
-                        alert("確認メールを送信しました！受信トレイを確認し、リンクをクリックしてからログインしてください。");
-                        document.getElementById('toggle-auth').click(); 
-                    } else {
-                        // 🚨 Firebaseから返ってきた本物のエラーをそのまま表示
-                        const rawError = result ? JSON.stringify(result) : "詳細不明";
-                        showError("🚨真のエラー原因: " + rawError); 
-                    }
-                } catch (e) {
-                    // 🔥 プログラム自体が途中で落ちた場合
-                    showError("🔥致命的クラッシュ: " + e.message);
-                }
-                
+                const result = await createUniverseAccount(email, password, userName);
+                if (result.success) {
+                    alert("確認メールを送信しました！受信トレイを確認し、リンクをクリックしてからログインしてください。");
+                    document.getElementById('toggle-auth').click(); 
+                } else { showError(result.error); }
                 btnAction.disabled = false; btnAction.innerText = "メールアドレスでログイン";
             }
         });
@@ -248,7 +247,7 @@
 
             try {
                 window.universeCryptoKey = await deriveKey(masterPw);
-                statusText.innerText = "クラウドの暗号層と照合中...";
+                statusText.innerText = "クラウド/地下金庫と照合中...";
                 
                 const cloudData = await loadEncryptedUniverse();
                 
