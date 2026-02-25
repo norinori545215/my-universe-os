@@ -12,6 +12,12 @@ export class NotePadUI {
         this.container = document.createElement('div');
         this.container.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:320px; background:rgba(10,15,30,0.95); border:1px solid #00ffcc; border-radius:10px; z-index:500; flex-direction:column; padding:15px; box-shadow:0 10px 30px rgba(0,255,204,0.3); backdrop-filter:blur(5px); color:white; font-family:sans-serif;';
 
+        // ★ スマホでのすり抜け（ゴーストクリック）や、文字入力中の宇宙の移動を完全に防ぐシールド！
+        const stop = (e) => e.stopPropagation();
+        this.container.addEventListener('mousedown', stop);
+        this.container.addEventListener('touchstart', stop, {passive: false});
+        this.container.addEventListener('wheel', stop, {passive: false}); // スクロールしても宇宙がズームしないように
+
         // タイトル
         this.header = document.createElement('h3');
         this.header.style.cssText = 'margin:0 0 10px 0; color:#00ffcc; font-size:16px; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:5px;';
