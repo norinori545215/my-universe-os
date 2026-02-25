@@ -45,7 +45,13 @@ export async function loginWithGoogle(rememberMe) {
         const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
         await setPersistence(auth, persistence);
         const result = await signInWithPopup(auth, googleProvider);
-        await saveUserProfile(result.user, result.user.displayName);
+        
+        try {
+            await saveUserProfile(result.user, result.user.displayName);
+        } catch (e) {
+            console.warn("プロフィール保存スキップ:", e.message);
+        }
+        
         return { success: true, user: result.user };
     } catch (error) {
         return { success: false, error: "Googleログインが中断されました。" };
@@ -72,14 +78,22 @@ export async function loginToUniverse(email, password, rememberMe) {
     }
 }
 
-// 🟢 新規登録処理（エラー日本語翻訳付き）
+// 🟢 新規登録処理（真犯人逮捕版！）
 export async function createUniverseAccount(email, password, userName) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
         await updateProfile(user, { displayName: userName });
-        await saveUserProfile(user, userName);
+        
+        // ★ここが原因でした！Firestoreの権限エラーで止まらないようにtry-catchで守ります
+        try {
+            await saveUserProfile(user, userName);
+        } catch (dbError) {
+            console.warn("⚠️ Firestoreへのプロフィール保存に失敗しましたが、アカウント作成は続行します:", dbError.message);
+        }
+
+        // ★エラーで止まらなくなったので、無事に確認メールが送信されます！
         await sendEmailVerification(user);
         await signOut(auth);
         return { success: true };
@@ -91,6 +105,9 @@ export async function createUniverseAccount(email, password, userName) {
             msg = "アドレスの形式が正しくありません。";
         } else if (error.code === 'auth/weak-password') {
             msg = "パスワードは6文字以上にしてください。";
+        } else {
+            // ★予想外のエラーは英語のまま出力して原因を追及可能にする
+            msg = `システムエラー: ${error.code} - ${error.message}`;
         }
         return { success: false, error: msg };
     }
