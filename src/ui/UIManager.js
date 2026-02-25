@@ -51,6 +51,14 @@ export class UIManager {
         return () => hasMoved; 
     }
 
+    // ★ UIへのタッチを宇宙に貫通させないシールド関数
+    protectUI(el) {
+        el.addEventListener('mousedown', e => e.stopPropagation());
+        el.addEventListener('mouseup', e => e.stopPropagation());
+        el.addEventListener('touchstart', e => e.stopPropagation(), {passive: false});
+        el.addEventListener('touchend', e => e.stopPropagation(), {passive: false});
+    }
+
     createUI() {
         const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
         const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
@@ -91,6 +99,7 @@ export class UIManager {
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
         this.centerTextEl.title = "クリックで現在の階層の名前を変更";
+        this.protectUI(this.centerTextEl); // ガード
         this.centerTextEl.onclick = () => {
             const newName = prompt("現在の階層の名前を変更します:", this.app.currentUniverse.name);
             if (newName) {
@@ -105,6 +114,7 @@ export class UIManager {
 
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center; pointer-events:auto;';
+        this.protectUI(this.breadcrumbUI); // ガード
         document.body.appendChild(this.breadcrumbUI);
 
         const searchFab = document.createElement('div');
@@ -118,6 +128,7 @@ export class UIManager {
             <input type="text" id="radar-input" placeholder="星を探す..." style="background:rgba(0,0,0,0.5); color:white; border:1px solid #00ffcc; padding:5px; border-radius:4px; outline:none; font-size:12px;">
             <div id="radar-results" style="max-height:150px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:2px;"></div>
         `;
+        this.protectUI(searchUI); // ガード
         document.body.appendChild(searchUI);
 
         const isSearchDragged = this.makeDraggable(searchFab);
@@ -179,6 +190,7 @@ export class UIManager {
                 <button id="spawn-btn" style="flex:1; cursor:pointer; background:#114433; color:#00ffcc; border:1px solid #00ffcc; padding:8px; border-radius:5px; font-size:12px; font-weight:bold;">🌟 新しい星</button>
             </div>
         `;
+        this.protectUI(paletteUI); // ガード
         document.body.appendChild(paletteUI);
 
         const isToolDragged = this.makeDraggable(toolFab);
@@ -194,7 +206,7 @@ export class UIManager {
             document.getElementById('mode-edit').style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
             document.getElementById('mode-edit').style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
             this.hideMenu(); 
-            this.hideQuickNote(); // モード変更時にメモも閉じる
+            this.hideQuickNote(); 
             paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
             if(window.universeLogger) window.universeLogger.log("MODE_CHANGED", { mode: this.app.appMode });
         };
@@ -230,6 +242,7 @@ export class UIManager {
             <button id="btn-import" style="width:100%; background:#442211; color:#ffaa66; border:1px solid #ffaa66; padding:8px 5px; cursor:pointer; border-radius:3px; font-size:11px; font-weight:bold;">📂 宇宙を読込</button>
             <input type="file" id="import-file" accept=".universe" style="display:none;">
         `;
+        this.protectUI(hintUI); // ガード
         document.body.appendChild(hintUI);
 
         const isSysDragged = this.makeDraggable(sysFab);
@@ -273,16 +286,19 @@ export class UIManager {
 
         this.inventoryModal = document.createElement('div');
         this.inventoryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #ff6699; padding:20px; border-radius:10px; z-index:300; min-width:320px; color:white; box-shadow: 0 10px 30px rgba(255,102,153,0.3);';
+        this.protectUI(this.inventoryModal); // ガード
         document.body.appendChild(this.inventoryModal);
 
         // ★ フルメニュー（EDIT用）
         this.actionMenu = document.createElement('div');
         this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px; max-height: 80vh; overflow-y: auto;';
+        this.protectUI(this.actionMenu); // ガード！スマホでのクリック不具合を完全に防ぐ
         document.body.appendChild(this.actionMenu);
 
-        // ★ 新機能：長押しでメモだけを表示する専用パネル（RUN用）
+        // ★ クイックノート（RUN用）
         this.quickNotePanel = document.createElement('div');
         this.quickNotePanel.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(10,20,30,0.95); border-left:4px solid #00ffcc; padding:15px; border-radius:8px; z-index:200; box-shadow: 0 10px 30px rgba(0,255,204,0.3); min-width: 200px; max-width: 300px; color:white; font-family:sans-serif; backdrop-filter:blur(5px);';
+        this.protectUI(this.quickNotePanel); // ガード
         document.body.appendChild(this.quickNotePanel);
         
         // 画面のどこかをタッチ/クリックしたらQuickNoteを閉じる
@@ -299,6 +315,7 @@ export class UIManager {
 
         this.appLibraryModal = document.createElement('div');
         this.appLibraryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #00ffcc; padding:20px; border-radius:10px; z-index:400; min-width:300px; color:white; box-shadow: 0 10px 30px rgba(0,255,204,0.3);';
+        this.protectUI(this.appLibraryModal); // ガード
         document.body.appendChild(this.appLibraryModal);
     }
 
@@ -415,14 +432,9 @@ export class UIManager {
         document.getElementById('inv-close').onclick = () => { this.inventoryModal.style.display = 'none'; };
     }
 
-    // ★ 新機能：長押しされた時に「メモだけ」を美しく表示する専用UI
     showQuickNote(node, screenX, screenY) {
-        this.hideMenu(); // フルメニューは閉じる
-        
-        if (!node.note || node.note.trim() === "") {
-            // メモがない場合は何もしない（あるいは「メモなし」と表示してもよい）
-            return; 
-        }
+        this.hideMenu(); 
+        if (!node.note || node.note.trim() === "") return; 
 
         this.quickNotePanel.innerHTML = `
             <div style="font-size:16px; font-weight:bold; color:#00ffcc; margin-bottom:10px; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:5px;">
@@ -437,15 +449,12 @@ export class UIManager {
         this.quickNotePanel.style.top = `${screenY}px`;
         this.quickNotePanel.style.display = 'flex';
 
-        // 画面外にはみ出ないように補正
         setTimeout(() => {
             const rect = this.quickNotePanel.getBoundingClientRect();
-            let top = screenY;
-            let left = screenX;
+            let top = screenY; let left = screenX;
             if (top + rect.height > window.innerHeight - 10) top = window.innerHeight - rect.height - 10;
             if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
-            if (top < 10) top = 10;
-            if (left < 10) left = 10;
+            if (top < 10) top = 10; if (left < 10) left = 10;
             this.quickNotePanel.style.top = `${top}px`;
             this.quickNotePanel.style.left = `${left}px`;
         }, 0);
@@ -455,15 +464,14 @@ export class UIManager {
         this.quickNotePanel.style.display = 'none';
     }
 
-    // フルメニュー（EDITモード用）
     showMenu(node, screenX, screenY) {
-        this.hideQuickNote(); // クイックノートが出ていたら閉じる
+        this.hideQuickNote(); 
         
         this.actionMenu.style.left = `${screenX}px`;
         this.actionMenu.style.top = `${screenY}px`;
         this.actionMenu.style.display = 'flex';
         
-        const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;';
+        const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; width: 100%;';
         
         let menuHTML = '';
 
@@ -477,7 +485,7 @@ export class UIManager {
         }
 
         menuHTML += `
-            <div style="display:flex; gap:2px; margin-bottom:2px;">
+            <div style="display:flex; gap:2px; margin-bottom:2px; width:100%;">
                 <button id="menu-size-up" style="${btnStyle} flex:1; justify-content:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
                 <button id="menu-size-down" style="${btnStyle} flex:1; justify-content:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
             </div>
@@ -507,6 +515,7 @@ export class UIManager {
             }
         }, 0);
 
+        // 各ボタンのクリックイベント
         document.getElementById('menu-note').onclick = () => {
             this.hideMenu();
             this.notePad.open(node); 
