@@ -27,7 +27,7 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // 星を自然に掴むための計算用変数
+        // 星を自然に掴むための計算用変数（瞬間移動を防ぐ）
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -62,6 +62,14 @@ export class CanvasBuilder {
             },
             wasDragging: () => this.hasMovedNode,
             onMouseMove: (x, y) => this.handleMouseMove(x, y)
+        });
+
+        // ★ 接着剤バグを防止する安全装置：クリックだけでドラッグしなかった場合、確実に星を離す！
+        window.addEventListener('mouseup', () => {
+            if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
+        });
+        window.addEventListener('touchend', () => {
+            if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
         });
 
         this.resizeCanvas();
@@ -141,17 +149,14 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // ★ 修正1：EDITモードでは絶対に星を動かさない！
+    // ★ 修正：すべてのモードで星を自然に掴む（中心へのワープを防止）
     grabNode(x, y) {
-        // 編集モードの時は星を掴まず、背景のスライド移動を優先する
-        if (this.appMode === 'EDIT') return false; 
-
         const node = this.getNodeAt(x, y);
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
             
-            // 掴んだ位置のズレを記憶して瞬間移動を防ぐ
+            // 掴んだ場所の「ズレ」を記憶する
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
@@ -161,20 +166,21 @@ export class CanvasBuilder {
         return false;
     }
 
-    // ★ 修正2：スマホの指のブレを吸収して滑らかに動かす
+    // ★ 修正：少しの指のブレでは動かさない（タップとドラッグを完璧に区別）
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
         if (this.grabbedNode) {
+            // まだドラッグ判定されていない場合、一定距離動いたかチェック
             if (!this.hasMovedNode) {
                 const dx = x - this.grabStartX;
                 const dy = y - this.grabStartY;
-                // 10ピクセル以上動かさないと「ドラッグ」とみなさない（ブレ防止）
-                if (dx * dx + dy * dy > 100) { 
+                if (dx * dx + dy * dy > 64) { // 8ピクセル以上動かして初めて「ドラッグ」とみなす
                     this.hasMovedNode = true;
                 }
             }
 
+            // ドラッグが確定したら、ズレを維持したまま吸い付くように移動
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -215,6 +221,8 @@ export class CanvasBuilder {
     }
 
     handleNodeClick(worldX, worldY, event) {
+        this.grabbedNode = null; // ★ 念のためクリック時にも確実に離す
+
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
             this.ui.hideMenu(); 
             return;
@@ -287,9 +295,12 @@ export class CanvasBuilder {
         });
 
         this.currentUniverse.nodes.forEach(node => {
-            // ★ 修正3：掴んでいる時も「フワフワ」を止めないことで瞬間移動を防ぐ！
-            node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
-            node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
+            if (node !== this.grabbedNode) {
+                node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
+                node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
+            } else {
+                node.x = node.baseX; node.y = node.baseY;
+            }
         });
 
         this.ctx.lineWidth = 3;
