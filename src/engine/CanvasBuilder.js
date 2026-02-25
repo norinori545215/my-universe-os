@@ -27,7 +27,7 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // ★ 追加：星を自然に掴むための「ズレ」と「遊び」の計算用変数
+        // 星を自然に掴むための計算用変数
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -74,16 +74,13 @@ export class CanvasBuilder {
 
     async init() {
         console.log("OS: データのロードを開始します...");
-        
         const savedData = await DataManager.load();
         
         let userName = "My Universe";
         try {
             const authModule = await import('../security/Auth.js');
             const user = authModule.auth.currentUser;
-            if (user && user.displayName) {
-                userName = `${user.displayName}の宇宙`;
-            }
+            if (user && user.displayName) userName = `${user.displayName}の宇宙`;
         } catch (e) {
             console.error("Authモジュールの読み込みに失敗しました:", e);
         }
@@ -102,7 +99,6 @@ export class CanvasBuilder {
         }
         
         this.ui.updateBreadcrumbs();
-        console.log("OS: ロード完了。事象の地平面、展開終了。");
     }
 
     async autoSave() {
@@ -116,7 +112,6 @@ export class CanvasBuilder {
         await DataManager.save(root, this.wormholes, this.blackHole);
 
         if (this.saveTimeout) clearTimeout(this.saveTimeout);
-        
         this.saveTimeout = setTimeout(async () => {
             try {
                 const rawData = sessionStorage.getItem('my_universe_save_data');
@@ -125,7 +120,7 @@ export class CanvasBuilder {
                     await saveEncryptedUniverse(dataObj);
                 }
             } catch (e) {
-                console.error("OS: クラウド同期エラー（一時的なオフライン）", e);
+                console.error("OS: クラウド同期エラー", e);
             }
         }, 3000); 
     }
@@ -146,41 +141,40 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // ★ 修正：星の「掴んだ位置」を正確に記憶する！
+    // ★ 修正1：EDITモードでは絶対に星を動かさない！
     grabNode(x, y) {
+        // 編集モードの時は星を掴まず、背景のスライド移動を優先する
+        if (this.appMode === 'EDIT') return false; 
+
         const node = this.getNodeAt(x, y);
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
             
-            // 星の中心からどれだけズレた場所を掴んだかを計算して保存
+            // 掴んだ位置のズレを記憶して瞬間移動を防ぐ
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
-            
-            // ドラッグ開始判定のための初期位置を保存
             this.grabStartX = x;
             this.grabStartY = y;
-            
             return true; 
         }
         return false;
     }
 
-    // ★ 修正：遊び（しきい値）とオフセット計算で滑らかに動かす！
+    // ★ 修正2：スマホの指のブレを吸収して滑らかに動かす
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
         if (this.grabbedNode) {
-            // まだ「動いた」と判定されていない場合、3ピクセル以上の移動があるかチェック
             if (!this.hasMovedNode) {
                 const dx = x - this.grabStartX;
                 const dy = y - this.grabStartY;
-                if (dx * dx + dy * dy > 9) { // 3ピクセル以上動いたらドラッグ開始！
+                // 10ピクセル以上動かさないと「ドラッグ」とみなさない（ブレ防止）
+                if (dx * dx + dy * dy > 100) { 
                     this.hasMovedNode = true;
                 }
             }
 
-            // ドラッグが開始されたら、ズレ（オフセット）を維持したまま星を動かす
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -293,12 +287,9 @@ export class CanvasBuilder {
         });
 
         this.currentUniverse.nodes.forEach(node => {
-            if (node !== this.grabbedNode) {
-                node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
-                node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
-            } else {
-                node.x = node.baseX; node.y = node.baseY;
-            }
+            // ★ 修正3：掴んでいる時も「フワフワ」を止めないことで瞬間移動を防ぐ！
+            node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
+            node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
         });
 
         this.ctx.lineWidth = 3;
