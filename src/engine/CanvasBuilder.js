@@ -27,7 +27,7 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // 星を自然に掴むための計算用変数
+        // 星を自然に掴むための計算用変数（ピクつき防止）
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -55,51 +55,17 @@ export class CanvasBuilder {
             onLinkEnd: (x, y) => this.endLink(x, y),
             isLinking: () => this.isLinking,
             isLinkModeActive: () => this.appMode === 'LINK',
-            
-            // ★星を掴んだ時の処理（長押しタイマーのスタート）
-            onNodeGrabStart: (x, y, e) => {
-                const grabbed = this.grabNode(x, y);
-                if (grabbed && this.appMode === 'RUN' && this.grabbedNode) {
-                    this.isLongPressed = false;
-                    
-                    let clientX = e.clientX || 0; let clientY = e.clientY || 0;
-                    if (e.changedTouches && e.changedTouches.length > 0) {
-                        clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
-                    } else if (e.touches && e.touches.length > 0) {
-                        clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
-                    }
-                    
-                    // 500ミリ秒後に長押し判定
-                    this.pressTimer = setTimeout(() => {
-                        if (!this.hasMovedNode) {
-                            this.isLongPressed = true;
-                            if (navigator.vibrate) navigator.vibrate(50);
-                            
-                            // メモがあればUIを表示（UI側のshowQuickNoteは後で実装します。今はshowMenuで代用）
-                            if (this.grabbedNode.note && this.grabbedNode.note.trim() !== "") {
-                                this.ui.showMenu(this.grabbedNode, clientX, clientY);
-                            } else {
-                                this.ui.showMenu(this.grabbedNode, clientX, clientY);
-                            }
-                        }
-                    }, 500); 
-                }
-                return grabbed;
-            },
-            
-            // 離した時の処理（タイマーのキャンセル）
+            // ★クラッシュしないようにシンプルに呼ぶ
+            onNodeGrabStart: (x, y) => this.grabNode(x, y),
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
                 this.grabbedNode = null; 
                 if (this.hasMovedNode) this.autoSave(); 
             },
             wasDragging: () => this.hasMovedNode,
-            
-            // ★ ここで「星を動かす処理」を呼び出します
             onMouseMove: (x, y) => this.handleMouseMove(x, y)
         });
 
-        // 接着剤バグを防止する安全装置
         window.addEventListener('mouseup', () => {
             if (this.pressTimer) clearTimeout(this.pressTimer);
             if (this.grabbedNode && !this.hasMovedNode) this.grabbedNode = null;
@@ -186,38 +152,61 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
+    // 【総て2】：どのモードでも星を掴めるようにする
     grabNode(x, y) {
-        if (this.appMode === 'EDIT') return false; 
         const node = this.getNodeAt(x, y);
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
             
+            // ピクつきを防ぐオフセット記憶
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
             this.grabStartY = y;
+
+            // 長押しタイマーのリセットと開始
+            this.isLongPressed = false;
+            if (this.pressTimer) clearTimeout(this.pressTimer);
+
+            // 【実行中は3】：RUNモードの時だけ長押しを判定する
+            if (this.appMode === 'RUN') {
+                this.pressTimer = setTimeout(() => {
+                    if (!this.hasMovedNode && this.grabbedNode) {
+                        this.isLongPressed = true;
+                        if (navigator.vibrate) navigator.vibrate(50); // ブルッと震える
+                        
+                        // 画面中央付近にメニュー（メモ）を開くための座標計算
+                        const screenX = (x + this.camera.x) * this.camera.scale + this.canvas.width / 2;
+                        const screenY = (y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
+                        
+                        this.ui.showMenu(this.grabbedNode, screenX, screenY);
+                    }
+                }, 500); // 0.5秒で長押し成功
+            }
+
             return true; 
         }
         return false;
     }
 
-    // ★ 修正：消えていた「星を動かす処理」を完全復活させました！！
+    // 【総て2】：ドラッグで星を動かす処理
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
         if (this.grabbedNode) {
+            // 一定距離動くまで「ドラッグ」とみなさない（タップとの区別）
             if (!this.hasMovedNode) {
                 const dx = x - this.grabStartX;
                 const dy = y - this.grabStartY;
-                if (dx * dx + dy * dy > 64) { 
+                if (dx * dx + dy * dy > 36) { // 6px以上動かしたらドラッグ開始
                     this.hasMovedNode = true;
-                    // 動かしたら長押し判定はキャンセル！
+                    // 動かしたら長押し判定はキャンセル
                     if (this.pressTimer) clearTimeout(this.pressTimer);
                 }
             }
 
-            // ★ ここが消えていたせいで動かなくなっていました！
+            // ドラッグ確定時、ズレを維持して滑らかに移動
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -256,9 +245,12 @@ export class CanvasBuilder {
     }
 
     handleNodeClick(worldX, worldY, event) {
-        // 長押し判定されていたら、クリック処理（潜る・リンク移動）は無効にする
+        if (this.pressTimer) clearTimeout(this.pressTimer);
+
+        // ★長押しでメニューを出した直後は、このクリック処理を無視する
         if (this.isLongPressed) {
             this.isLongPressed = false;
+            this.grabbedNode = null;
             return;
         }
 
@@ -273,6 +265,7 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
+                // EDITモード：タップで設定メニューを開く
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
                     clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
@@ -285,7 +278,7 @@ export class CanvasBuilder {
                 this.ui.showMenu(target, posX, posY);
             } 
             else if (this.appMode === 'RUN') {
-                // 軽くタップした時は、ここに直行してリンクに飛ぶか、潜る
+                // 【実行中は1】：軽くタップした時は、潜るかURLに飛ぶ
                 if (target.url) {
                     const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                     window.open(target.url, targetWin);
