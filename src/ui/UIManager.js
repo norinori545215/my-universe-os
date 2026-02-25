@@ -5,7 +5,6 @@ export class UIManager {
         this.createUI();
     }
 
-    // ★ 魔法のドラッグ機能（画面外に出ないようにガード付き！）
     makeDraggable(el) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
 
@@ -27,7 +26,6 @@ export class UIManager {
             
             let nx = initX + dx; let ny = initY + dy;
             
-            // 画面外に飛び出さないためのガード計算
             nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
             ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
             
@@ -45,14 +43,13 @@ export class UIManager {
         window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
 
-        return () => hasMoved; // 動かしたかどうかの判定を返す
+        return () => hasMoved; 
     }
 
     createUI() {
         const uiStyle = 'position:fixed; z-index:100; font-family:sans-serif; color:white; background:rgba(20,20,30,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:10px; backdrop-filter:blur(5px);';
         const fabStyle = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none;';
 
-        // ★ 消えていた「中央のテキスト」をここで確実に生成！
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
@@ -67,12 +64,10 @@ export class UIManager {
         };
         document.body.appendChild(this.centerTextEl);
 
-        // ★ 消えていた「パンくずリスト（戻るボタン）」も生成！
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'position:fixed; top:15px; left:15px; z-index:100; display:flex; gap:5px; flex-wrap:wrap; font-family:sans-serif; color:white; align-items:center; pointer-events:auto;';
         document.body.appendChild(this.breadcrumbUI);
 
-        // 🔍 検索ボタン（ドラッグ可能）
         const searchFab = document.createElement('div');
         searchFab.style.cssText = `${fabStyle} top:15px; right:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc;`;
         searchFab.innerText = '🔍';
@@ -88,7 +83,7 @@ export class UIManager {
 
         const isSearchDragged = this.makeDraggable(searchFab);
         searchFab.onclick = () => {
-            if (isSearchDragged()) return; // ドラッグした時はメニューを開かない
+            if (isSearchDragged()) return; 
             const isHidden = searchUI.style.display === 'none';
             searchUI.style.display = isHidden ? 'flex' : 'none';
             searchFab.style.background = isHidden ? 'rgba(0,255,204,0.4)' : 'rgba(0,255,204,0.1)';
@@ -125,7 +120,6 @@ export class UIManager {
             searchUniverse(root);
         });
 
-        // 🛠️ ツールボタン（ドラッグ可能）
         const toolFab = document.createElement('div');
         toolFab.style.cssText = `${fabStyle} bottom:15px; left:15px; background:rgba(0,255,255,0.1); border:1px solid #00ffff; color:#00ffff;`;
         toolFab.innerText = '🛠️';
@@ -133,6 +127,7 @@ export class UIManager {
 
         const paletteUI = document.createElement('div');
         paletteUI.style.cssText = `${uiStyle} bottom:70px; left:15px; display:none; flex-direction:column; gap:8px; max-width: 170px;`;
+        // ★ 天才的なアイデアを採用！カテゴリを消し、色を選んで作るだけの美しいUIに！
         paletteUI.innerHTML = `
             <div style="font-size:11px; color:#aaa; text-align:center;">🔄 操作モード</div>
             <div style="display:flex; gap:3px;">
@@ -141,12 +136,10 @@ export class UIManager {
                 <button id="mode-edit" style="flex:1; padding:8px 2px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; cursor:pointer; font-size:11px;">⚙️ 編集</button>
             </div>
             <hr style="border-color:rgba(255,255,255,0.2); margin:2px 0;">
-            <div style="font-size:11px; color:#aaa; text-align:center;">＋ 創造する</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-                <button id="spawn-galaxy" style="cursor:pointer; background:#331144; color:#cc99ff; border:1px solid #cc99ff; padding:6px; border-radius:5px; font-size:11px;">🌌 銀河</button>
-                <button id="spawn-star" style="cursor:pointer; background:#443300; color:#ffcc00; border:1px solid #ffcc00; padding:6px; border-radius:5px; font-size:11px;">⭐ 星</button>
-                <button id="spawn-life" style="cursor:pointer; background:#441122; color:#ff6699; border:1px solid #ff6699; padding:6px; border-radius:5px; font-size:11px;">🧬 生命</button>
-                <button id="spawn-microbe" style="cursor:pointer; background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:6px; border-radius:5px; font-size:11px;">🦠 微小</button>
+            <div style="font-size:11px; color:#aaa; text-align:center; margin-bottom:2px;">＋ 創造する</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:5px; background:rgba(0,0,0,0.5); padding:5px; border-radius:5px;">
+                <input type="color" id="spawn-color" value="#00ffcc" style="width:30px; height:30px; border:none; border-radius:5px; cursor:pointer; background:transparent; padding:0;">
+                <button id="spawn-btn" style="flex:1; cursor:pointer; background:#114433; color:#00ffcc; border:1px solid #00ffcc; padding:8px; border-radius:5px; font-size:12px; font-weight:bold;">🌟 新しい星</button>
             </div>
         `;
         document.body.appendChild(paletteUI);
@@ -172,18 +165,15 @@ export class UIManager {
         document.getElementById('mode-link').onclick = () => { this.app.appMode = 'LINK'; updateModeUI(); };
         document.getElementById('mode-edit').onclick = () => { this.app.appMode = 'EDIT'; updateModeUI(); };
 
-        const spawnCenter = (name, color, category) => {
+        // ★ 色を選んで作成するシンプルなロジック
+        document.getElementById('spawn-btn').onclick = () => {
             if (this.app.isZoomingIn) return;
-            this.app.currentUniverse.addNode(name, -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, color, category);
+            const selectedColor = document.getElementById('spawn-color').value;
+            this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, Math.random() * 10 + 15, selectedColor, 'star');
             this.app.autoSave(); 
             paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
         };
-        document.getElementById('spawn-galaxy').onclick = () => spawnCenter('新規[銀河]', '#9966ff', 'galaxy');
-        document.getElementById('spawn-star').onclick = () => spawnCenter('新規[星]', '#ffcc00', 'star');
-        document.getElementById('spawn-life').onclick = () => spawnCenter('新規[生命]', '#ff6699', 'life');
-        document.getElementById('spawn-microbe').onclick = () => spawnCenter('新規[微生物]', '#00ffcc', 'microbe');
 
-        // 🎒 亜空間ボタン（ドラッグ可能）
         const sysFab = document.createElement('div');
         sysFab.style.cssText = `${fabStyle} bottom:15px; right:15px; background:rgba(255,102,153,0.1); border:1px solid #ff6699; color:#ff6699;`;
         sysFab.innerText = '🎒';
@@ -345,7 +335,6 @@ export class UIManager {
             menuHTML += `<button id="menu-open-url" style="${btnStyle} background:rgba(0,255,204,0.2); color:#00ffcc; border:1px solid #00ffcc;"><span>${openText}</span></button>`;
         }
 
-        // ★ ここに「星のサイズ変更」ボタンを追加！
         menuHTML += `
             <div style="display:flex; gap:2px; margin-bottom:2px;">
                 <button id="menu-size-up" style="${btnStyle} flex:1; justify-content:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
@@ -384,19 +373,16 @@ export class UIManager {
             };
         }
 
-        // ★ サイズ変更ボタンの動作設定
         document.getElementById('menu-size-up').onclick = () => {
             node.size += 5;
-            if (node.size > 150) node.size = 150; // 最大サイズ制限
+            if (node.size > 150) node.size = 150; 
             this.app.autoSave();
-            // 連続で押せるようにメニューは閉じない
         };
 
         document.getElementById('menu-size-down').onclick = () => {
             node.size -= 5;
-            if (node.size < 5) node.size = 5; // 最小サイズ制限
+            if (node.size < 5) node.size = 5; 
             this.app.autoSave();
-            // 連続で押せるようにメニューは閉じない
         };
 
         document.getElementById('menu-rename').onclick = () => {
