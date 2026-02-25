@@ -1,127 +1,153 @@
 // src/engine/CameraControl.js
+
 export class CameraControl {
     constructor(canvas, callbacks) {
-        this.x = 0; this.y = 0; this.scale = 1;
-        this.targetX = 0; this.targetY = 0; this.targetScale = 1;
+        this.canvas = canvas;
+        this.cb = callbacks;
+        this.x = 0; this.y = 0;
+        this.scale = 1;
+        this.targetX = 0; this.targetY = 0;
+        this.targetScale = 1;
+        this.isDragging = false;
+        this.lastX = 0; this.lastY = 0;
+        this.hasMoved = false;
 
-        this.isCameraDragging = false;
-        this.lastMouseX = 0; this.lastMouseY = 0;
+        // スマホのピンチズーム用変数
+        this.initialPinchDist = null;
+        this.initialPinchScale = 1;
 
-        // ★ タップ判定用の変数（指のブレ許容用）
-        this.touchStartX = 0; this.touchStartY = 0;
-
-        const getPointer = (e) => e.touches ? e.touches[0] : e;
-
-        // --- 押した時 ---
-        const handleStart = (e) => {
-            if (e.type === 'mousedown' && e.button !== 0) return;
-            const ptr = getPointer(e);
-            
-            // ★ 押し始めた瞬間の「座標」をしっかり記憶
-            this.touchStartX = ptr.clientX;
-            this.touchStartY = ptr.clientY;
-
-            const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
-
-            if (callbacks.isLinkModeActive() || e.shiftKey) {
-                callbacks.onLinkStart(worldX, worldY);
-            } else {
-                const isNodeGrabbed = callbacks.onNodeGrabStart(worldX, worldY);
-                if (!isNodeGrabbed) {
-                    this.isCameraDragging = true;
-                    this.lastMouseX = ptr.clientX;
-                    this.lastMouseY = ptr.clientY;
-                }
-            }
-        };
-
-        // --- 離した時 ---
-        const handleEnd = (e) => {
-            this.isCameraDragging = false;
-            const ptr = e.changedTouches ? e.changedTouches[0] : e;
-            const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
-            
-            // ★ 押した時から何ピクセル動いたか計算
-            const moveDist = Math.hypot(ptr.clientX - this.touchStartX, ptr.clientY - this.touchStartY);
-
-            if (callbacks.isLinking()) {
-                callbacks.onLinkEnd(worldX, worldY);
-            }
-            callbacks.onNodeGrabEnd();
-
-            // ★【特効薬】スマホで指を離した時、動いた距離が10px未満なら「タップ」と判定して強制的にメニューを開く！
-            if (e.type === 'touchend' && moveDist < 10) {
-                if (!callbacks.isLinkModeActive() && !e.shiftKey) {
-                    callbacks.onClick(worldX, worldY, e);
-                }
-            }
-        };
-
-        // --- 動かした時 ---
-        const handleMove = (e) => {
-            const ptr = getPointer(e);
-            const { worldX, worldY } = this.getWorldCoords(canvas, ptr);
-            
-            // ★ 指のブレ（10px未満）は「移動」とみなさない！
-            const moveDist = Math.hypot(ptr.clientX - this.touchStartX, ptr.clientY - this.touchStartY);
-            
-            if (this.isCameraDragging) {
-                const dx = (ptr.clientX - this.lastMouseX) / this.scale;
-                const dy = (ptr.clientY - this.lastMouseY) / this.scale;
-                this.targetX += dx; this.targetY += dy;
-                this.lastMouseX = ptr.clientX; this.lastMouseY = ptr.clientY;
-            } else if (moveDist >= 10) { 
-                // 10px以上動いた時だけノードのドラッグ処理をする
-                callbacks.onMouseMove(worldX, worldY);
-            }
-        };
-
-        canvas.addEventListener('mousedown', handleStart);
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e); }, { passive: false });
-
-        window.addEventListener('mouseup', handleEnd);
-        canvas.addEventListener('touchend', handleEnd);
-
-        window.addEventListener('mousemove', handleMove);
-        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, { passive: false });
-
-        // PC向けのクリック処理
-        canvas.addEventListener('click', (e) => {
-            if (callbacks.isLinkModeActive() || e.shiftKey || callbacks.wasDragging()) return;
-            const moveDist = Math.hypot(e.clientX - this.touchStartX, e.clientY - this.touchStartY);
-            // PCでも10px未満のブレならクリックとみなす
-            if (moveDist < 10) {
-                const { worldX, worldY } = this.getWorldCoords(canvas, e);
-                callbacks.onClick(worldX, worldY, e);
-            }
-        });
-
-        canvas.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            callbacks.onRightClick();
-        });
+        this.initEvents();
     }
 
-    getWorldCoords(canvas, ptr) {
-        const rect = canvas.getBoundingClientRect();
+    getWorldPos(clientX, clientY) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = clientX - rect.left - this.canvas.width / 2;
+        const y = clientY - rect.top - this.canvas.height / 2;
         return {
-            worldX: (ptr.clientX - rect.left - canvas.width / 2) / this.scale - this.x,
-            worldY: (ptr.clientY - rect.top - canvas.height / 2) / this.scale - this.y
+            x: (x / this.scale) - this.x,
+            y: (y / this.scale) - this.y
         };
     }
 
-    update() {
-        this.x += (this.targetX - this.x) * 0.15;
-        this.y += (this.targetY - this.y) * 0.15;
-        this.scale += (this.targetScale - this.scale) * 0.1;
+    initEvents() {
+        // ★PC：マウスホイールでのズーム機能
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+            this.targetScale *= zoomFactor;
+            this.targetScale = Math.max(0.1, Math.min(this.targetScale, 10)); // 最小0.1倍、最大10倍
+        }, { passive: false });
+
+        const down = (clientX, clientY, e) => {
+            const wPos = this.getWorldPos(clientX, clientY);
+            this.isDragging = true;
+            this.hasMoved = false;
+            this.lastX = clientX; this.lastY = clientY;
+            
+            if (this.cb.isLinkModeActive()) {
+                this.cb.onLinkStart(wPos.x, wPos.y);
+            } else if (!this.cb.onNodeGrabStart(wPos.x, wPos.y)) {
+                // 背景をつかんだ状態（パンニング開始）
+            }
+        };
+
+        const move = (clientX, clientY) => {
+            const wPos = this.getWorldPos(clientX, clientY);
+            this.cb.onMouseMove(wPos.x, wPos.y);
+
+            if (!this.isDragging) return;
+
+            const dx = clientX - this.lastX;
+            const dy = clientY - this.lastY;
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) this.hasMoved = true;
+
+            if (!this.cb.isLinking() && !this.cb.wasDragging()) {
+                // ★画面の移動（カメラのパン）
+                this.targetX += dx / this.scale;
+                this.targetY += dy / this.scale;
+                this.x = this.targetX; 
+                this.y = this.targetY;
+            }
+
+            this.lastX = clientX; this.lastY = clientY;
+        };
+
+        const up = (clientX, clientY, e) => {
+            const wPos = this.getWorldPos(clientX, clientY);
+            if (this.cb.isLinking()) {
+                this.cb.onLinkEnd(wPos.x, wPos.y);
+            } else if (this.cb.wasDragging()) {
+                this.cb.onNodeGrabEnd();
+            } else if (!this.hasMoved) {
+                if (e && e.button === 2) {
+                    this.cb.onRightClick();
+                } else {
+                    this.cb.onClick(wPos.x, wPos.y, e);
+                }
+            }
+            this.isDragging = false;
+            this.initialPinchDist = null;
+        };
+
+        this.canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY, e));
+        window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+        window.addEventListener('mouseup', e => up(e.clientX, e.clientY, e));
+        this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // ★スマホ：指2本でのピンチズーム対応
+        this.canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 2) {
+                this.initialPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                this.initialPinchScale = this.targetScale;
+            } else if (e.touches.length === 1) {
+                down(e.touches[0].clientX, e.touches[0].clientY, e);
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 2 && this.initialPinchDist) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const scale = dist / this.initialPinchDist;
+                this.targetScale = Math.max(0.1, Math.min(this.initialPinchScale * scale, 10)); // ズーム限界
+            } else if (e.touches.length === 1) {
+                move(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', e => {
+            if (e.changedTouches.length === 1 && !this.initialPinchDist) {
+                up(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e);
+            }
+            if (e.touches.length < 2) {
+                this.initialPinchDist = null;
+            }
+        });
     }
 
     zoomTo(x, y) {
-        this.targetX = -x; this.targetY = -y; this.targetScale = 40;
+        this.targetX = -x;
+        this.targetY = -y;
+        this.targetScale = 40; // 星の内部へダイブする時の倍率
     }
 
     reset() {
-        this.x = 0; this.y = 0; this.scale = 1;
-        this.targetX = 0; this.targetY = 0; this.targetScale = 1;
+        this.targetX = 0; this.targetY = 0;
+        this.targetScale = 1;
+        this.x = 0; this.y = 0;
+        this.scale = 1;
+    }
+
+    update() {
+        // スムーズなカメラ移動（イージング）
+        this.x += (this.targetX - this.x) * 0.1;
+        this.y += (this.targetY - this.y) * 0.1;
+        this.scale += (this.targetScale - this.scale) * 0.1;
     }
 }

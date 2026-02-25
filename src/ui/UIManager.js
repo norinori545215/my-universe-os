@@ -345,7 +345,12 @@ export class UIManager {
             menuHTML += `<button id="menu-open-url" style="${btnStyle} background:rgba(0,255,204,0.2); color:#00ffcc; border:1px solid #00ffcc;"><span>${openText}</span></button>`;
         }
 
+        // ★ ここに「星のサイズ変更」ボタンを追加！
         menuHTML += `
+            <div style="display:flex; gap:2px; margin-bottom:2px;">
+                <button id="menu-size-up" style="${btnStyle} flex:1; justify-content:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                <button id="menu-size-down" style="${btnStyle} flex:1; justify-content:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
+            </div>
             <button id="menu-rename" style="${btnStyle} color:#ccff66;"><span>✏ 名前変更</span></button>
             <button id="menu-set-app" style="${btnStyle} color:#aaaaff; background:rgba(170,170,255,0.1);"><span>📱 アプリ/URLを登録</span></button>
             <button id="menu-set-icon" style="${btnStyle} color:#ffaa00;"><span>🖼 アイコン手動設定</span></button>
@@ -378,6 +383,21 @@ export class UIManager {
                 this.hideMenu();
             };
         }
+
+        // ★ サイズ変更ボタンの動作設定
+        document.getElementById('menu-size-up').onclick = () => {
+            node.size += 5;
+            if (node.size > 150) node.size = 150; // 最大サイズ制限
+            this.app.autoSave();
+            // 連続で押せるようにメニューは閉じない
+        };
+
+        document.getElementById('menu-size-down').onclick = () => {
+            node.size -= 5;
+            if (node.size < 5) node.size = 5; // 最小サイズ制限
+            this.app.autoSave();
+            // 連続で押せるようにメニューは閉じない
+        };
 
         document.getElementById('menu-rename').onclick = () => {
             const newName = prompt("新しい名前:", node.name);
