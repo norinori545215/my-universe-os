@@ -2,8 +2,6 @@
 import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
-
-// ★ クラウド暗号化保存モジュールをインポート
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 
 export class CanvasBuilder {
@@ -29,7 +27,12 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // ★ 追加：クラウド保存を遅延させるためのタイマー
+        // ★ 追加：星を自然に掴むための「ズレ」と「遊び」の計算用変数
+        this.grabOffsetX = 0;
+        this.grabOffsetY = 0;
+        this.grabStartX = 0;
+        this.grabStartY = 0;
+
         this.saveTimeout = null;
 
         this.appPresets = [
@@ -72,7 +75,6 @@ export class CanvasBuilder {
     async init() {
         console.log("OS: データのロードを開始します...");
         
-        // ★ 門番(index.html)が既にクラウドから解読してくれているので、ローカルから読み込むだけ！
         const savedData = await DataManager.load();
         
         let userName = "My Universe";
@@ -111,15 +113,12 @@ export class CanvasBuilder {
             histIndex--;
         }
         
-        // 1. ローカルへの保存（爆速。153bpmを邪魔しない）
         await DataManager.save(root, this.wormholes, this.blackHole);
 
-        // 2. クラウドへの暗号化保存（3秒間の操作停止を待ってから裏側で実行）
         if (this.saveTimeout) clearTimeout(this.saveTimeout);
         
         this.saveTimeout = setTimeout(async () => {
             try {
-                // ★ localStorage から sessionStorage に変更！
                 const rawData = sessionStorage.getItem('my_universe_save_data');
                 if (rawData) {
                     const dataObj = JSON.parse(rawData);
@@ -128,7 +127,7 @@ export class CanvasBuilder {
             } catch (e) {
                 console.error("OS: クラウド同期エラー（一時的なオフライン）", e);
             }
-        }, 3000); // 3000ミリ秒（3秒）
+        }, 3000); 
     }
 
     executeWarp(targetNode) {
@@ -147,17 +146,45 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
+    // ★ 修正：星の「掴んだ位置」を正確に記憶する！
     grabNode(x, y) {
         const node = this.getNodeAt(x, y);
-        if (node) { this.grabbedNode = node; this.hasMovedNode = false; return true; }
+        if (node) { 
+            this.grabbedNode = node; 
+            this.hasMovedNode = false; 
+            
+            // 星の中心からどれだけズレた場所を掴んだかを計算して保存
+            this.grabOffsetX = node.baseX - x;
+            this.grabOffsetY = node.baseY - y;
+            
+            // ドラッグ開始判定のための初期位置を保存
+            this.grabStartX = x;
+            this.grabStartY = y;
+            
+            return true; 
+        }
         return false;
     }
 
+    // ★ 修正：遊び（しきい値）とオフセット計算で滑らかに動かす！
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
+        
         if (this.grabbedNode) {
-            this.grabbedNode.baseX = x; this.grabbedNode.baseY = y;
-            this.hasMovedNode = true;
+            // まだ「動いた」と判定されていない場合、3ピクセル以上の移動があるかチェック
+            if (!this.hasMovedNode) {
+                const dx = x - this.grabStartX;
+                const dy = y - this.grabStartY;
+                if (dx * dx + dy * dy > 9) { // 3ピクセル以上動いたらドラッグ開始！
+                    this.hasMovedNode = true;
+                }
+            }
+
+            // ドラッグが開始されたら、ズレ（オフセット）を維持したまま星を動かす
+            if (this.hasMovedNode) {
+                this.grabbedNode.baseX = x + this.grabOffsetX;
+                this.grabbedNode.baseY = y + this.grabOffsetY;
+            }
         }
     }
 
@@ -172,6 +199,7 @@ export class CanvasBuilder {
             if (targetNode && targetNode !== this.linkSourceNode) {
                 this.currentUniverse.addLink(this.linkSourceNode, targetNode);
                 this.autoSave(); 
+                if(window.universeLogger) window.universeLogger.log("NODE_LINKED", { source: this.linkSourceNode.name, target: targetNode.name });
             }
         }
         this.isLinking = false; this.linkSourceNode = null;
@@ -189,6 +217,7 @@ export class CanvasBuilder {
         this.currentUniverse = this.universeHistory.pop();
         this.camera.reset();
         this.ui.updateBreadcrumbs();
+        if(window.universeLogger) window.universeLogger.log("ASCEND_UNIVERSE", { destination: this.currentUniverse.name });
     }
 
     handleNodeClick(worldX, worldY, event) {
@@ -221,10 +250,12 @@ export class CanvasBuilder {
                 if (target.url) {
                     const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                     window.open(target.url, targetWin);
+                    if(window.universeLogger) window.universeLogger.log("EXECUTE_LINK", { url: target.url });
                 } else {
                     this.isZoomingIn = true;
                     this.targetUniverse = target.innerUniverse;
                     this.camera.zoomTo(target.x, target.y);
+                    if(window.universeLogger) window.universeLogger.log("DIVE_INTO_NODE", { target: target.name });
                 }
             }
         } else {
