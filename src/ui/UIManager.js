@@ -193,7 +193,9 @@ export class UIManager {
             document.getElementById('mode-link').style.background = this.app.appMode === 'LINK' ? '#ff00ff' : '#113344';
             document.getElementById('mode-edit').style.background = this.app.appMode === 'EDIT' ? '#ffcc00' : '#113344';
             document.getElementById('mode-edit').style.color = this.app.appMode === 'EDIT' ? '#000' : '#fff';
-            this.hideMenu(); paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
+            this.hideMenu(); 
+            this.hideQuickNote(); // モード変更時にメモも閉じる
+            paletteUI.style.display = 'none'; toolFab.style.background = 'rgba(0,255,255,0.1)';
             if(window.universeLogger) window.universeLogger.log("MODE_CHANGED", { mode: this.app.appMode });
         };
 
@@ -273,9 +275,27 @@ export class UIManager {
         this.inventoryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #ff6699; padding:20px; border-radius:10px; z-index:300; min-width:320px; color:white; box-shadow: 0 10px 30px rgba(255,102,153,0.3);';
         document.body.appendChild(this.inventoryModal);
 
+        // ★ フルメニュー（EDIT用）
         this.actionMenu = document.createElement('div');
         this.actionMenu.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(0,0,0,0.9); border:1px solid #00ffcc; padding:8px; border-radius:8px; z-index:200; gap:5px; box-shadow: 0 4px 15px rgba(0,255,204,0.2); min-width: 180px; max-height: 80vh; overflow-y: auto;';
         document.body.appendChild(this.actionMenu);
+
+        // ★ 新機能：長押しでメモだけを表示する専用パネル（RUN用）
+        this.quickNotePanel = document.createElement('div');
+        this.quickNotePanel.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(10,20,30,0.95); border-left:4px solid #00ffcc; padding:15px; border-radius:8px; z-index:200; box-shadow: 0 10px 30px rgba(0,255,204,0.3); min-width: 200px; max-width: 300px; color:white; font-family:sans-serif; backdrop-filter:blur(5px);';
+        document.body.appendChild(this.quickNotePanel);
+        
+        // 画面のどこかをタッチ/クリックしたらQuickNoteを閉じる
+        window.addEventListener('mousedown', (e) => {
+            if (this.quickNotePanel.style.display === 'flex' && !this.quickNotePanel.contains(e.target)) {
+                this.hideQuickNote();
+            }
+        });
+        window.addEventListener('touchstart', (e) => {
+            if (this.quickNotePanel.style.display === 'flex' && !this.quickNotePanel.contains(e.target)) {
+                this.hideQuickNote();
+            }
+        });
 
         this.appLibraryModal = document.createElement('div');
         this.appLibraryModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,30,0.95); border:1px solid #00ffcc; padding:20px; border-radius:10px; z-index:400; min-width:300px; color:white; box-shadow: 0 10px 30px rgba(0,255,204,0.3);';
@@ -395,8 +415,50 @@ export class UIManager {
         document.getElementById('inv-close').onclick = () => { this.inventoryModal.style.display = 'none'; };
     }
 
+    // ★ 新機能：長押しされた時に「メモだけ」を美しく表示する専用UI
+    showQuickNote(node, screenX, screenY) {
+        this.hideMenu(); // フルメニューは閉じる
+        
+        if (!node.note || node.note.trim() === "") {
+            // メモがない場合は何もしない（あるいは「メモなし」と表示してもよい）
+            return; 
+        }
+
+        this.quickNotePanel.innerHTML = `
+            <div style="font-size:16px; font-weight:bold; color:#00ffcc; margin-bottom:10px; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:5px;">
+                ${node.name} の記憶
+            </div>
+            <div style="font-size:13px; line-height:1.6; color:#e0f0ff; white-space:pre-wrap; word-break:break-all; max-height:250px; overflow-y:auto;">
+                ${node.note}
+            </div>
+        `;
+
+        this.quickNotePanel.style.left = `${screenX}px`;
+        this.quickNotePanel.style.top = `${screenY}px`;
+        this.quickNotePanel.style.display = 'flex';
+
+        // 画面外にはみ出ないように補正
+        setTimeout(() => {
+            const rect = this.quickNotePanel.getBoundingClientRect();
+            let top = screenY;
+            let left = screenX;
+            if (top + rect.height > window.innerHeight - 10) top = window.innerHeight - rect.height - 10;
+            if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
+            if (top < 10) top = 10;
+            if (left < 10) left = 10;
+            this.quickNotePanel.style.top = `${top}px`;
+            this.quickNotePanel.style.left = `${left}px`;
+        }, 0);
+    }
+
+    hideQuickNote() {
+        this.quickNotePanel.style.display = 'none';
+    }
+
+    // フルメニュー（EDITモード用）
     showMenu(node, screenX, screenY) {
-        // メニューが画面下部にはみ出さないよう座標を補正
+        this.hideQuickNote(); // クイックノートが出ていたら閉じる
+        
         this.actionMenu.style.left = `${screenX}px`;
         this.actionMenu.style.top = `${screenY}px`;
         this.actionMenu.style.display = 'flex';
@@ -404,15 +466,6 @@ export class UIManager {
         const btnStyle = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:10px 12px; cursor:pointer; text-align:left; border-radius:4px; font-size:14px; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;';
         
         let menuHTML = '';
-
-        // ★ 新機能：もし星にメモ（記憶）があれば、メニューの最上部にプレビューとして表示！
-        if (node.note && node.note.trim() !== "") {
-            menuHTML += `
-                <div style="background:rgba(0, 30, 20, 0.9); border-left:4px solid #00ffcc; padding:10px; margin-bottom:8px; border-radius:4px; font-size:12px; color:#e0f0ff; max-height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; line-height:1.4; box-shadow:inset 0 0 10px rgba(0,0,0,0.5);">
-                    ${node.note}
-                </div>
-            `;
-        }
 
         menuHTML += `<button id="menu-dive" style="${btnStyle} color:#ffffff;"><span>➡ 内部へ潜る</span></button>`;
         menuHTML += `<button id="menu-note" style="${btnStyle} color:#aaffff; background:rgba(170,255,255,0.1);"><span>📝 記憶を刻む/編集</span></button>`;
@@ -447,7 +500,6 @@ export class UIManager {
         menuHTML += `<button id="menu-delete" style="${btnStyle} color:#ff4444; border:1px solid #ff4444;"><span>🎒 亜空間へ送る</span></button>`;
         this.actionMenu.innerHTML = menuHTML;
 
-        // メニューが画面下にはみ出ないように再計算
         setTimeout(() => {
             const menuRect = this.actionMenu.getBoundingClientRect();
             if (menuRect.bottom > window.innerHeight) {
@@ -546,7 +598,9 @@ export class UIManager {
         };
     }
 
-    hideMenu() { this.actionMenu.style.display = 'none'; }
+    hideMenu() { 
+        this.actionMenu.style.display = 'none'; 
+    }
 
     updateBreadcrumbs() {
         this.breadcrumbUI.innerHTML = '';
