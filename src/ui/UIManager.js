@@ -7,6 +7,7 @@ export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
+        this.isRapidDeleteMode = false; // ★ 新規：連続収納モードのフラグ
         this.createUI();
         
         setTimeout(() => {
@@ -130,9 +131,14 @@ export class UIManager {
                     <button id="cp-mode-edit" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">⚙️ 編集</button>
                 </div>
                 
-                <label id="cp-rapid-spawn-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,204,0,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,204,0,0.3); color:#ffcc00; margin-bottom:10px; transition:0.2s;">
+                <label id="cp-rapid-spawn-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,204,0,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,204,0,0.3); color:#ffcc00; margin-bottom:8px; transition:0.2s;">
                     <input type="checkbox" id="cp-rapid-spawn" style="cursor:pointer; accent-color:#ffcc00;">
-                    🌟 連続創造モード (タップで直接配置)
+                    🌟 連続創造モード (空間タップで配置)
+                </label>
+
+                <label id="cp-rapid-delete-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,68,68,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,68,68,0.3); color:#ff4444; margin-bottom:10px; transition:0.2s;">
+                    <input type="checkbox" id="cp-rapid-delete" style="cursor:pointer; accent-color:#ff4444;">
+                    🎒 連続収納モード (星タップで亜空間へ)
                 </label>
 
                 <div style="display:flex; gap:8px;">
@@ -168,13 +174,9 @@ export class UIManager {
 
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
 
-        // ★★★ 連続創造モード（Rapid Spawn）の処理 ★★★
+        // ★ 連続創造モード
         const rapidSpawnCheckbox = document.getElementById('cp-rapid-spawn');
         const rapidSpawnLabel = document.getElementById('cp-rapid-spawn-label');
-        const canvasEl = document.getElementById('universe-canvas');
-        let spawnTouchStartX = 0; let spawnTouchStartY = 0;
-
-        // チェックを入れるとラベルが光って「発動中」であることを警告
         rapidSpawnCheckbox.onchange = (e) => {
             if (e.target.checked) {
                 rapidSpawnLabel.style.background = 'rgba(255,204,0,0.3)';
@@ -187,6 +189,25 @@ export class UIManager {
             }
         };
 
+        // ★ 新規：連続収納モードのトグル処理
+        const rapidDeleteCheckbox = document.getElementById('cp-rapid-delete');
+        const rapidDeleteLabel = document.getElementById('cp-rapid-delete-label');
+        rapidDeleteCheckbox.onchange = (e) => {
+            this.isRapidDeleteMode = e.target.checked;
+            if (e.target.checked) {
+                rapidDeleteLabel.style.background = 'rgba(255,68,68,0.3)';
+                rapidDeleteLabel.style.border = '1px solid rgba(255,68,68,0.8)';
+                rapidDeleteLabel.style.boxShadow = '0 0 10px rgba(255,68,68,0.4)';
+            } else {
+                rapidDeleteLabel.style.background = 'rgba(255,68,68,0.1)';
+                rapidDeleteLabel.style.border = '1px solid rgba(255,68,68,0.3)';
+                rapidDeleteLabel.style.boxShadow = 'none';
+            }
+        };
+
+        const canvasEl = document.getElementById('universe-canvas');
+        let spawnTouchStartX = 0; let spawnTouchStartY = 0;
+
         const onCanvasDown = (e) => {
             const ev = e.touches ? e.touches[0] : e;
             spawnTouchStartX = ev.clientX; spawnTouchStartY = ev.clientY;
@@ -196,13 +217,9 @@ export class UIManager {
             if (!rapidSpawnCheckbox.checked) return;
             const ev = e.changedTouches ? e.changedTouches[0] : e;
             const dx = ev.clientX - spawnTouchStartX; const dy = ev.clientY - spawnTouchStartY;
-            
-            // 指を動かして（ドラッグ・パンして）離した時は創らない
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
-            // UIの上をクリックした時は創らない
             if (e.target !== canvasEl) return;
 
-            // タップした画面座標を、現在のカメラ位置を考慮して「宇宙の座標」に変換する魔法の数式
             const rect = canvasEl.getBoundingClientRect();
             const zoom = this.app.camera.zoom || 1;
             const offsetX = ev.clientX - rect.left - canvasEl.width / 2;
@@ -211,23 +228,16 @@ export class UIManager {
             const worldY = (offsetY / zoom) - this.app.camera.y;
 
             const color = document.getElementById('cp-spawn-color').value;
-            // 指を離した瞬間に星を生成！
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
             this.app.autoSave();
 
-            if (window.universeLogger) {
-                window.universeLogger.log("RAPID_SPAWN", { color: color, x: Math.floor(worldX), y: Math.floor(worldY) });
-            }
+            if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color: color });
         };
 
-        // キャンバスにリスナーを取り付ける
-        canvasEl.addEventListener('mousedown', onCanvasDown);
-        canvasEl.addEventListener('touchstart', onCanvasDown, {passive: true});
-        canvasEl.addEventListener('mouseup', onCanvasUp);
-        canvasEl.addEventListener('touchend', onCanvasUp);
+        canvasEl.addEventListener('mousedown', onCanvasDown); canvasEl.addEventListener('touchstart', onCanvasDown, {passive: true});
+        canvasEl.addEventListener('mouseup', onCanvasUp); canvasEl.addEventListener('touchend', onCanvasUp);
 
-
-        // --- これ以下は前回までのプラグイン管理・UI挙動・メニュー処理（完全維持） ---
+        // --- その他設定・メニュー ---
         const extLogger = document.getElementById('cp-ext-logger');
         const extCenterText = document.getElementById('cp-ext-center-text');
 
@@ -237,8 +247,7 @@ export class UIManager {
             if (localStorage.getItem('universe_center_text') === 'false') isCenterTextEnabled = false;
         } catch(e) {}
         
-        extLogger.checked = isLoggerEnabled;
-        extCenterText.checked = isCenterTextEnabled;
+        extLogger.checked = isLoggerEnabled; extCenterText.checked = isCenterTextEnabled;
 
         const updateUIState = () => {
             this.capsuleSlots.innerHTML = '';
@@ -250,15 +259,12 @@ export class UIManager {
                 this.capsuleSlots.appendChild(logBtn);
             }
             if (extCenterText.checked) {
-                this.centerTextEl.style.display = 'block';
-                setTimeout(() => this.centerTextEl.style.opacity = '1', 10);
+                this.centerTextEl.style.display = 'block'; setTimeout(() => this.centerTextEl.style.opacity = '1', 10);
             } else {
-                this.centerTextEl.style.opacity = '0';
-                setTimeout(() => this.centerTextEl.style.display = 'none', 300);
+                this.centerTextEl.style.opacity = '0'; setTimeout(() => this.centerTextEl.style.display = 'none', 300);
             }
             try { localStorage.setItem('universe_ext_logger', extLogger.checked); localStorage.setItem('universe_center_text', extCenterText.checked); } catch(e) {}
         };
-
         extLogger.onchange = updateUIState; extCenterText.onchange = updateUIState; updateUIState();
 
         const radarInput = document.getElementById('cp-radar');
@@ -332,7 +338,18 @@ export class UIManager {
         this.protectUI(el); document.body.appendChild(el); return el;
     }
 
+    // ★ ここに魔法のインターセプト（横取り）を追加！
     showMenu(node, screenX, screenY) {
+        // もし「連続収納モード」がONなら、メニューを開かずに即座に亜空間へ送る！
+        if (this.isRapidDeleteMode) {
+            this.app.currentUniverse.removeNode(node);
+            this.app.blackHole.push(node);
+            this.app.autoSave();
+            if (window.universeLogger) window.universeLogger.log("RAPID_STORE", { target: node.name });
+            return; // 💥 ここで処理を止めるので、メニューは出ない
+        }
+
+        // 以降は通常のメニュー表示処理
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
