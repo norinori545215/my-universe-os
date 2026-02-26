@@ -5,11 +5,12 @@ export class LoggerUI {
         this.vault = vault;
         this.maxLogs = 50; 
         
-        // ★ 絶対防弾仕様：シークレットモード等で記憶領域が使えなくてもクラッシュさせない
-        this.isVisible = true;
+        // ★ ここを修正！初期状態を「完全にOFF（false）」にしました
+        this.isVisible = false;
         try {
-            if (localStorage.getItem('universe_log_visible') === 'false') {
-                this.isVisible = false;
+            // 過去に自分で「ON」にした記憶が明示的にある時だけ開く
+            if (localStorage.getItem('universe_log_visible') === 'true') {
+                this.isVisible = true;
             }
         } catch (e) {
             console.warn("プライベートモードのため、状態の保存をスキップしました");
@@ -119,7 +120,6 @@ export class LoggerUI {
         
         this.panel.appendChild(this.logContainer);
 
-        // リサイズ用のつまみ
         this.resizeHandle = document.createElement('div');
         this.resizeHandle.style.cssText = `
             position: absolute; bottom: 0; right: 0; width: 20px; height: 20px;
@@ -139,7 +139,7 @@ export class LoggerUI {
         this.isVisible = !this.isVisible;
         try {
             localStorage.setItem('universe_log_visible', this.isVisible);
-        } catch(e) {} // ここも保護
+        } catch(e) {} 
         
         if (this.isVisible) {
             this.panel.style.opacity = '1';
