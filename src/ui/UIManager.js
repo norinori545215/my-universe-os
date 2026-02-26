@@ -20,7 +20,6 @@ export class UIManager {
 
     makeDraggable(el) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
-
         const down = (e) => {
             const ev = e.touches ? e.touches[0] : e;
             e.stopPropagation(); 
@@ -31,7 +30,6 @@ export class UIManager {
             isDragging = true;
             el.style.transition = 'none';
         };
-
         const move = (e) => {
             if (!isDragging) return;
             e.stopPropagation();
@@ -42,24 +40,17 @@ export class UIManager {
             let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
             let ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
             
-            el.style.left = `${nx}px`;
-            el.style.top = `${ny}px`;
-            el.style.right = 'auto'; 
-            el.style.bottom = 'auto';
+            el.style.left = `${nx}px`; el.style.top = `${ny}px`;
+            el.style.right = 'auto'; el.style.bottom = 'auto';
         };
-
         const up = (e) => {
             if (isDragging) { 
-                isDragging = false; 
-                el.style.transition = '0.2s';
-                e.stopPropagation();
+                isDragging = false; el.style.transition = '0.2s'; e.stopPropagation();
             }
         };
-
         el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: false});
         window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-
         return () => hasMoved; 
     }
 
@@ -71,9 +62,10 @@ export class UIManager {
     }
 
     createUI() {
+        // ★ 中央の透かしテキスト
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
-        this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
+        this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap; transition: opacity 0.3s;';
         this.protectUI(this.centerTextEl);
         this.centerTextEl.onclick = (e) => {
             e.stopPropagation();
@@ -91,18 +83,15 @@ export class UIManager {
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
         document.body.appendChild(this.systemCapsule);
 
-        // コア・ボタン（メニュー開閉）
         const coreBtn = document.createElement('div');
         coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
-        // ★ 新機能：拡張モジュール（プラグイン）を追加する専用スロット
         this.capsuleSlots = document.createElement('div');
         this.capsuleSlots.style.cssText = 'display:flex; gap:5px; margin-right:10px;';
         this.systemCapsule.appendChild(this.capsuleSlots);
 
-        // パンくずリスト
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
         this.systemCapsule.appendChild(this.breadcrumbUI);
@@ -120,10 +109,14 @@ export class UIManager {
             </div>
 
             <div style="margin-bottom:20px; background:rgba(0,255,204,0.05); padding:10px; border-radius:8px; border:1px dashed rgba(0,255,204,0.3);">
-                <div style="font-size:11px; color:#00ffcc; margin-bottom:8px;">🧩 拡張モジュール (Plugins)</div>
-                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:8px;">🧩 拡張設定 (表示トグル)</div>
+                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; margin-bottom:8px;">
                     <input type="checkbox" id="cp-ext-logger" style="cursor:pointer; accent-color:#00ffcc;">
                     🖥️ ターミナルをカプセルに追加
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" id="cp-ext-center-text" style="cursor:pointer; accent-color:#00ffcc;">
+                    🔤 中央の階層透かし文字を表示
                 </label>
             </div>
 
@@ -165,7 +158,6 @@ export class UIManager {
             </div>
         `;
 
-        // コアボタンクリック（ドラッグ直後は発動させない）
         coreBtn.onclick = (e) => {
             e.stopPropagation();
             if (this.isCapsuleDragged()) return;
@@ -174,42 +166,56 @@ export class UIManager {
 
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
 
-        // ★★★ プラグイン（拡張モジュール）の管理ロジック ★★★
+        // ★★★ 透かし文字＆プラグインの管理ロジック ★★★
         const extLogger = document.getElementById('cp-ext-logger');
-        // 前回の状態を読み込む（シークレットモード対策済）
-        let isLoggerEnabled = false;
-        try { isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; } catch(e) {}
-        extLogger.checked = isLoggerEnabled;
+        const extCenterText = document.getElementById('cp-ext-center-text');
 
-        const updateCapsuleSlots = () => {
-            this.capsuleSlots.innerHTML = ''; // スロットを一旦空にする
-            
-            // ターミナルがONになっていればカプセルにボタンを追加！
+        let isLoggerEnabled = false;
+        let isCenterTextEnabled = true; // デフォルトON
+        try { 
+            isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; 
+            if (localStorage.getItem('universe_center_text') === 'false') isCenterTextEnabled = false;
+        } catch(e) {}
+        
+        extLogger.checked = isLoggerEnabled;
+        extCenterText.checked = isCenterTextEnabled;
+
+        const updateUIState = () => {
+            // ターミナルボタンの更新
+            this.capsuleSlots.innerHTML = '';
             if (extLogger.checked) {
                 const logBtn = document.createElement('div');
                 logBtn.innerText = '🖥️';
                 logBtn.title = "ターミナルを開閉";
                 logBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; font-size:14px; cursor:pointer; transition:0.2s;';
-                
                 logBtn.onclick = (e) => {
                     e.stopPropagation();
                     if (this.isCapsuleDragged && this.isCapsuleDragged()) return;
-                    if (window.universeLogger) window.universeLogger.toggle(); // ターミナル開閉
+                    if (window.universeLogger) window.universeLogger.toggle();
                 };
-                
-                // ボタンのホバー効果
-                logBtn.onmouseover = () => logBtn.style.background = 'rgba(0,255,204,0.4)';
-                logBtn.onmouseout = () => logBtn.style.background = 'rgba(0,255,204,0.1)';
-
                 this.capsuleSlots.appendChild(logBtn);
             }
 
-            try { localStorage.setItem('universe_ext_logger', extLogger.checked); } catch(e) {}
+            // 中央文字のON/OFF更新
+            if (extCenterText.checked) {
+                this.centerTextEl.style.display = 'block';
+                // 少し遅れてフェードインさせる
+                setTimeout(() => this.centerTextEl.style.opacity = '1', 10);
+            } else {
+                this.centerTextEl.style.opacity = '0';
+                // フェードアウトしてから消す
+                setTimeout(() => this.centerTextEl.style.display = 'none', 300);
+            }
+
+            try { 
+                localStorage.setItem('universe_ext_logger', extLogger.checked); 
+                localStorage.setItem('universe_center_text', extCenterText.checked);
+            } catch(e) {}
         };
 
-        // チェックボックスを押すたびにカプセルを更新
-        extLogger.onchange = updateCapsuleSlots;
-        updateCapsuleSlots(); // 初期描画
+        extLogger.onchange = updateUIState;
+        extCenterText.onchange = updateUIState;
+        updateUIState(); // 初期描画
 
         // 🔍 レーダー処理
         const radarInput = document.getElementById('cp-radar');
@@ -306,7 +312,7 @@ export class UIManager {
         return el;
     }
 
-    // --- メニュー操作など（変更なし） ---
+    // --- メニュー操作 ---
     showMenu(node, screenX, screenY) {
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
@@ -323,7 +329,7 @@ export class UIManager {
                 <button id="m-down" style="${btn} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
             </div>
             <button id="m-ren" style="${btn} color:#ccff66;">✏ 名前変更</button>
-            <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
+            <button id="m-set-icon" style="${btn} color:#ffaa00;">🖼 画像/アイコン設定</button> <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
             <button id="m-del" style="${btn} color:#ff4444; border:1px solid #ff4444;">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btn} background:transparent; text-align:center; font-size:12px;">❌ 閉じる</button>`;
 
@@ -332,6 +338,18 @@ export class UIManager {
         document.getElementById('m-up').onclick = (e) => { e.stopPropagation(); node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
         document.getElementById('m-down').onclick = (e) => { e.stopPropagation(); node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
         document.getElementById('m-ren').onclick = (e) => { e.stopPropagation(); const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
+        
+        // ★ 削ってしまっていた手動アイコン設定を完全復活！
+        document.getElementById('m-set-icon').onclick = (e) => { 
+            e.stopPropagation(); 
+            const newIconUrl = prompt("画像のURLを入力してください\n(空にするとリセットされます):", node.iconUrl || "");
+            if (newIconUrl !== null) { 
+                node.iconUrl = newIconUrl; 
+                this.app.autoSave(); 
+            }
+            this.hideMenu();
+        };
+
         document.getElementById('m-link').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.showAppLibrary(node); };
         document.getElementById('m-del').onclick = (e) => { e.stopPropagation(); if(confirm("亜空間へ送りますか？")){this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();} this.hideMenu(); };
         document.getElementById('m-close').onclick = (e) => { e.stopPropagation(); this.hideMenu(); };
@@ -388,7 +406,27 @@ export class UIManager {
         this.app.appPresets.forEach((app, i) => {
             document.getElementById(`preset-${i}`).onclick = (e) => { e.stopPropagation(); node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
         });
-        document.getElementById('custom-url-btn').onclick = (e) => { e.stopPropagation(); this.appLibraryModal.style.display = 'none'; const newUrl = prompt("URLを入力:", node.url); if(newUrl){ node.url = newUrl; this.app.autoSave(); }};
+
+        // ★ 消してしまっていた「ファビコン自動取得ロジック」を完全復活！
+        document.getElementById('custom-url-btn').onclick = (e) => { 
+            e.stopPropagation(); 
+            this.appLibraryModal.style.display = 'none'; 
+            const newUrl = prompt("URLを入力:", node.url); 
+            if(newUrl) { 
+                node.url = newUrl; 
+                // URLがhttpから始まり、まだアイコンが無い場合、自動でファビコンを取りに行くか聞く
+                if (newUrl.startsWith('http') && !node.iconUrl && confirm("アイコン(ファビコン)を自動取得しますか？")) {
+                    try {
+                        const domain = new URL(newUrl).hostname;
+                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                    } catch(err) { 
+                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${newUrl}&sz=128`; 
+                    }
+                }
+                this.app.autoSave(); 
+            }
+        };
+
         const resetBtn = document.getElementById('reset-app-btn');
         if(resetBtn) resetBtn.onclick = (e) => { e.stopPropagation(); node.url = ""; node.iconUrl = ""; this.app.autoSave(); this.appLibraryModal.style.display = 'none'; };
         document.getElementById('lib-close').onclick = (e) => { e.stopPropagation(); this.appLibraryModal.style.display='none'; };
