@@ -3,12 +3,21 @@
 export class LoggerUI {
     constructor(vault) {
         this.vault = vault;
-        this.maxLogs = 50; // 広げられるようになったので保持数を増加！
-        this.isVisible = localStorage.getItem('universe_log_visible') !== 'false';
+        this.maxLogs = 50; 
+        
+        // ★ 絶対防弾仕様：シークレットモード等で記憶領域が使えなくてもクラッシュさせない
+        this.isVisible = true;
+        try {
+            if (localStorage.getItem('universe_log_visible') === 'false') {
+                this.isVisible = false;
+            }
+        } catch (e) {
+            console.warn("プライベートモードのため、状態の保存をスキップしました");
+        }
+        
         this.buildUI();
     }
 
-    // ★ ドラッグ機能（移動）
     makeDraggable(el, handle) {
         let isDragging = false, startX, startY, initX, initY;
         const down = (e) => {
@@ -23,7 +32,6 @@ export class LoggerUI {
         const move = (e) => {
             if (!isDragging) return;
             const ev = e.touches ? e.touches[0] : e;
-            e.stopPropagation();
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             
             let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
@@ -44,7 +52,6 @@ export class LoggerUI {
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
     }
 
-    // ★ 新機能：リサイズ機能（拡大・縮小）
     makeResizable(el, handle) {
         let isResizing = false, startX, startY, startWidth, startHeight;
         const down = (e) => {
@@ -59,17 +66,14 @@ export class LoggerUI {
         const move = (e) => {
             if (!isResizing) return;
             const ev = e.touches ? e.touches[0] : e;
-            e.stopPropagation();
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             
-            // 最小サイズと最大サイズの制限（画面外にはみ出さないように）
             let newWidth = Math.max(200, Math.min(startWidth + dx, window.innerWidth - el.offsetLeft - 10));
             let newHeight = Math.max(100, Math.min(startHeight + dy, window.innerHeight - el.offsetTop - 10));
             
             el.style.width = `${newWidth}px`;
             el.style.height = `${newHeight}px`;
             
-            // スクロールを一番下に合わせる
             this.logContainer.scrollTop = this.logContainer.scrollHeight;
         };
         const up = () => {
@@ -84,7 +88,6 @@ export class LoggerUI {
     }
 
     buildUI() {
-        // パネル本体
         this.panel = document.createElement('div');
         this.panel.id = 'universe-terminal-log';
         this.panel.style.cssText = `
@@ -102,24 +105,21 @@ export class LoggerUI {
             this.panel.style.transform = 'translateY(20px)';
         }
 
-        // 移動用ヘッダー
         this.header = document.createElement('div');
         this.header.innerHTML = `>_ MY UNIVERSE OS <span style="color:#fff;">[SYS.LOG]</span> <span style="float:right; cursor:move;">☷</span>`;
         this.header.style.cssText = "border-bottom: 1px solid rgba(0,255,204,0.3); padding: 8px 10px; font-weight: bold; cursor: move; background: rgba(0,255,204,0.1); border-radius: 8px 8px 0 0; user-select: none; flex-shrink: 0;";
         this.panel.appendChild(this.header);
 
-        // ログ表示エリア
         this.logContainer = document.createElement('div');
         this.logContainer.style.cssText = "flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 10px;";
         
-        // ログスクロール時のシールド
         const stop = (e) => e.stopPropagation();
         this.logContainer.addEventListener('mousedown', stop);
         this.logContainer.addEventListener('touchstart', stop, {passive: false});
         
         this.panel.appendChild(this.logContainer);
 
-        // ★ 新機能：サイズ変更用つまみ（右下）
+        // リサイズ用のつまみ
         this.resizeHandle = document.createElement('div');
         this.resizeHandle.style.cssText = `
             position: absolute; bottom: 0; right: 0; width: 20px; height: 20px;
@@ -131,14 +131,15 @@ export class LoggerUI {
 
         document.body.appendChild(this.panel);
 
-        // イベントの登録
         this.makeDraggable(this.panel, this.header);
         this.makeResizable(this.panel, this.resizeHandle);
     }
 
     toggle() {
         this.isVisible = !this.isVisible;
-        localStorage.setItem('universe_log_visible', this.isVisible);
+        try {
+            localStorage.setItem('universe_log_visible', this.isVisible);
+        } catch(e) {} // ここも保護
         
         if (this.isVisible) {
             this.panel.style.opacity = '1';
@@ -178,7 +179,6 @@ export class LoggerUI {
     }
 }
 
-// アニメーション追加
 if (!document.getElementById('log-fade-style')) {
     const style = document.createElement('style');
     style.id = 'log-fade-style';
