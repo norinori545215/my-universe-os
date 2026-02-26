@@ -3,17 +3,17 @@
 export class LoggerUI {
     constructor(vault) {
         this.vault = vault;
-        this.maxLogs = 30; 
+        this.maxLogs = 50; // 広げられるようになったので保持数を増加！
         this.isVisible = localStorage.getItem('universe_log_visible') !== 'false';
         this.buildUI();
     }
 
-    // ★ あなたの書いた美しいドラッグ処理を復活させました！
+    // ★ ドラッグ機能（移動）
     makeDraggable(el, handle) {
         let isDragging = false, startX, startY, initX, initY;
         const down = (e) => {
             const ev = e.touches ? e.touches[0] : e;
-            e.stopPropagation(); // 宇宙を動かさない
+            e.stopPropagation(); 
             startX = ev.clientX; startY = ev.clientY;
             const rect = el.getBoundingClientRect();
             initX = rect.left; initY = rect.top;
@@ -26,7 +26,6 @@ export class LoggerUI {
             e.stopPropagation();
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             
-            // 画面外に出ないようにガード
             let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
             let ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
             
@@ -34,23 +33,60 @@ export class LoggerUI {
             el.style.top = `${ny}px`;
             el.style.right = 'auto'; el.style.bottom = 'auto';
         };
-        const up = (e) => {
+        const up = () => {
             if (isDragging) {
                 isDragging = false;
                 el.style.transition = 'opacity 0.3s, transform 0.3s';
             }
         };
-        // handle（ヘッダー部分）を掴んだ時だけ動くようにする
+        handle.addEventListener('mousedown', down); handle.addEventListener('touchstart', down, {passive: false});
+        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
+        window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+    }
+
+    // ★ 新機能：リサイズ機能（拡大・縮小）
+    makeResizable(el, handle) {
+        let isResizing = false, startX, startY, startWidth, startHeight;
+        const down = (e) => {
+            const ev = e.touches ? e.touches[0] : e;
+            e.stopPropagation();
+            startX = ev.clientX; startY = ev.clientY;
+            const rect = el.getBoundingClientRect();
+            startWidth = rect.width; startHeight = rect.height;
+            isResizing = true;
+            el.style.transition = 'none';
+        };
+        const move = (e) => {
+            if (!isResizing) return;
+            const ev = e.touches ? e.touches[0] : e;
+            e.stopPropagation();
+            const dx = ev.clientX - startX; const dy = ev.clientY - startY;
+            
+            // 最小サイズと最大サイズの制限（画面外にはみ出さないように）
+            let newWidth = Math.max(200, Math.min(startWidth + dx, window.innerWidth - el.offsetLeft - 10));
+            let newHeight = Math.max(100, Math.min(startHeight + dy, window.innerHeight - el.offsetTop - 10));
+            
+            el.style.width = `${newWidth}px`;
+            el.style.height = `${newHeight}px`;
+            
+            // スクロールを一番下に合わせる
+            this.logContainer.scrollTop = this.logContainer.scrollHeight;
+        };
+        const up = () => {
+            if (isResizing) {
+                isResizing = false;
+                el.style.transition = 'opacity 0.3s, transform 0.3s';
+            }
+        };
         handle.addEventListener('mousedown', down); handle.addEventListener('touchstart', down, {passive: false});
         window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
     }
 
     buildUI() {
+        // パネル本体
         this.panel = document.createElement('div');
         this.panel.id = 'universe-terminal-log';
-        
-        // ★ カプセルと被らないよう、初期位置を「左下」に変更！
         this.panel.style.cssText = `
             position: fixed; bottom: 20px; left: 20px; width: 280px; height: 200px;
             background: rgba(0, 15, 5, 0.85); border: 1px solid #00ffcc; border-radius: 8px;
@@ -66,26 +102,38 @@ export class LoggerUI {
             this.panel.style.transform = 'translateY(20px)';
         }
 
-        // 掴んで動かせるヘッダー（ドラッグハンドル）
+        // 移動用ヘッダー
         this.header = document.createElement('div');
         this.header.innerHTML = `>_ MY UNIVERSE OS <span style="color:#fff;">[SYS.LOG]</span> <span style="float:right; cursor:move;">☷</span>`;
-        this.header.style.cssText = "border-bottom: 1px solid rgba(0,255,204,0.3); padding: 8px 10px; font-weight: bold; cursor: move; background: rgba(0,255,204,0.1); border-radius: 8px 8px 0 0; user-select: none;";
+        this.header.style.cssText = "border-bottom: 1px solid rgba(0,255,204,0.3); padding: 8px 10px; font-weight: bold; cursor: move; background: rgba(0,255,204,0.1); border-radius: 8px 8px 0 0; user-select: none; flex-shrink: 0;";
         this.panel.appendChild(this.header);
 
-        // ログエリア
+        // ログ表示エリア
         this.logContainer = document.createElement('div');
         this.logContainer.style.cssText = "flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 10px;";
         
-        // ログをスクロールする時はドラッグさせないガード
+        // ログスクロール時のシールド
         const stop = (e) => e.stopPropagation();
         this.logContainer.addEventListener('mousedown', stop);
         this.logContainer.addEventListener('touchstart', stop, {passive: false});
         
         this.panel.appendChild(this.logContainer);
+
+        // ★ 新機能：サイズ変更用つまみ（右下）
+        this.resizeHandle = document.createElement('div');
+        this.resizeHandle.style.cssText = `
+            position: absolute; bottom: 0; right: 0; width: 20px; height: 20px;
+            cursor: se-resize; user-select: none;
+            background: linear-gradient(135deg, transparent 50%, rgba(0,255,204,0.5) 50%);
+            border-bottom-right-radius: 8px; z-index: 10;
+        `;
+        this.panel.appendChild(this.resizeHandle);
+
         document.body.appendChild(this.panel);
 
-        // ★ ドラッグ機能を発動！
+        // イベントの登録
         this.makeDraggable(this.panel, this.header);
+        this.makeResizable(this.panel, this.resizeHandle);
     }
 
     toggle() {
