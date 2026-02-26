@@ -9,7 +9,6 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.createUI();
         
-        // 古いボタンを隠す
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
             const oldReset = document.getElementById('emergency-reset-btn');
@@ -62,7 +61,6 @@ export class UIManager {
     }
 
     createUI() {
-        // ★ 中央の透かしテキスト
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap; transition: opacity 0.3s;';
@@ -77,7 +75,6 @@ export class UIManager {
         };
         document.body.appendChild(this.centerTextEl);
 
-        // ★★★ フローティング・システムカプセル ★★★
         this.systemCapsule = document.createElement('div');
         this.systemCapsule.style.cssText = 'position:fixed; top:20px; left:20px; z-index:9000; display:flex; align-items:center; background:rgba(10,15,25,0.85); border:1px solid rgba(0,255,204,0.5); border-radius:30px; padding:5px 15px 5px 5px; box-shadow:0 10px 30px rgba(0,255,204,0.2); backdrop-filter:blur(10px); pointer-events:auto; user-select:none; max-width:90vw; overflow-x:auto;';
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
@@ -96,7 +93,6 @@ export class UIManager {
         this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
         this.systemCapsule.appendChild(this.breadcrumbUI);
 
-        // ★★★ 統合コントロールパネル ★★★
         const controlPanel = document.createElement('div');
         controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.95); border:1px solid #00ffcc; border-radius:12px; padding:20px; z-index:9001; width:85%; max-width:320px; max-height:80vh; overflow-y:auto; box-shadow:0 15px 50px rgba(0,0,0,0.8); backdrop-filter:blur(10px); color:white; font-family:sans-serif; pointer-events:auto;';
         this.protectUI(controlPanel);
@@ -133,9 +129,15 @@ export class UIManager {
                     <button id="cp-mode-link" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">🔗 結ぶ</button>
                     <button id="cp-mode-edit" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">⚙️ 編集</button>
                 </div>
+                
+                <label id="cp-rapid-spawn-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,204,0,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,204,0,0.3); color:#ffcc00; margin-bottom:10px; transition:0.2s;">
+                    <input type="checkbox" id="cp-rapid-spawn" style="cursor:pointer; accent-color:#ffcc00;">
+                    🌟 連続創造モード (タップで直接配置)
+                </label>
+
                 <div style="display:flex; gap:8px;">
                     <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:40px; height:36px; border:none; border-radius:4px; background:transparent; cursor:pointer;">
-                    <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:4px; font-weight:bold; font-size:12px;">🌟 新しい星を創る</button>
+                    <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:4px; font-weight:bold; font-size:12px;">🎯 画面中央に1つ創る</button>
                 </div>
             </div>
 
@@ -166,12 +168,70 @@ export class UIManager {
 
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
 
-        // ★★★ 透かし文字＆プラグインの管理ロジック ★★★
+        // ★★★ 連続創造モード（Rapid Spawn）の処理 ★★★
+        const rapidSpawnCheckbox = document.getElementById('cp-rapid-spawn');
+        const rapidSpawnLabel = document.getElementById('cp-rapid-spawn-label');
+        const canvasEl = document.getElementById('universe-canvas');
+        let spawnTouchStartX = 0; let spawnTouchStartY = 0;
+
+        // チェックを入れるとラベルが光って「発動中」であることを警告
+        rapidSpawnCheckbox.onchange = (e) => {
+            if (e.target.checked) {
+                rapidSpawnLabel.style.background = 'rgba(255,204,0,0.3)';
+                rapidSpawnLabel.style.border = '1px solid rgba(255,204,0,0.8)';
+                rapidSpawnLabel.style.boxShadow = '0 0 10px rgba(255,204,0,0.4)';
+            } else {
+                rapidSpawnLabel.style.background = 'rgba(255,204,0,0.1)';
+                rapidSpawnLabel.style.border = '1px solid rgba(255,204,0,0.3)';
+                rapidSpawnLabel.style.boxShadow = 'none';
+            }
+        };
+
+        const onCanvasDown = (e) => {
+            const ev = e.touches ? e.touches[0] : e;
+            spawnTouchStartX = ev.clientX; spawnTouchStartY = ev.clientY;
+        };
+
+        const onCanvasUp = (e) => {
+            if (!rapidSpawnCheckbox.checked) return;
+            const ev = e.changedTouches ? e.changedTouches[0] : e;
+            const dx = ev.clientX - spawnTouchStartX; const dy = ev.clientY - spawnTouchStartY;
+            
+            // 指を動かして（ドラッグ・パンして）離した時は創らない
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
+            // UIの上をクリックした時は創らない
+            if (e.target !== canvasEl) return;
+
+            // タップした画面座標を、現在のカメラ位置を考慮して「宇宙の座標」に変換する魔法の数式
+            const rect = canvasEl.getBoundingClientRect();
+            const zoom = this.app.camera.zoom || 1;
+            const offsetX = ev.clientX - rect.left - canvasEl.width / 2;
+            const offsetY = ev.clientY - rect.top - canvasEl.height / 2;
+            const worldX = (offsetX / zoom) - this.app.camera.x;
+            const worldY = (offsetY / zoom) - this.app.camera.y;
+
+            const color = document.getElementById('cp-spawn-color').value;
+            // 指を離した瞬間に星を生成！
+            this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
+            this.app.autoSave();
+
+            if (window.universeLogger) {
+                window.universeLogger.log("RAPID_SPAWN", { color: color, x: Math.floor(worldX), y: Math.floor(worldY) });
+            }
+        };
+
+        // キャンバスにリスナーを取り付ける
+        canvasEl.addEventListener('mousedown', onCanvasDown);
+        canvasEl.addEventListener('touchstart', onCanvasDown, {passive: true});
+        canvasEl.addEventListener('mouseup', onCanvasUp);
+        canvasEl.addEventListener('touchend', onCanvasUp);
+
+
+        // --- これ以下は前回までのプラグイン管理・UI挙動・メニュー処理（完全維持） ---
         const extLogger = document.getElementById('cp-ext-logger');
         const extCenterText = document.getElementById('cp-ext-center-text');
 
-        let isLoggerEnabled = false;
-        let isCenterTextEnabled = true; // デフォルトON
+        let isLoggerEnabled = false; let isCenterTextEnabled = true;
         try { 
             isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; 
             if (localStorage.getItem('universe_center_text') === 'false') isCenterTextEnabled = false;
@@ -181,63 +241,38 @@ export class UIManager {
         extCenterText.checked = isCenterTextEnabled;
 
         const updateUIState = () => {
-            // ターミナルボタンの更新
             this.capsuleSlots.innerHTML = '';
             if (extLogger.checked) {
                 const logBtn = document.createElement('div');
-                logBtn.innerText = '🖥️';
-                logBtn.title = "ターミナルを開閉";
+                logBtn.innerText = '🖥️'; logBtn.title = "ターミナルを開閉";
                 logBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; font-size:14px; cursor:pointer; transition:0.2s;';
-                logBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    if (this.isCapsuleDragged && this.isCapsuleDragged()) return;
-                    if (window.universeLogger) window.universeLogger.toggle();
-                };
+                logBtn.onclick = (e) => { e.stopPropagation(); if (this.isCapsuleDragged && this.isCapsuleDragged()) return; if (window.universeLogger) window.universeLogger.toggle(); };
                 this.capsuleSlots.appendChild(logBtn);
             }
-
-            // 中央文字のON/OFF更新
             if (extCenterText.checked) {
                 this.centerTextEl.style.display = 'block';
-                // 少し遅れてフェードインさせる
                 setTimeout(() => this.centerTextEl.style.opacity = '1', 10);
             } else {
                 this.centerTextEl.style.opacity = '0';
-                // フェードアウトしてから消す
                 setTimeout(() => this.centerTextEl.style.display = 'none', 300);
             }
-
-            try { 
-                localStorage.setItem('universe_ext_logger', extLogger.checked); 
-                localStorage.setItem('universe_center_text', extCenterText.checked);
-            } catch(e) {}
+            try { localStorage.setItem('universe_ext_logger', extLogger.checked); localStorage.setItem('universe_center_text', extCenterText.checked); } catch(e) {}
         };
 
-        extLogger.onchange = updateUIState;
-        extCenterText.onchange = updateUIState;
-        updateUIState(); // 初期描画
+        extLogger.onchange = updateUIState; extCenterText.onchange = updateUIState; updateUIState();
 
-        // 🔍 レーダー処理
         const radarInput = document.getElementById('cp-radar');
         const radarResults = document.getElementById('cp-radar-results');
         radarInput.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            radarResults.innerHTML = '';
-            if (!query) return;
+            const query = e.target.value.toLowerCase(); radarResults.innerHTML = ''; if (!query) return;
             let count = 0;
             const searchUniverse = (u) => {
                 u.nodes.forEach(n => {
                     if (n.name.toLowerCase().includes(query) && count < 10) {
-                        const btn = document.createElement('button');
-                        btn.innerText = `🌌 ${n.name}`;
+                        const btn = document.createElement('button'); btn.innerText = `🌌 ${n.name}`;
                         btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:5px; border-bottom:1px solid rgba(0,255,204,0.2); width:100%; display:block;';
-                        btn.onclick = () => {
-                            this.app.executeWarp(n);
-                            radarInput.value = ''; radarResults.innerHTML = '';
-                            controlPanel.style.display = 'none';
-                        };
-                        radarResults.appendChild(btn);
-                        count++;
+                        btn.onclick = () => { this.app.executeWarp(n); radarInput.value = ''; radarResults.innerHTML = ''; controlPanel.style.display = 'none'; };
+                        radarResults.appendChild(btn); count++;
                     }
                     searchUniverse(n.innerUniverse);
                 });
@@ -245,7 +280,6 @@ export class UIManager {
             searchUniverse(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
         });
 
-        // 🛠️ モード切替
         const updateMode = (mode) => {
             this.app.appMode = mode;
             document.getElementById('cp-mode-run').style.background = mode === 'RUN' ? '#00ffcc' : '#113344';
@@ -259,36 +293,24 @@ export class UIManager {
         document.getElementById('cp-mode-link').onclick = () => updateMode('LINK');
         document.getElementById('cp-mode-edit').onclick = () => updateMode('EDIT');
 
-        // 🌟 星の創造
         document.getElementById('cp-spawn-btn').onclick = () => {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
-            this.app.autoSave(); 
-            controlPanel.style.display = 'none';
+            this.app.autoSave(); controlPanel.style.display = 'none';
         };
 
-        // 🎒 データ管理
         document.getElementById('cp-btn-inventory').onclick = () => { controlPanel.style.display = 'none'; this.showInventoryUI(); };
         document.getElementById('cp-btn-export').onclick = () => { Singularity.export(); controlPanel.style.display = 'none'; };
         const fileInput = document.getElementById('cp-import-file');
         document.getElementById('cp-btn-import').onclick = () => fileInput.click();
         fileInput.onchange = async (e) => {
             const f = e.target.files[0];
-            if (f && confirm("宇宙を上書きしますか？")) {
-                const data = await Singularity.importAndVerify(f);
-                await saveEncryptedUniverse(data); window.location.reload();
-            }
+            if (f && confirm("宇宙を上書きしますか？")) { const data = await Singularity.importAndVerify(f); await saveEncryptedUniverse(data); window.location.reload(); }
         };
 
-        // ⚙️ システム設定
-        document.getElementById('cp-btn-logout').onclick = () => {
-            sessionStorage.clear(); localStorage.clear(); window.location.reload();
-        };
-        document.getElementById('cp-btn-reset').onclick = () => {
-            if(confirm("本当に初期化しますか？")){ sessionStorage.clear(); localStorage.clear(); window.location.reload(); }
-        };
+        document.getElementById('cp-btn-logout').onclick = () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); };
+        document.getElementById('cp-btn-reset').onclick = () => { if(confirm("本当に初期化しますか？")){ sessionStorage.clear(); localStorage.clear(); window.location.reload(); } };
 
-        // 各種モーダル
         this.inventoryModal = this.createModal('#ff6699', 300);
         this.appLibraryModal = this.createModal('#00ffcc', 300);
         this.actionMenu = this.createModal('#00ffcc', 200, false);
@@ -307,12 +329,9 @@ export class UIManager {
         const el = document.createElement('div');
         el.style.cssText = `position:fixed; display:none; flex-direction:column; background:rgba(20,20,30,0.98); border:1px solid ${color}; padding:20px; border-radius:12px; z-index:1000; min-width:${width}px; color:white; pointer-events:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5);`;
         if(centered) { el.style.top = '50%'; el.style.left = '50%'; el.style.transform = 'translate(-50%, -50%)'; }
-        this.protectUI(el);
-        document.body.appendChild(el);
-        return el;
+        this.protectUI(el); document.body.appendChild(el); return el;
     }
 
-    // --- メニュー操作 ---
     showMenu(node, screenX, screenY) {
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
@@ -329,7 +348,8 @@ export class UIManager {
                 <button id="m-down" style="${btn} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
             </div>
             <button id="m-ren" style="${btn} color:#ccff66;">✏ 名前変更</button>
-            <button id="m-set-icon" style="${btn} color:#ffaa00;">🖼 画像/アイコン設定</button> <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
+            <button id="m-set-icon" style="${btn} color:#ffaa00;">🖼 画像/アイコン設定</button>
+            <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
             <button id="m-del" style="${btn} color:#ff4444; border:1px solid #ff4444;">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btn} background:transparent; text-align:center; font-size:12px;">❌ 閉じる</button>`;
 
@@ -339,14 +359,10 @@ export class UIManager {
         document.getElementById('m-down').onclick = (e) => { e.stopPropagation(); node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
         document.getElementById('m-ren').onclick = (e) => { e.stopPropagation(); const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
         
-        // ★ 削ってしまっていた手動アイコン設定を完全復活！
         document.getElementById('m-set-icon').onclick = (e) => { 
             e.stopPropagation(); 
             const newIconUrl = prompt("画像のURLを入力してください\n(空にするとリセットされます):", node.iconUrl || "");
-            if (newIconUrl !== null) { 
-                node.iconUrl = newIconUrl; 
-                this.app.autoSave(); 
-            }
+            if (newIconUrl !== null) { node.iconUrl = newIconUrl; this.app.autoSave(); }
             this.hideMenu();
         };
 
@@ -407,14 +423,12 @@ export class UIManager {
             document.getElementById(`preset-${i}`).onclick = (e) => { e.stopPropagation(); node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
         });
 
-        // ★ 消してしまっていた「ファビコン自動取得ロジック」を完全復活！
         document.getElementById('custom-url-btn').onclick = (e) => { 
             e.stopPropagation(); 
             this.appLibraryModal.style.display = 'none'; 
             const newUrl = prompt("URLを入力:", node.url); 
             if(newUrl) { 
                 node.url = newUrl; 
-                // URLがhttpから始まり、まだアイコンが無い場合、自動でファビコンを取りに行くか聞く
                 if (newUrl.startsWith('http') && !node.iconUrl && confirm("アイコン(ファビコン)を自動取得しますか？")) {
                     try {
                         const domain = new URL(newUrl).hostname;
