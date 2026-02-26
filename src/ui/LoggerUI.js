@@ -3,99 +3,137 @@
 export class LoggerUI {
     constructor(vault) {
         this.vault = vault;
-        this.maxLogs = 50;
+        this.maxLogs = 30; 
+        this.isVisible = localStorage.getItem('universe_log_visible') !== 'false';
         this.buildUI();
     }
 
-    // 他のUIと同じ魔法（ドラッグ機能）を自前で持つ
-    makeDraggable(el) {
-        let isDragging = false, startX, startY, initX, initY, hasMoved = false;
+    // ★ あなたの書いた美しいドラッグ処理を復活させました！
+    makeDraggable(el, handle) {
+        let isDragging = false, startX, startY, initX, initY;
         const down = (e) => {
-            hasMoved = false; const ev = e.touches ? e.touches[0] : e;
+            const ev = e.touches ? e.touches[0] : e;
+            e.stopPropagation(); // 宇宙を動かさない
             startX = ev.clientX; startY = ev.clientY;
-            const rect = el.getBoundingClientRect(); initX = rect.left; initY = rect.top;
-            isDragging = true; el.style.transition = 'none';
+            const rect = el.getBoundingClientRect();
+            initX = rect.left; initY = rect.top;
+            isDragging = true;
+            el.style.transition = 'none';
         };
         const move = (e) => {
-            if (!isDragging) return; const ev = e.touches ? e.touches[0] : e;
+            if (!isDragging) return;
+            const ev = e.touches ? e.touches[0] : e;
+            e.stopPropagation();
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-            el.style.left = `${Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx))}px`; 
-            el.style.top = `${Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy))}px`; 
+            
+            // 画面外に出ないようにガード
+            let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
+            let ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
+            
+            el.style.left = `${nx}px`;
+            el.style.top = `${ny}px`;
             el.style.right = 'auto'; el.style.bottom = 'auto';
         };
-        const up = () => { if (isDragging) { isDragging = false; el.style.transition = '0.2s'; } };
-        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: true});
-        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: true});
+        const up = (e) => {
+            if (isDragging) {
+                isDragging = false;
+                el.style.transition = 'opacity 0.3s, transform 0.3s';
+            }
+        };
+        // handle（ヘッダー部分）を掴んだ時だけ動くようにする
+        handle.addEventListener('mousedown', down); handle.addEventListener('touchstart', down, {passive: false});
+        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-        return () => hasMoved;
     }
 
     buildUI() {
-        // 1. ターミナル起動ボタン（🖥️）
-        this.fab = document.createElement('div');
-        this.fab.style.cssText = 'position:fixed; z-index:101; display:flex; justify-content:center; align-items:center; width:46px; height:46px; border-radius:50%; cursor:pointer; font-size:22px; backdrop-filter:blur(5px); transition:0.2s; user-select:none; bottom:15px; right:80px; background:rgba(0,255,65,0.1); border:1px solid #00ff41; color:#00ff41;';
-        this.fab.innerText = '🖥️';
-        document.body.appendChild(this.fab);
-
-        // 2. 隠しパネル（ログ表示エリア）
         this.panel = document.createElement('div');
         this.panel.id = 'universe-terminal-log';
-        Object.assign(this.panel.style, {
-            position: 'fixed', display: 'none', flexDirection: 'column', width: '300px', height: '150px',
-            backgroundColor: 'rgba(0, 0, 0, 0.8)', color: '#00ff41', fontFamily: '"Courier New", Courier, monospace',
-            fontSize: '10px', padding: '10px', overflowY: 'auto', border: '1px solid #00ff41',
-            borderRadius: '8px', zIndex: '100', boxShadow: '0 0 15px rgba(0, 255, 65, 0.2)'
-        });
+        
+        // ★ カプセルと被らないよう、初期位置を「左下」に変更！
+        this.panel.style.cssText = `
+            position: fixed; bottom: 20px; left: 20px; width: 280px; height: 200px;
+            background: rgba(0, 15, 5, 0.85); border: 1px solid #00ffcc; border-radius: 8px;
+            color: #00ffcc; font-family: "Courier New", Courier, monospace; font-size: 11px;
+            display: flex; flex-direction: column; z-index: 8000;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2); backdrop-filter: blur(4px);
+            transition: opacity 0.3s, transform 0.3s; pointer-events: auto;
+        `;
+
+        if (!this.isVisible) {
+            this.panel.style.opacity = '0';
+            this.panel.style.pointerEvents = 'none';
+            this.panel.style.transform = 'translateY(20px)';
+        }
+
+        // 掴んで動かせるヘッダー（ドラッグハンドル）
+        this.header = document.createElement('div');
+        this.header.innerHTML = `>_ MY UNIVERSE OS <span style="color:#fff;">[SYS.LOG]</span> <span style="float:right; cursor:move;">☷</span>`;
+        this.header.style.cssText = "border-bottom: 1px solid rgba(0,255,204,0.3); padding: 8px 10px; font-weight: bold; cursor: move; background: rgba(0,255,204,0.1); border-radius: 8px 8px 0 0; user-select: none;";
+        this.panel.appendChild(this.header);
+
+        // ログエリア
+        this.logContainer = document.createElement('div');
+        this.logContainer.style.cssText = "flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 10px;";
+        
+        // ログをスクロールする時はドラッグさせないガード
+        const stop = (e) => e.stopPropagation();
+        this.logContainer.addEventListener('mousedown', stop);
+        this.logContainer.addEventListener('touchstart', stop, {passive: false});
+        
+        this.panel.appendChild(this.logContainer);
         document.body.appendChild(this.panel);
 
-        const isDragged = this.makeDraggable(this.fab);
+        // ★ ドラッグ機能を発動！
+        this.makeDraggable(this.panel, this.header);
+    }
 
-        // 3. クリック時の「動的メニュー展開」ロジック
-        this.fab.onclick = () => {
-            if (isDragged()) return;
-            const isHidden = this.panel.style.display === 'none';
-            
-            if (isHidden) {
-                this.panel.style.display = 'flex';
-                this.fab.style.background = 'rgba(0,255,65,0.4)';
-                
-                // ★ 現在のボタン位置を計算して、はみ出さないようにパネルを配置！
-                const rect = this.fab.getBoundingClientRect();
-                let top = rect.top - 170; // 基本はボタンの上に出す
-                let left = rect.left - 260; // 基本は左にずらす
-                
-                if (top < 10) top = rect.bottom + 10; // 上が狭ければ下に出す
-                if (left < 10) left = 10;
-                if (left + 320 > window.innerWidth) left = window.innerWidth - 320;
-
-                this.panel.style.top = `${top}px`;
-                this.panel.style.left = `${left}px`;
-                this.panel.style.bottom = 'auto'; this.panel.style.right = 'auto';
-            } else {
-                this.panel.style.display = 'none';
-                this.fab.style.background = 'rgba(0,255,65,0.1)';
-            }
-        };
+    toggle() {
+        this.isVisible = !this.isVisible;
+        localStorage.setItem('universe_log_visible', this.isVisible);
+        
+        if (this.isVisible) {
+            this.panel.style.opacity = '1';
+            this.panel.style.pointerEvents = 'auto';
+            this.panel.style.transform = 'translateY(0)';
+        } else {
+            this.panel.style.opacity = '0';
+            this.panel.style.pointerEvents = 'none';
+            this.panel.style.transform = 'translateY(20px)';
+        }
     }
 
     async log(action, detail) {
         const timestamp = new Date().toISOString();
+        const timeStr = timestamp.split('T')[1].split('.')[0];
         const logEntry = { timestamp, action, detail };
 
         const logLine = document.createElement('div');
-        logLine.textContent = `[${timestamp.split('T')[1].split('.')[0]}] ${action} > ${JSON.stringify(detail)}`;
-        this.panel.appendChild(logLine);
+        logLine.style.cssText = "animation: fadeIn 0.3s ease-out; line-height: 1.3;";
+        const detailStr = Object.entries(detail||{}).map(([k,v]) => `<span style="color:#ffaa00;">${k}:</span>${v}`).join(' ');
+        logLine.innerHTML = `<span style="color:#558866;">[${timeStr}]</span> <span style="color:#fff; font-weight:bold;">${action}</span> ${detailStr}`;
+        
+        this.logContainer.appendChild(logLine);
 
-        if (this.panel.childNodes.length > this.maxLogs) {
-            this.panel.removeChild(this.panel.firstChild);
+        if (this.logContainer.childNodes.length > this.maxLogs) {
+            this.logContainer.removeChild(this.logContainer.firstChild);
         }
-        this.panel.scrollTop = this.panel.scrollHeight;
+        this.logContainer.scrollTop = this.logContainer.scrollHeight;
 
         try {
-            if(this.vault) await this.vault.saveLog(logEntry);
+            if(this.vault && this.vault.saveLog) {
+                await this.vault.saveLog(logEntry);
+            }
         } catch (e) {
             console.error("Failed to save log:", e);
         }
     }
+}
+
+// アニメーション追加
+if (!document.getElementById('log-fade-style')) {
+    const style = document.createElement('style');
+    style.id = 'log-fade-style';
+    style.innerHTML = `@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }`;
+    document.head.appendChild(style);
 }
