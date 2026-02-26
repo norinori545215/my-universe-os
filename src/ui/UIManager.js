@@ -71,7 +71,6 @@ export class UIManager {
     }
 
     createUI() {
-        // 中央の透かしテキスト（階層名）
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap;';
@@ -86,21 +85,24 @@ export class UIManager {
         };
         document.body.appendChild(this.centerTextEl);
 
-        // ★★★ 究極の「フローティング・システムカプセル」 ★★★
+        // ★★★ フローティング・システムカプセル ★★★
         this.systemCapsule = document.createElement('div');
         this.systemCapsule.style.cssText = 'position:fixed; top:20px; left:20px; z-index:9000; display:flex; align-items:center; background:rgba(10,15,25,0.85); border:1px solid rgba(0,255,204,0.5); border-radius:30px; padding:5px 15px 5px 5px; box-shadow:0 10px 30px rgba(0,255,204,0.2); backdrop-filter:blur(10px); pointer-events:auto; user-select:none; max-width:90vw; overflow-x:auto;';
-        
-        // カプセル全体のドラッグを有効化（ドラッグ判定関数を保存しておく）
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
         document.body.appendChild(this.systemCapsule);
 
-        // カプセル左側：コア・ボタン（メニュー開閉）
+        // コア・ボタン（メニュー開閉）
         const coreBtn = document.createElement('div');
         coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
-        // カプセル右側：パンくずリスト（階層表示）
+        // ★ 新機能：拡張モジュール（プラグイン）を追加する専用スロット
+        this.capsuleSlots = document.createElement('div');
+        this.capsuleSlots.style.cssText = 'display:flex; gap:5px; margin-right:10px;';
+        this.systemCapsule.appendChild(this.capsuleSlots);
+
+        // パンくずリスト
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
         this.systemCapsule.appendChild(this.breadcrumbUI);
@@ -111,11 +113,18 @@ export class UIManager {
         this.protectUI(controlPanel);
         document.body.appendChild(controlPanel);
 
-        // パネル中身
         controlPanel.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:10px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#00ffcc; font-size:16px; letter-spacing:1px;">CORE SYSTEM</h3>
                 <button id="cp-close" style="background:transparent; border:none; color:#aaa; font-size:20px; cursor:pointer;">×</button>
+            </div>
+
+            <div style="margin-bottom:20px; background:rgba(0,255,204,0.05); padding:10px; border-radius:8px; border:1px dashed rgba(0,255,204,0.3);">
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:8px;">🧩 拡張モジュール (Plugins)</div>
+                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
+                    <input type="checkbox" id="cp-ext-logger" style="cursor:pointer; accent-color:#00ffcc;">
+                    🖥️ ターミナルをカプセルに追加
+                </label>
             </div>
 
             <div style="margin-bottom:20px;">
@@ -164,6 +173,43 @@ export class UIManager {
         };
 
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
+
+        // ★★★ プラグイン（拡張モジュール）の管理ロジック ★★★
+        const extLogger = document.getElementById('cp-ext-logger');
+        // 前回の状態を読み込む（シークレットモード対策済）
+        let isLoggerEnabled = false;
+        try { isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; } catch(e) {}
+        extLogger.checked = isLoggerEnabled;
+
+        const updateCapsuleSlots = () => {
+            this.capsuleSlots.innerHTML = ''; // スロットを一旦空にする
+            
+            // ターミナルがONになっていればカプセルにボタンを追加！
+            if (extLogger.checked) {
+                const logBtn = document.createElement('div');
+                logBtn.innerText = '🖥️';
+                logBtn.title = "ターミナルを開閉";
+                logBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; font-size:14px; cursor:pointer; transition:0.2s;';
+                
+                logBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.isCapsuleDragged && this.isCapsuleDragged()) return;
+                    if (window.universeLogger) window.universeLogger.toggle(); // ターミナル開閉
+                };
+                
+                // ボタンのホバー効果
+                logBtn.onmouseover = () => logBtn.style.background = 'rgba(0,255,204,0.4)';
+                logBtn.onmouseout = () => logBtn.style.background = 'rgba(0,255,204,0.1)';
+
+                this.capsuleSlots.appendChild(logBtn);
+            }
+
+            try { localStorage.setItem('universe_ext_logger', extLogger.checked); } catch(e) {}
+        };
+
+        // チェックボックスを押すたびにカプセルを更新
+        extLogger.onchange = updateCapsuleSlots;
+        updateCapsuleSlots(); // 初期描画
 
         // 🔍 レーダー処理
         const radarInput = document.getElementById('cp-radar');
@@ -260,7 +306,7 @@ export class UIManager {
         return el;
     }
 
-    // メニューなどその他のUI操作（変更なし）
+    // --- メニュー操作など（変更なし） ---
     showMenu(node, screenX, screenY) {
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
@@ -313,7 +359,6 @@ export class UIManager {
             
             b.onclick = (e) => { 
                 e.stopPropagation();
-                // ★カプセル全体をドラッグした直後はクリックを無視する
                 if(this.isCapsuleDragged && this.isCapsuleDragged()) return;
                 
                 if(!isLast){
