@@ -248,6 +248,9 @@ export class UIManager {
 
         const canvasEl = document.getElementById('universe-canvas');
         let spawnTouchStartX = 0; let spawnTouchStartY = 0;
+        
+        // ★ 新規追加：ゴーストクリック防止用のタイマー
+        let lastSpawnTime = 0;
 
         const onCanvasDown = (e) => {
             const ev = e.touches ? e.touches[0] : e;
@@ -256,10 +259,18 @@ export class UIManager {
 
         const onCanvasUp = (e) => {
             if (!rapidSpawnCheckbox.checked) return;
+
+            // ★ 新規追加：前回の生成から300ミリ秒経っていなければ無視（ゴーストクリック対策）
+            const now = Date.now();
+            if (now - lastSpawnTime < 300) return;
+
             const ev = e.changedTouches ? e.changedTouches[0] : e;
             const dx = ev.clientX - spawnTouchStartX; const dy = ev.clientY - spawnTouchStartY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
             if (e.target !== canvasEl) return;
+
+            // ★ 新規追加：シールドを通過したら生成時間を記録
+            lastSpawnTime = now;
 
             const rect = canvasEl.getBoundingClientRect();
             const zoom = this.app.camera.zoom || 1;
