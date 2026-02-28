@@ -2,7 +2,6 @@
 import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
-// ★ 新規追加：音響エンジンをインポート！
 import { AudioCore } from '../engine/AudioCore.js';
 
 export class UIManager {
@@ -11,7 +10,6 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.isRapidDeleteMode = false;
         
-        // ★ 音響エンジンのインスタンスを作成
         window.universeAudio = new AudioCore();
 
         this.createUI();
@@ -141,6 +139,11 @@ export class UIManager {
                     <button id="cp-mode-edit" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">⚙️ 編集</button>
                 </div>
                 
+                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(0,255,204,0.1); padding:8px; border-radius:6px; border:1px solid rgba(0,255,204,0.3); color:#00ffcc; margin-bottom:8px; transition:0.2s;">
+                    <input type="checkbox" id="cp-auto-menu" style="cursor:pointer; accent-color:#00ffcc;">
+                    ⚙️ 星の創造直後にメニューを自動展開
+                </label>
+
                 <label id="cp-rapid-spawn-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,204,0,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,204,0,0.3); color:#ffcc00; margin-bottom:8px; transition:0.2s;">
                     <input type="checkbox" id="cp-rapid-spawn" style="cursor:pointer; accent-color:#ffcc00;">
                     🌟 連続創造モード (空間タップで配置)
@@ -185,23 +188,28 @@ export class UIManager {
         document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
 
         // ★★★ スイッチ類の設定 ★★★
-        const extAudio = document.getElementById('cp-ext-audio'); // 音響スイッチ
+        const extAudio = document.getElementById('cp-ext-audio'); 
         const extLogger = document.getElementById('cp-ext-logger');
         const extCenterText = document.getElementById('cp-ext-center-text');
+        const autoMenuCheckbox = document.getElementById('cp-auto-menu'); // ★追加
 
-        let isLoggerEnabled = false; let isCenterTextEnabled = true; let isAudioEnabled = false;
+        let isLoggerEnabled = false; let isCenterTextEnabled = true; let isAudioEnabled = false; let isAutoMenuEnabled = false;
         try { 
             isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; 
             if (localStorage.getItem('universe_center_text') === 'false') isCenterTextEnabled = false;
-            // 音はブラウザの制約上、毎回OFFからスタートさせるのが安全です
             isAudioEnabled = false; 
+            isAutoMenuEnabled = localStorage.getItem('universe_auto_menu') === 'true'; // ★追加
         } catch(e) {}
         
         extLogger.checked = isLoggerEnabled; 
         extCenterText.checked = isCenterTextEnabled;
         extAudio.checked = isAudioEnabled;
+        autoMenuCheckbox.checked = isAutoMenuEnabled; // ★追加
 
-        // 音響スイッチのイベント
+        autoMenuCheckbox.onchange = (e) => { // ★追加
+            try { localStorage.setItem('universe_auto_menu', e.target.checked); } catch(err){}
+        };
+
         extAudio.onchange = (e) => {
             if (window.universeAudio) window.universeAudio.toggle(e.target.checked);
         };
@@ -224,7 +232,6 @@ export class UIManager {
         };
         extLogger.onchange = updateUIState; extCenterText.onchange = updateUIState; updateUIState();
 
-        // 連続モードの設定
         const rapidSpawnCheckbox = document.getElementById('cp-rapid-spawn');
         const rapidSpawnLabel = document.getElementById('cp-rapid-spawn-label');
         rapidSpawnCheckbox.onchange = (e) => {
@@ -248,8 +255,6 @@ export class UIManager {
 
         const canvasEl = document.getElementById('universe-canvas');
         let spawnTouchStartX = 0; let spawnTouchStartY = 0;
-        
-        // ★ 新規追加：ゴーストクリック防止用のタイマー
         let lastSpawnTime = 0;
 
         const onCanvasDown = (e) => {
@@ -260,7 +265,6 @@ export class UIManager {
         const onCanvasUp = (e) => {
             if (!rapidSpawnCheckbox.checked) return;
 
-            // ★ 新規追加：前回の生成から300ミリ秒経っていなければ無視（ゴーストクリック対策）
             const now = Date.now();
             if (now - lastSpawnTime < 300) return;
 
@@ -269,7 +273,6 @@ export class UIManager {
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
             if (e.target !== canvasEl) return;
 
-            // ★ 新規追加：シールドを通過したら生成時間を記録
             lastSpawnTime = now;
 
             const rect = canvasEl.getBoundingClientRect();
@@ -283,9 +286,15 @@ export class UIManager {
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
             this.app.autoSave();
 
-            // ★ 音を鳴らす！
             if (window.universeAudio) window.universeAudio.playSpawn();
             if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color: color });
+
+            // ★ 自動展開がONなら、作った星のメニューをその場で開く
+            if (autoMenuCheckbox.checked) {
+                const nodes = this.app.currentUniverse.nodes;
+                const newNode = nodes[nodes.length - 1];
+                setTimeout(() => this.showMenu(newNode, ev.clientX, ev.clientY), 50);
+            }
         };
 
         canvasEl.addEventListener('mousedown', onCanvasDown); canvasEl.addEventListener('touchstart', onCanvasDown, {passive: true});
@@ -304,7 +313,6 @@ export class UIManager {
                         btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:5px; border-bottom:1px solid rgba(0,255,204,0.2); width:100%; display:block;';
                         btn.onclick = () => { 
                             this.app.executeWarp(n); 
-                            // ★ ワープ音を鳴らす！
                             if (window.universeAudio) window.universeAudio.playWarp();
                             radarInput.value = ''; radarResults.innerHTML = ''; controlPanel.style.display = 'none'; 
                         };
@@ -333,8 +341,14 @@ export class UIManager {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             this.app.autoSave(); controlPanel.style.display = 'none';
-            // ★ 生成音を鳴らす！
             if (window.universeAudio) window.universeAudio.playSpawn();
+
+            // ★ 自動展開がONなら、画面中央にメニューを開く
+            if (autoMenuCheckbox.checked) {
+                const nodes = this.app.currentUniverse.nodes;
+                const newNode = nodes[nodes.length - 1];
+                setTimeout(() => this.showMenu(newNode, window.innerWidth / 2, window.innerHeight / 2), 50);
+            }
         };
 
         document.getElementById('cp-btn-inventory').onclick = () => { controlPanel.style.display = 'none'; this.showInventoryUI(); };
@@ -371,12 +385,10 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // 連続削除モードがONなら即座に消して音を鳴らす！
         if (this.isRapidDeleteMode) {
             this.app.currentUniverse.removeNode(node);
             this.app.blackHole.push(node);
             this.app.autoSave();
-            // ★ 削除音（ブラックホール音）を鳴らす！
             if (window.universeAudio) window.universeAudio.playDelete();
             if (window.universeLogger) window.universeLogger.log("RAPID_STORE", { target: node.name });
             return; 
@@ -404,7 +416,6 @@ export class UIManager {
 
         document.getElementById('m-dive').onclick = (e) => { 
             e.stopPropagation(); this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); 
-            // ★ ワープ音！
             if (window.universeAudio) window.universeAudio.playWarp();
         };
         document.getElementById('m-note').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.notePad.open(node); };
@@ -424,7 +435,6 @@ export class UIManager {
             e.stopPropagation(); 
             if(confirm("亜空間へ送りますか？")){
                 this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();
-                // ★ 削除音！
                 if (window.universeAudio) window.universeAudio.playDelete();
             } 
             this.hideMenu(); 
@@ -460,7 +470,6 @@ export class UIManager {
                     this.app.currentUniverse = this.app.universeHistory[i]; 
                     this.app.universeHistory = this.app.universeHistory.slice(0, i); 
                     this.app.camera.reset(); this.updateBreadcrumbs();
-                    // ★ 階層を戻る時もワープ音！
                     if (window.universeAudio) window.universeAudio.playWarp();
                 } 
             };
@@ -522,7 +531,6 @@ export class UIManager {
         this.app.blackHole.forEach((node, i) => {
             document.getElementById(`inv-res-${i}`).onclick = (e) => { 
                 e.stopPropagation(); this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; 
-                // ★ 復元音！
                 if (window.universeAudio) window.universeAudio.playSpawn();
             };
             document.getElementById(`inv-del-${i}`).onclick = (e) => { e.stopPropagation(); if(confirm("消去しますか？")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
