@@ -8,12 +8,23 @@ export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
-        this.isRapidDeleteMode = false;
         
+        // --- 状態管理 (State) ---
+        this.state = {
+            activeTab: 'create', // 'create' | 'config' | 'data'
+            isRapidDeleteMode: false,
+            lastSpawnTime: 0,
+            touchStartX: 0,
+            touchStartY: 0
+        };
+        
+        // --- サウンドエンジンの初期化 ---
         window.universeAudio = new AudioCore();
 
+        // --- UI構築の実行 ---
         this.createUI();
         
+        // （後方互換）古いDOMのクリーンアップ
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
             const oldReset = document.getElementById('emergency-reset-btn');
@@ -22,8 +33,12 @@ export class UIManager {
         }, 500);
     }
 
+    // ==========================================
+    // ユーティリティ・イベント隔離
+    // ==========================================
     makeDraggable(el) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
+        
         const down = (e) => {
             const ev = e.touches ? e.touches[0] : e;
             e.stopPropagation(); 
@@ -34,6 +49,7 @@ export class UIManager {
             isDragging = true;
             el.style.transition = 'none';
         };
+        
         const move = (e) => {
             if (!isDragging) return;
             e.stopPropagation();
@@ -41,415 +57,457 @@ export class UIManager {
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
             
-            let nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
-            let ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
+            // 画面外への逸脱を防止
+            const nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
+            const ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
             
-            el.style.left = `${nx}px`; el.style.top = `${ny}px`;
+            el.style.left = `${nx}px`;
+            el.style.top = `${ny}px`;
             el.style.right = 'auto'; el.style.bottom = 'auto';
         };
+        
         const up = (e) => {
             if (isDragging) { 
-                isDragging = false; el.style.transition = '0.2s'; e.stopPropagation();
+                isDragging = false; 
+                el.style.transition = '0.2s'; 
+                e.stopPropagation(); 
             }
         };
+
         el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: false});
         window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+        
         return () => hasMoved; 
     }
 
     protectUI(el) {
+        // バックグラウンド（宇宙）へのイベント貫通を防ぐ完全シールド
         el.addEventListener('mousedown', e => e.stopPropagation());
         el.addEventListener('mouseup', e => e.stopPropagation());
         el.addEventListener('touchstart', e => e.stopPropagation(), {passive: false});
         el.addEventListener('touchend', e => e.stopPropagation(), {passive: false});
     }
 
+    // ==========================================
+    // UIコンポーネントの構築
+    // ==========================================
     createUI() {
+        // 1. 中央透かしテキスト
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
-        this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap; transition: opacity 0.3s;';
+        this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap; transition: opacity 0.3s ease-out;';
         this.protectUI(this.centerTextEl);
         this.centerTextEl.onclick = (e) => {
             e.stopPropagation();
-            const newName = prompt("現在の階層の名前を変更:", this.app.currentUniverse.name);
+            const newName = prompt("階層の名称を変更:", this.app.currentUniverse.name);
             if (newName) {
                 this.app.currentUniverse.name = newName;
-                this.app.autoSave(); this.updateBreadcrumbs(); 
+                this.app.autoSave(); 
+                this.updateBreadcrumbs(); 
             }
         };
         document.body.appendChild(this.centerTextEl);
 
+        // 2. システムカプセル（フローティングメニュー）
         this.systemCapsule = document.createElement('div');
         this.systemCapsule.style.cssText = 'position:fixed; top:20px; left:20px; z-index:9000; display:flex; align-items:center; background:rgba(10,15,25,0.85); border:1px solid rgba(0,255,204,0.5); border-radius:30px; padding:5px 15px 5px 5px; box-shadow:0 10px 30px rgba(0,255,204,0.2); backdrop-filter:blur(10px); pointer-events:auto; user-select:none; max-width:90vw; overflow-x:auto;';
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
         document.body.appendChild(this.systemCapsule);
 
+        // カプセル内：コアボタン
         const coreBtn = document.createElement('div');
         coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
+        // カプセル内：拡張モジュールスロット
         this.capsuleSlots = document.createElement('div');
         this.capsuleSlots.style.cssText = 'display:flex; gap:5px; margin-right:10px;';
         this.systemCapsule.appendChild(this.capsuleSlots);
 
+        // カプセル内：パンくずリスト
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
         this.systemCapsule.appendChild(this.breadcrumbUI);
 
-        const controlPanel = document.createElement('div');
-        controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.95); border:1px solid #00ffcc; border-radius:12px; padding:20px; z-index:9001; width:85%; max-width:320px; max-height:80vh; overflow-y:auto; box-shadow:0 15px 50px rgba(0,0,0,0.8); backdrop-filter:blur(10px); color:white; font-family:sans-serif; pointer-events:auto;';
-        this.protectUI(controlPanel);
-        document.body.appendChild(controlPanel);
+        // 3. 統合コントロールパネル (Control Panel)
+        this.controlPanel = document.createElement('div');
+        this.controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.98); border:1px solid #00ffcc; border-radius:12px; padding:0; z-index:9001; width:90%; max-width:340px; min-height:420px; max-height:85vh; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.9); backdrop-filter:blur(20px); color:white; font-family:sans-serif; pointer-events:auto;';
+        this.protectUI(this.controlPanel);
+        document.body.appendChild(this.controlPanel);
 
-        controlPanel.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,255,204,0.3); padding-bottom:10px; margin-bottom:15px;">
-                <h3 style="margin:0; color:#00ffcc; font-size:16px; letter-spacing:1px;">CORE SYSTEM</h3>
-                <button id="cp-close" style="background:transparent; border:none; color:#aaa; font-size:20px; cursor:pointer;">×</button>
-            </div>
+        // 4. その他のモーダルUI
+        this.inventoryModal = this.createModal('#ff6699', 300);
+        this.appLibraryModal = this.createModal('#00ffcc', 300);
+        this.actionMenu = this.createModal('#00ffcc', 220, false);
+        this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
+        this.quickNotePanel = this.createModal('#00ffcc', 200, false);
+        window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
 
-            <div style="margin-bottom:20px; background:rgba(0,255,204,0.05); padding:10px; border-radius:8px; border:1px dashed rgba(0,255,204,0.3);">
-                <div style="font-size:11px; color:#00ffcc; margin-bottom:8px;">🧩 拡張設定 (表示トグル)</div>
-                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; margin-bottom:8px;">
-                    <input type="checkbox" id="cp-ext-logger" style="cursor:pointer; accent-color:#00ffcc;">
-                    🖥️ ターミナルをカプセルに追加
-                </label>
-                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; margin-bottom:8px;">
-                    <input type="checkbox" id="cp-ext-center-text" style="cursor:pointer; accent-color:#00ffcc;">
-                    🔤 中央の階層透かし文字を表示
-                </label>
-                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-                    <input type="checkbox" id="cp-ext-audio" style="cursor:pointer; accent-color:#ff00ff;">
-                    <span style="color:#ff66ff;">🔊 153bpm 音響エンジン起動</span>
-                </label>
-            </div>
+        // 初期描画とイベントバインド
+        this.renderCP();
+        this.setupGlobalCanvasEvents();
 
-            <div style="margin-bottom:20px;">
-                <div style="font-size:11px; color:#00ffcc; margin-bottom:5px;">🔍 レーダー検索</div>
-                <input type="text" id="cp-radar" placeholder="星の名前を探す..." style="width:100%; background:rgba(0,0,0,0.6); color:#fff; border:1px solid #00ffcc; border-radius:6px; padding:8px; box-sizing:border-box; outline:none; font-size:14px;">
-                <div id="cp-radar-results" style="max-height:100px; overflow-y:auto; margin-top:5px; font-size:12px;"></div>
-            </div>
-
-            <div style="margin-bottom:20px; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
-                <div style="font-size:11px; color:#00ffff; margin-bottom:8px;">🛠️ 操作と創造</div>
-                <div style="display:flex; gap:5px; margin-bottom:10px;">
-                    <button id="cp-mode-run" style="flex:1; padding:8px; background:#00ffcc; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:12px;">👆 実行</button>
-                    <button id="cp-mode-link" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">🔗 結ぶ</button>
-                    <button id="cp-mode-edit" style="flex:1; padding:8px; background:#113344; color:#fff; border:1px solid #00ffff; border-radius:4px; font-size:12px;">⚙️ 編集</button>
-                </div>
-                
-                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(0,255,204,0.1); padding:8px; border-radius:6px; border:1px solid rgba(0,255,204,0.3); color:#00ffcc; margin-bottom:8px; transition:0.2s;">
-                    <input type="checkbox" id="cp-auto-menu" style="cursor:pointer; accent-color:#00ffcc;">
-                    ⚙️ 星の創造直後にメニューを自動展開
-                </label>
-
-                <label id="cp-rapid-spawn-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,204,0,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,204,0,0.3); color:#ffcc00; margin-bottom:8px; transition:0.2s;">
-                    <input type="checkbox" id="cp-rapid-spawn" style="cursor:pointer; accent-color:#ffcc00;">
-                    🌟 連続創造モード (空間タップで配置)
-                </label>
-
-                <label id="cp-rapid-delete-label" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; background:rgba(255,68,68,0.1); padding:8px; border-radius:6px; border:1px solid rgba(255,68,68,0.3); color:#ff4444; margin-bottom:10px; transition:0.2s;">
-                    <input type="checkbox" id="cp-rapid-delete" style="cursor:pointer; accent-color:#ff4444;">
-                    🎒 連続収納モード (星タップで亜空間へ)
-                </label>
-
-                <div style="display:flex; gap:8px;">
-                    <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:40px; height:36px; border:none; border-radius:4px; background:transparent; cursor:pointer;">
-                    <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:4px; font-weight:bold; font-size:12px;">🎯 画面中央に1つ創る</button>
-                </div>
-            </div>
-
-            <div style="margin-bottom:20px; background:rgba(255,102,153,0.05); padding:10px; border-radius:8px;">
-                <div style="font-size:11px; color:#ff6699; margin-bottom:8px;">🎒 データ管理 (亜空間)</div>
-                <button id="cp-btn-inventory" style="width:100%; background:#220022; color:#ff6699; border:1px solid #ff6699; padding:10px; border-radius:4px; margin-bottom:8px; font-size:12px;">🌌 亜空間ポケットを開く</button>
-                <div style="display:flex; gap:5px;">
-                    <button id="cp-btn-export" style="flex:1; background:#112244; color:#66aaff; border:1px solid #66aaff; padding:8px; border-radius:4px; font-size:11px;">💾 出力</button>
-                    <button id="cp-btn-import" style="flex:1; background:#442211; color:#ffaa66; border:1px solid #ffaa66; padding:8px; border-radius:4px; font-size:11px;">📂 読込</button>
-                    <input type="file" id="cp-import-file" accept=".universe" style="display:none;">
-                </div>
-            </div>
-
-            <div style="background:rgba(255,0,0,0.05); padding:10px; border-radius:8px;">
-                <div style="font-size:11px; color:#ff4444; margin-bottom:8px;">⚙️ システム設定</div>
-                <div style="display:flex; gap:5px;">
-                    <button id="cp-btn-logout" style="flex:1; background:transparent; color:#ccc; border:1px solid #666; padding:8px; border-radius:4px; font-size:11px;">🚪 ログアウト</button>
-                    <button id="cp-btn-reset" style="flex:1; background:#330000; color:#ff4444; border:1px solid #ff4444; padding:8px; border-radius:4px; font-size:11px;">🚨 宇宙初期化</button>
-                </div>
-            </div>
-        `;
-
+        // コアボタンのトグル
         coreBtn.onclick = (e) => {
             e.stopPropagation();
             if (this.isCapsuleDragged()) return;
-            controlPanel.style.display = controlPanel.style.display === 'none' ? 'flex' : 'none';
+            this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
+    }
 
-        document.getElementById('cp-close').onclick = () => controlPanel.style.display = 'none';
-
-        // ★★★ スイッチ類の設定 ★★★
-        const extAudio = document.getElementById('cp-ext-audio'); 
-        const extLogger = document.getElementById('cp-ext-logger');
-        const extCenterText = document.getElementById('cp-ext-center-text');
-        const autoMenuCheckbox = document.getElementById('cp-auto-menu'); // ★追加
-
-        let isLoggerEnabled = false; let isCenterTextEnabled = true; let isAudioEnabled = false; let isAutoMenuEnabled = false;
-        try { 
-            isLoggerEnabled = localStorage.getItem('universe_ext_logger') === 'true'; 
-            if (localStorage.getItem('universe_center_text') === 'false') isCenterTextEnabled = false;
-            isAudioEnabled = false; 
-            isAutoMenuEnabled = localStorage.getItem('universe_auto_menu') === 'true'; // ★追加
-        } catch(e) {}
+    // ==========================================
+    // コントロールパネルの描画（タブシステム）
+    // ==========================================
+    renderCP() {
+        const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
+        const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
         
-        extLogger.checked = isLoggerEnabled; 
-        extCenterText.checked = isCenterTextEnabled;
-        extAudio.checked = isAudioEnabled;
-        autoMenuCheckbox.checked = isAutoMenuEnabled; // ★追加
+        // パネルの外枠・ヘッダー
+        this.controlPanel.innerHTML = `
+            <div style="display:flex; background:rgba(0,0,0,0.3); border-bottom:1px solid rgba(0,255,204,0.2);">
+                <button id="tab-create" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='create'?activeStyle:inactiveStyle}">🛠 創造</button>
+                <button id="tab-config" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='config'?activeStyle:inactiveStyle}">🧩 拡張</button>
+                <button id="tab-data" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='data'?activeStyle:inactiveStyle}">💾 データ</button>
+                <button id="cp-close" style="width:50px; background:transparent; border:none; color:#ff4444; font-size:20px; cursor:pointer;">×</button>
+            </div>
+            <div id="cp-content" style="padding:20px; flex:1; overflow-y:auto;"></div>
+        `;
 
-        autoMenuCheckbox.onchange = (e) => { // ★追加
-            try { localStorage.setItem('universe_auto_menu', e.target.checked); } catch(err){}
+        const content = document.getElementById('cp-content');
+
+        // 各タブのコンテンツ生成
+        if (this.state.activeTab === 'create') {
+            content.innerHTML = `
+                <div style="margin-bottom:20px;">
+                    <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODE SELECT</div>
+                    <div style="display:flex; gap:5px; margin-bottom:20px;">
+                        <button id="cp-mode-run" style="flex:1; padding:10px; background:${this.app.appMode==='RUN'?'#00ffcc':'#113344'}; color:${this.app.appMode==='RUN'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; font-weight:bold; transition:0.2s;">👆 実行</button>
+                        <button id="cp-mode-link" style="flex:1; padding:10px; background:${this.app.appMode==='LINK'?'#ff00ff':'#113344'}; color:#fff; border:none; border-radius:6px; font-size:12px; transition:0.2s;">🔗 結ぶ</button>
+                        <button id="cp-mode-edit" style="flex:1; padding:10px; background:${this.app.appMode==='EDIT'?'#ffcc00':'#113344'}; color:${this.app.appMode==='EDIT'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; transition:0.2s;">⚙️ 編集</button>
+                    </div>
+                    
+                    <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RAPID WORKFLOW</div>
+                    <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:12px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#ffcc00;">
+                            <input type="checkbox" id="cp-rapid-spawn" ${localStorage.getItem('universe_rapid_spawn')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                            🌟 連続創造モード
+                        </label>
+                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#ff4444;">
+                            <input type="checkbox" id="cp-rapid-delete" ${this.state.isRapidDeleteMode?'checked':''} style="accent-color:#ff4444; width:16px; height:16px;"> 
+                            🎒 連続収納モード
+                        </label>
+                        <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#00ffcc;">
+                            <input type="checkbox" id="cp-auto-menu" ${localStorage.getItem('universe_auto_menu')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                            ⚙️ 生成直後にメニューを展開
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:45px; height:45px; border:none; border-radius:8px; background:transparent; cursor:pointer;">
+                    <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
+                </div>
+            `;
+        } else if (this.state.activeTab === 'config') {
+            content.innerHTML = `
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODULE EXTENSIONS</div>
+                <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        🖥️ ターミナルボタン追加
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-audio" ${window.universeAudio && !window.universeAudio.isMuted ? 'checked' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff66ff;">🔊 153bpm 音響エンジン</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-center-text" ${localStorage.getItem('universe_center_text')!=='false'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        🔤 中央透かし文字を表示
+                    </label>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
+                    <div style="display:flex; gap:8px;">
+                        <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
+                        <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;">🚨 宇宙初期化</button>
+                    </div>
+                </div>
+            `;
+        } else if (this.state.activeTab === 'data') {
+            content.innerHTML = `
+                <div style="margin-bottom:25px;">
+                    <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RADAR SEARCH</div>
+                    <input type="text" id="cp-radar" placeholder="宇宙を探索..." style="width:100%; background:rgba(0,0,0,0.5); color:#fff; border:1px solid #00ffcc; border-radius:8px; padding:12px; box-sizing:border-box; outline:none; font-size:14px;">
+                    <div id="cp-radar-results" style="max-height:150px; overflow-y:auto; margin-top:8px; display:flex; flex-direction:column; gap:4px;"></div>
+                </div>
+                <div style="font-size:11px; color:#ff6699; margin-bottom:10px; letter-spacing:1px;">STORAGE MANAGEMENT</div>
+                <button id="cp-btn-inventory" style="width:100%; padding:14px; background:#220022; color:#ff6699; border:1px solid #ff6699; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:bold;">🌌 亜空間ポケットを開く</button>
+                <div style="display:flex; gap:10px;">
+                    <button id="cp-btn-export" style="flex:1; padding:12px; background:#112244; color:#66aaff; border:1px solid #66aaff; border-radius:8px; font-size:12px;">💾 出力 (Export)</button>
+                    <button id="cp-btn-import" style="flex:1; padding:12px; background:#442211; color:#ffaa66; border:1px solid #ffaa66; border-radius:8px; font-size:12px;">📂 読込 (Import)</button>
+                    <input type="file" id="cp-import-file" style="display:none;" accept=".universe">
+                </div>
+            `;
+        }
+
+        this.bindCPEvents();
+    }
+
+    bindCPEvents() {
+        const bind = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
+
+        // タブ制御
+        bind('cp-close', () => this.controlPanel.style.display = 'none');
+        bind('tab-create', () => { this.state.activeTab = 'create'; this.renderCP(); });
+        bind('tab-config', () => { this.state.activeTab = 'config'; this.renderCP(); });
+        bind('tab-data', () => { this.state.activeTab = 'data'; this.renderCP(); });
+
+        // モード変更
+        bind('cp-mode-run', () => this.updateMode('RUN'));
+        bind('cp-mode-link', () => this.updateMode('LINK'));
+        bind('cp-mode-edit', () => this.updateMode('EDIT'));
+
+        // チェックボックスの状態永続化
+        const handleCheckbox = (id, storageKey, stateKey = null) => {
+            const el = document.getElementById(id);
+            if(el) el.onchange = (e) => {
+                if (storageKey) localStorage.setItem(storageKey, e.target.checked);
+                if (stateKey) this.state[stateKey] = e.target.checked;
+            };
         };
 
-        extAudio.onchange = (e) => {
-            if (window.universeAudio) window.universeAudio.toggle(e.target.checked);
-        };
+        handleCheckbox('cp-rapid-spawn', 'universe_rapid_spawn');
+        handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
+        handleCheckbox('cp-auto-menu', 'universe_auto_menu');
+        
+        const extLogger = document.getElementById('cp-ext-logger');
+        if(extLogger) extLogger.onchange = (e) => { localStorage.setItem('universe_ext_logger', e.target.checked); this.updateUIState(); };
 
-        const updateUIState = () => {
-            this.capsuleSlots.innerHTML = '';
-            if (extLogger.checked) {
-                const logBtn = document.createElement('div');
-                logBtn.innerText = '🖥️'; logBtn.title = "ターミナルを開閉";
-                logBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; font-size:14px; cursor:pointer; transition:0.2s;';
-                logBtn.onclick = (e) => { e.stopPropagation(); if (this.isCapsuleDragged && this.isCapsuleDragged()) return; if (window.universeLogger) window.universeLogger.toggle(); };
-                this.capsuleSlots.appendChild(logBtn);
+        const extText = document.getElementById('cp-ext-center-text');
+        if(extText) extText.onchange = (e) => { localStorage.setItem('universe_center_text', e.target.checked); this.updateUIState(); };
+
+        const extAudio = document.getElementById('cp-ext-audio');
+        if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
+
+        // 中央創造ボタン
+        bind('cp-spawn-btn', () => {
+            const color = document.getElementById('cp-spawn-color').value;
+            this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
+            this.app.autoSave(); 
+            if(window.universeAudio) window.universeAudio.playSpawn();
+            if(document.getElementById('cp-auto-menu')?.checked) {
+                const n = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length-1];
+                this.showMenu(n, window.innerWidth/2, window.innerHeight/2);
             }
-            if (extCenterText.checked) {
-                this.centerTextEl.style.display = 'block'; setTimeout(() => this.centerTextEl.style.opacity = '1', 10);
-            } else {
-                this.centerTextEl.style.opacity = '0'; setTimeout(() => this.centerTextEl.style.display = 'none', 300);
-            }
-            try { localStorage.setItem('universe_ext_logger', extLogger.checked); localStorage.setItem('universe_center_text', extCenterText.checked); } catch(e) {}
-        };
-        extLogger.onchange = updateUIState; extCenterText.onchange = updateUIState; updateUIState();
+            this.controlPanel.style.display = 'none';
+        });
 
-        const rapidSpawnCheckbox = document.getElementById('cp-rapid-spawn');
-        const rapidSpawnLabel = document.getElementById('cp-rapid-spawn-label');
-        rapidSpawnCheckbox.onchange = (e) => {
-            if (e.target.checked) {
-                rapidSpawnLabel.style.background = 'rgba(255,204,0,0.3)'; rapidSpawnLabel.style.border = '1px solid rgba(255,204,0,0.8)'; rapidSpawnLabel.style.boxShadow = '0 0 10px rgba(255,204,0,0.4)';
-            } else {
-                rapidSpawnLabel.style.background = 'rgba(255,204,0,0.1)'; rapidSpawnLabel.style.border = '1px solid rgba(255,204,0,0.3)'; rapidSpawnLabel.style.boxShadow = 'none';
-            }
-        };
-
-        const rapidDeleteCheckbox = document.getElementById('cp-rapid-delete');
-        const rapidDeleteLabel = document.getElementById('cp-rapid-delete-label');
-        rapidDeleteCheckbox.onchange = (e) => {
-            this.isRapidDeleteMode = e.target.checked;
-            if (e.target.checked) {
-                rapidDeleteLabel.style.background = 'rgba(255,68,68,0.3)'; rapidDeleteLabel.style.border = '1px solid rgba(255,68,68,0.8)'; rapidDeleteLabel.style.boxShadow = '0 0 10px rgba(255,68,68,0.4)';
-            } else {
-                rapidDeleteLabel.style.background = 'rgba(255,68,68,0.1)'; rapidDeleteLabel.style.border = '1px solid rgba(255,68,68,0.3)'; rapidDeleteLabel.style.boxShadow = 'none';
+        // 危険な操作
+        bind('cp-btn-logout', () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); });
+        bind('cp-btn-reset', () => { if(confirm("【警告】現在の端末の宇宙を初期化します。よろしいですか？")){ localStorage.clear(); window.location.reload(); } });
+        
+        // データ管理
+        bind('cp-btn-inventory', () => { this.controlPanel.style.display='none'; this.showInventoryUI(); });
+        bind('cp-btn-export', () => Singularity.export());
+        
+        const fileInput = document.getElementById('cp-import-file');
+        bind('cp-btn-import', () => fileInput.click());
+        if(fileInput) fileInput.onchange = async (e) => {
+            if(e.target.files[0] && confirm("現在の宇宙を上書きしてインポートしますか？")){
+                const d = await Singularity.importAndVerify(e.target.files[0]);
+                await saveEncryptedUniverse(d); 
+                window.location.reload();
             }
         };
 
+        // レーダー検索
+        const radar = document.getElementById('cp-radar');
+        if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
+    }
+
+    updateMode(mode) {
+        this.app.appMode = mode;
+        this.renderCP(); // UI再描画でボタンの色を更新
+    }
+
+    updateUIState() {
+        this.capsuleSlots.innerHTML = '';
+        const isLog = localStorage.getItem('universe_ext_logger') === 'true';
+        const isText = localStorage.getItem('universe_center_text') !== 'false';
+
+        if (isLog) {
+            const btn = document.createElement('div');
+            btn.innerText = '🖥️'; 
+            btn.title = "ターミナルを開閉";
+            btn.style.cssText = 'width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; display:flex; justify-content:center; align-items:center; cursor:pointer; transition:0.2s;';
+            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) window.universeLogger?.toggle(); };
+            this.capsuleSlots.appendChild(btn);
+        }
+
+        this.centerTextEl.style.opacity = isText ? '1' : '0';
+        setTimeout(() => this.centerTextEl.style.display = isText ? 'block' : 'none', 300);
+    }
+
+    // ==========================================
+    // 連続操作とゴーストクリック防止 (The Shield)
+    // ==========================================
+    setupGlobalCanvasEvents() {
         const canvasEl = document.getElementById('universe-canvas');
-        let spawnTouchStartX = 0; let spawnTouchStartY = 0;
-        let lastSpawnTime = 0;
+        if (!canvasEl) return;
 
-        const onCanvasDown = (e) => {
+        const onDown = (e) => {
             const ev = e.touches ? e.touches[0] : e;
-            spawnTouchStartX = ev.clientX; spawnTouchStartY = ev.clientY;
+            this.state.touchStartX = ev.clientX; 
+            this.state.touchStartY = ev.clientY;
         };
 
-        const onCanvasUp = (e) => {
-            if (!rapidSpawnCheckbox.checked) return;
+        const onUp = (e) => {
+            const isRapidSpawn = localStorage.getItem('universe_rapid_spawn') === 'true';
+            const isAutoMenu = localStorage.getItem('universe_auto_menu') === 'true';
+            
+            if (!isRapidSpawn) return;
 
+            // 🛡️ ゴーストクリック防止シールド (400ms以内の連続イベントを物理遮断)
             const now = Date.now();
-            if (now - lastSpawnTime < 300) return;
+            if (now - this.state.lastSpawnTime < 400) { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                return; 
+            }
 
             const ev = e.changedTouches ? e.changedTouches[0] : e;
-            const dx = ev.clientX - spawnTouchStartX; const dy = ev.clientY - spawnTouchStartY;
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
+            const dx = ev.clientX - this.state.touchStartX;
+            const dy = ev.clientY - this.state.touchStartY;
+            
+            // ドラッグ（パン操作）の場合は無視
+            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+            // UI上のクリックなら無視
             if (e.target !== canvasEl) return;
 
-            lastSpawnTime = now;
+            // ★ 創造プロセスの発火（以降のイベント伝播を殺す）
+            e.preventDefault(); 
+            e.stopPropagation();
+            this.state.lastSpawnTime = now;
 
             const rect = canvasEl.getBoundingClientRect();
             const zoom = this.app.camera.zoom || 1;
-            const offsetX = ev.clientX - rect.left - canvasEl.width / 2;
-            const offsetY = ev.clientY - rect.top - canvasEl.height / 2;
-            const worldX = (offsetX / zoom) - this.app.camera.x;
-            const worldY = (offsetY / zoom) - this.app.camera.y;
+            const worldX = ((ev.clientX - rect.left - canvasEl.width / 2) / zoom) - this.app.camera.x;
+            const worldY = ((ev.clientY - rect.top - canvasEl.height / 2) / zoom) - this.app.camera.y;
 
-            const color = document.getElementById('cp-spawn-color').value;
+            const color = document.getElementById('cp-spawn-color')?.value || "#00ffcc";
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
             this.app.autoSave();
 
             if (window.universeAudio) window.universeAudio.playSpawn();
-            if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color: color });
+            if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color });
 
-            // ★ 自動展開がONなら、作った星のメニューをその場で開く
-            if (autoMenuCheckbox.checked) {
-                const nodes = this.app.currentUniverse.nodes;
-                const newNode = nodes[nodes.length - 1];
-                setTimeout(() => this.showMenu(newNode, ev.clientX, ev.clientY), 50);
+            if (isAutoMenu) {
+                const node = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
+                // 描画サイクルを待ってからメニューを開く
+                setTimeout(() => this.showMenu(node, ev.clientX, ev.clientY), 50);
             }
         };
 
-        canvasEl.addEventListener('mousedown', onCanvasDown); canvasEl.addEventListener('touchstart', onCanvasDown, {passive: true});
-        canvasEl.addEventListener('mouseup', onCanvasUp); canvasEl.addEventListener('touchend', onCanvasUp);
-
-        // --- その他設定・メニュー ---
-        const radarInput = document.getElementById('cp-radar');
-        const radarResults = document.getElementById('cp-radar-results');
-        radarInput.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase(); radarResults.innerHTML = ''; if (!query) return;
-            let count = 0;
-            const searchUniverse = (u) => {
-                u.nodes.forEach(n => {
-                    if (n.name.toLowerCase().includes(query) && count < 10) {
-                        const btn = document.createElement('button'); btn.innerText = `🌌 ${n.name}`;
-                        btn.style.cssText = 'background:transparent; color:#00ffcc; border:none; text-align:left; cursor:pointer; padding:5px; border-bottom:1px solid rgba(0,255,204,0.2); width:100%; display:block;';
-                        btn.onclick = () => { 
-                            this.app.executeWarp(n); 
-                            if (window.universeAudio) window.universeAudio.playWarp();
-                            radarInput.value = ''; radarResults.innerHTML = ''; controlPanel.style.display = 'none'; 
-                        };
-                        radarResults.appendChild(btn); count++;
-                    }
-                    searchUniverse(n.innerUniverse);
-                });
-            };
-            searchUniverse(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
-        });
-
-        const updateMode = (mode) => {
-            this.app.appMode = mode;
-            document.getElementById('cp-mode-run').style.background = mode === 'RUN' ? '#00ffcc' : '#113344';
-            document.getElementById('cp-mode-run').style.color = mode === 'RUN' ? '#000' : '#fff';
-            document.getElementById('cp-mode-link').style.background = mode === 'LINK' ? '#ff00ff' : '#113344';
-            document.getElementById('cp-mode-edit').style.background = mode === 'EDIT' ? '#ffcc00' : '#113344';
-            document.getElementById('cp-mode-edit').style.color = mode === 'EDIT' ? '#000' : '#fff';
-            controlPanel.style.display = 'none';
-        };
-        document.getElementById('cp-mode-run').onclick = () => updateMode('RUN');
-        document.getElementById('cp-mode-link').onclick = () => updateMode('LINK');
-        document.getElementById('cp-mode-edit').onclick = () => updateMode('EDIT');
-
-        document.getElementById('cp-spawn-btn').onclick = () => {
-            const color = document.getElementById('cp-spawn-color').value;
-            this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
-            this.app.autoSave(); controlPanel.style.display = 'none';
-            if (window.universeAudio) window.universeAudio.playSpawn();
-
-            // ★ 自動展開がONなら、画面中央にメニューを開く
-            if (autoMenuCheckbox.checked) {
-                const nodes = this.app.currentUniverse.nodes;
-                const newNode = nodes[nodes.length - 1];
-                setTimeout(() => this.showMenu(newNode, window.innerWidth / 2, window.innerHeight / 2), 50);
-            }
-        };
-
-        document.getElementById('cp-btn-inventory').onclick = () => { controlPanel.style.display = 'none'; this.showInventoryUI(); };
-        document.getElementById('cp-btn-export').onclick = () => { Singularity.export(); controlPanel.style.display = 'none'; };
-        const fileInput = document.getElementById('cp-import-file');
-        document.getElementById('cp-btn-import').onclick = () => fileInput.click();
-        fileInput.onchange = async (e) => {
-            const f = e.target.files[0];
-            if (f && confirm("宇宙を上書きしますか？")) { const data = await Singularity.importAndVerify(f); await saveEncryptedUniverse(data); window.location.reload(); }
-        };
-
-        document.getElementById('cp-btn-logout').onclick = () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); };
-        document.getElementById('cp-btn-reset').onclick = () => { if(confirm("本当に初期化しますか？")){ sessionStorage.clear(); localStorage.clear(); window.location.reload(); } };
-
-        this.inventoryModal = this.createModal('#ff6699', 300);
-        this.appLibraryModal = this.createModal('#00ffcc', 300);
-        this.actionMenu = this.createModal('#00ffcc', 200, false);
-        this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
-        
-        this.quickNotePanel = document.createElement('div');
-        this.quickNotePanel.style.cssText = 'position:fixed; display:none; flex-direction:column; background:rgba(10,20,30,0.95); border-left:4px solid #00ffcc; padding:15px; border-radius:8px; z-index:200; min-width:200px; max-width:300px; color:white; pointer-events:auto; backdrop-filter:blur(5px);';
-        this.protectUI(this.quickNotePanel);
-        document.body.appendChild(this.quickNotePanel);
-
-        window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
-        window.addEventListener('touchstart', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
+        // {passive: false} により preventDefault を許可し、ブラウザのデフォルト挙動を支配する
+        canvasEl.addEventListener('mousedown', onDown); 
+        canvasEl.addEventListener('touchstart', onDown, {passive: true});
+        canvasEl.addEventListener('mouseup', onUp); 
+        canvasEl.addEventListener('touchend', onUp, {passive: false});
     }
 
+    // ==========================================
+    // モーダル・メニュー・検索系
+    // ==========================================
     createModal(color, width, centered = true) {
         const el = document.createElement('div');
-        el.style.cssText = `position:fixed; display:none; flex-direction:column; background:rgba(20,20,30,0.98); border:1px solid ${color}; padding:20px; border-radius:12px; z-index:1000; min-width:${width}px; color:white; pointer-events:auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5);`;
+        el.style.cssText = `position:fixed; display:none; flex-direction:column; background:rgba(15,20,30,0.98); border:1px solid ${color}; padding:15px; border-radius:12px; z-index:9500; min-width:${width}px; color:white; pointer-events:auto; box-shadow:0 10px 40px rgba(0,0,0,0.6); backdrop-filter:blur(10px);`;
         if(centered) { el.style.top = '50%'; el.style.left = '50%'; el.style.transform = 'translate(-50%, -50%)'; }
-        this.protectUI(el); document.body.appendChild(el); return el;
+        this.protectUI(el); 
+        document.body.appendChild(el); 
+        return el;
+    }
+
+    handleRadar(query) {
+        const res = document.getElementById('cp-radar-results');
+        res.innerHTML = ''; 
+        if(!query) return;
+        
+        let count = 0;
+        const search = (u) => {
+            u.nodes.forEach(n => {
+                if(n.name.toLowerCase().includes(query.toLowerCase()) && count < 10) {
+                    const b = document.createElement('button');
+                    b.innerText = `🌌 ${n.name}`; 
+                    b.style.cssText = 'width:100%; text-align:left; background:rgba(0,255,204,0.05); color:#00ffcc; border:1px solid rgba(0,255,204,0.2); border-radius:6px; padding:10px; margin-bottom:4px; cursor:pointer;';
+                    b.onclick = () => { 
+                        this.app.executeWarp(n); 
+                        this.controlPanel.style.display='none'; 
+                        if(window.universeAudio) window.universeAudio.playWarp(); 
+                    };
+                    res.appendChild(b);
+                    count++;
+                }
+                search(n.innerUniverse);
+            });
+        };
+        search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
     showMenu(node, screenX, screenY) {
-        if (this.isRapidDeleteMode) {
-            this.app.currentUniverse.removeNode(node);
-            this.app.blackHole.push(node);
+        // 連続収納モードのインターセプト
+        if (this.state.isRapidDeleteMode) {
+            this.app.currentUniverse.removeNode(node); 
+            this.app.blackHole.push(node); 
             this.app.autoSave();
-            if (window.universeAudio) window.universeAudio.playDelete();
-            if (window.universeLogger) window.universeLogger.log("RAPID_STORE", { target: node.name });
-            return; 
+            if(window.universeAudio) window.universeAudio.playDelete();
+            if(window.universeLogger) window.universeLogger.log("RAPID_STORE", { target: node.name });
+            return;
         }
 
         this.hideQuickNote();
-        this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 220)}px`;
+        
+        // 画面外にはみ出さないための座標計算
+        this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
         this.actionMenu.style.display = 'flex';
-
-        const btn = 'color:white; background:rgba(255,255,255,0.1); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:6px; font-size:14px; margin-bottom:2px; width:100%;';
+        
+        const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
         this.actionMenu.innerHTML = `
-            <button id="m-dive" style="${btn}">➡ 内部へ潜る</button>
-            <button id="m-note" style="${btn} color:#aaffff;">📝 記憶を編集</button>
-            <div style="display:flex; gap:2px; margin-bottom:2px;">
-                <button id="m-up" style="${btn} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
-                <button id="m-down" style="${btn} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
+            <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
+            <button id="m-note" style="${btnStyle} color:#aaffff;">📝 記憶を編集</button>
+            <div style="display:flex; gap:4px; margin-bottom:4px;">
+                <button id="m-up" style="${btnStyle} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                <button id="m-down" style="${btnStyle} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
             </div>
-            <button id="m-ren" style="${btn} color:#ccff66;">✏ 名前変更</button>
-            <button id="m-set-icon" style="${btn} color:#ffaa00;">🖼 画像/アイコン設定</button>
-            <button id="m-link" style="${btn} color:#aaaaff;">📱 アプリ/URL登録</button>
-            <button id="m-del" style="${btn} color:#ff4444; border:1px solid #ff4444;">🎒 亜空間へ送る</button>
-            <button id="m-close" style="${btn} background:transparent; text-align:center; font-size:12px;">❌ 閉じる</button>`;
+            <button id="m-ren" style="${btnStyle} color:#ccff66;">✏ 名前変更</button>
+            <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
+            <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
+            <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
+            <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        document.getElementById('m-dive').onclick = (e) => { 
-            e.stopPropagation(); this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); 
-            if (window.universeAudio) window.universeAudio.playWarp();
-        };
-        document.getElementById('m-note').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.notePad.open(node); };
-        document.getElementById('m-up').onclick = (e) => { e.stopPropagation(); node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
-        document.getElementById('m-down').onclick = (e) => { e.stopPropagation(); node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
-        document.getElementById('m-ren').onclick = (e) => { e.stopPropagation(); const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
-        
-        document.getElementById('m-set-icon').onclick = (e) => { 
-            e.stopPropagation(); 
-            const newIconUrl = prompt("画像のURLを入力してください\n(空にするとリセットされます):", node.iconUrl || "");
-            if (newIconUrl !== null) { node.iconUrl = newIconUrl; this.app.autoSave(); }
-            this.hideMenu();
-        };
-
-        document.getElementById('m-link').onclick = (e) => { e.stopPropagation(); this.hideMenu(); this.showAppLibrary(node); };
-        document.getElementById('m-del').onclick = (e) => { 
-            e.stopPropagation(); 
-            if(confirm("亜空間へ送りますか？")){
-                this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();
-                if (window.universeAudio) window.universeAudio.playDelete();
-            } 
-            this.hideMenu(); 
-        };
-        document.getElementById('m-close').onclick = (e) => { e.stopPropagation(); this.hideMenu(); };
+        document.getElementById('m-dive').onclick = () => { this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
+        document.getElementById('m-note').onclick = () => { this.hideMenu(); this.notePad.open(node); };
+        document.getElementById('m-up').onclick = () => { node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
+        document.getElementById('m-down').onclick = () => { node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
+        document.getElementById('m-ren').onclick = () => { const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
+        document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
+        document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
+        document.getElementById('m-del').onclick = () => { if(confirm("収納しますか？")){ this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave(); if(window.universeAudio) window.universeAudio.playDelete(); } this.hideMenu(); };
+        document.getElementById('m-close').onclick = () => this.hideMenu();
     }
 
     showQuickNote(node, x, y) {
         if (!node.note || node.note.trim() === "") return;
-        this.quickNotePanel.innerHTML = `<div style="color:#00ffcc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">${node.name} の記憶</div><div style="font-size:13px; max-height:200px; overflow-y:auto; line-height:1.5; white-space:pre-wrap; word-break:break-all;">${node.note}</div>`;
-        this.quickNotePanel.style.left = `${Math.min(x, window.innerWidth - 220)}px`;
-        this.quickNotePanel.style.top = `${Math.min(y, window.innerHeight - 250)}px`;
+        this.quickNotePanel.innerHTML = `<div style="color:#00ffcc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">${node.name}</div><div style="font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all;">${node.note}</div>`;
+        this.quickNotePanel.style.left = `${Math.min(x, window.innerWidth-220)}px`;
+        this.quickNotePanel.style.top = `${Math.min(y, window.innerHeight-250)}px`;
         this.quickNotePanel.style.display = 'flex';
     }
-
+    
     hideQuickNote() { this.quickNotePanel.style.display = 'none'; }
     hideMenu() { this.actionMenu.style.display = 'none'; }
 
@@ -460,81 +518,70 @@ export class UIManager {
             const b = document.createElement('button');
             const isLast = (i === path.length - 1);
             b.innerText = (i === 0) ? `👤 ${uni.name}` : uni.name;
-            b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.2' : '0.0'}); color:${isLast ? '#fff' : '#aaa'}; border:none; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:${isLast ? 'bold' : 'normal'};`;
-            
+            b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.15' : '0.0'}); color:${isLast ? '#fff' : '#888'}; border:none; padding:6px 12px; border-radius:20px; font-size:11px; cursor:pointer; transition:0.2s;`;
             b.onclick = (e) => { 
-                e.stopPropagation();
-                if(this.isCapsuleDragged && this.isCapsuleDragged()) return;
-                
+                e.stopPropagation(); 
+                if(this.isCapsuleDragged()) return;
                 if(!isLast){
                     this.app.currentUniverse = this.app.universeHistory[i]; 
                     this.app.universeHistory = this.app.universeHistory.slice(0, i); 
-                    this.app.camera.reset(); this.updateBreadcrumbs();
-                    if (window.universeAudio) window.universeAudio.playWarp();
+                    this.app.camera.reset(); this.updateBreadcrumbs(); 
+                    if(window.universeAudio) window.universeAudio.playWarp();
                 } 
             };
             this.breadcrumbUI.appendChild(b);
-            if(!isLast) { const s = document.createElement('span'); s.innerText = '>'; s.style.cssText = 'color:#555; margin:0 2px;'; this.breadcrumbUI.appendChild(s); }
+            if(!isLast) { const s = document.createElement('span'); s.innerText = '›'; s.style.cssText = 'color:#555; margin:0 2px;'; this.breadcrumbUI.appendChild(s); }
         });
-        if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.6em; opacity:0.5;">✏️</span>`;
+        if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.5em; opacity:0.3;">EDIT</span>`;
     }
 
     showAppLibrary(node) {
-        let html = `<h3 style="margin-top:0; color:#00ffcc;">📱 アプリを登録</h3><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
+        let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => {
-            html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer; padding:5px; background:rgba(255,255,255,0.05); border-radius:8px;"><img src="${app.icon}" style="width:32px; height:32px; border-radius:8px; margin-bottom:5px;"><span style="font-size:9px;">${app.name}</span></div>`;
+            html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`;
         });
-        html += `</div><button id="custom-url-btn" style="width:100%; padding:10px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:5px; cursor:pointer; margin-bottom:10px;">✍️ 自分でURLを入力</button>`;
-        if (node.url) html += `<button id="reset-app-btn" style="width:100%; padding:10px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:5px; cursor:pointer; margin-bottom:10px;">🧹 リンク解除</button>`;
-        html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; color:white; border:1px solid #888; border-radius:6px;">キャンセル</button>`;
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>
+        <button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
         
-        this.appLibraryModal.innerHTML = html;
+        this.appLibraryModal.innerHTML = html; 
         this.appLibraryModal.style.display = 'block';
         
         this.app.appPresets.forEach((app, i) => {
-            document.getElementById(`preset-${i}`).onclick = (e) => { e.stopPropagation(); node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
+            document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
         });
-
-        document.getElementById('custom-url-btn').onclick = (e) => { 
-            e.stopPropagation(); 
-            this.appLibraryModal.style.display = 'none'; 
-            const newUrl = prompt("URLを入力:", node.url); 
-            if(newUrl) { 
-                node.url = newUrl; 
-                if (newUrl.startsWith('http') && !node.iconUrl && confirm("アイコン(ファビコン)を自動取得しますか？")) {
-                    try {
-                        const domain = new URL(newUrl).hostname;
-                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                    } catch(err) { 
-                        node.iconUrl = `https://www.google.com/s2/favicons?domain=${newUrl}&sz=128`; 
-                    }
+        
+        document.getElementById('custom-url-btn').onclick = () => {
+            this.appLibraryModal.style.display='none';
+            const url = prompt("URL:", node.url);
+            if(url) {
+                node.url = url;
+                if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){
+                    try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } 
+                    catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; }
                 }
-                this.app.autoSave(); 
+                this.app.autoSave();
             }
         };
-
-        const resetBtn = document.getElementById('reset-app-btn');
-        if(resetBtn) resetBtn.onclick = (e) => { e.stopPropagation(); node.url = ""; node.iconUrl = ""; this.app.autoSave(); this.appLibraryModal.style.display = 'none'; };
-        document.getElementById('lib-close').onclick = (e) => { e.stopPropagation(); this.appLibraryModal.style.display='none'; };
+        document.getElementById('lib-close').onclick = () => this.appLibraryModal.style.display='none';
     }
 
     showInventoryUI() {
-        let html = `<h3 style="margin-top:0; color:#ff6699;">🎒 亜空間ポケット</h3><div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
+        let html = `<h4 style="margin:0 0 15px 0; color:#ff6699;">亜空間 Storage</h4><div style="max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
         this.app.blackHole.forEach((node, i) => {
-            html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.1); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:5px 10px; border-radius:4px; font-size:12px; margin-right:5px;">🌌 出す</button><button id="inv-del-${i}" style="background:#440000; color:#ff4444; border:none; padding:5px 10px; border-radius:4px; font-size:12px;">❌</button></div></div>`;
+            html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">🌌 復元</button> <button id="inv-del-${i}" style="background:#330000; color:#ff4444; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">消滅</button></div></div>`;
         });
-        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; color:white; border:1px solid #888; border-radius:6px;">閉じる</button>`;
+        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px; cursor:pointer;">Close</button>`;
         
-        this.inventoryModal.innerHTML = html;
+        this.inventoryModal.innerHTML = html; 
         this.inventoryModal.style.display = 'block';
         
         this.app.blackHole.forEach((node, i) => {
-            document.getElementById(`inv-res-${i}`).onclick = (e) => { 
-                e.stopPropagation(); this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; 
-                if (window.universeAudio) window.universeAudio.playSpawn();
+            document.getElementById(`inv-res-${i}`).onclick = () => { 
+                this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; 
+                if(window.universeAudio) window.universeAudio.playSpawn(); 
             };
-            document.getElementById(`inv-del-${i}`).onclick = (e) => { e.stopPropagation(); if(confirm("消去しますか？")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
+            document.getElementById(`inv-del-${i}`).onclick = () => { if(confirm("完全に消去しますか？(元に戻せません)")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
         });
-        document.getElementById('inv-close').onclick = (e) => { e.stopPropagation(); this.inventoryModal.style.display='none'; };
+        document.getElementById('inv-close').onclick = () => this.inventoryModal.style.display='none';
     }
 }
