@@ -116,9 +116,9 @@ export class CameraControl {
                     if (Date.now() - this.lastMoveTime > 50) {
                         this.vx = 0; this.vy = 0;
                     } else {
-                        // 慣性の勢いを少しマイルドに（酔い防止）
-                        this.vx *= 12; 
-                        this.vy *= 12;
+                        // 初速をセット
+                        this.vx *= 15; 
+                        this.vy *= 15;
                     }
                 }
             }
@@ -186,13 +186,20 @@ export class CameraControl {
         this.vx = 0; this.vy = 0;
     }
 
+    // ★ 究極にシンプルな「着地補正（スナップ）」
     applyMagneticSnap(nodes) {
         if (!nodes || nodes.length === 0 || this.isDragging || this.cb.isLinkModeActive()) return;
 
+        const speed = Math.hypot(this.vx, this.vy);
+
+        // 【改善】勢いよく滑っている最中は、絶対に邪魔をしない（自然に滑らせる）
+        if (speed > 0.5) return;
+
         let closestNode = null;
         let minDistance = Infinity;
-        const snapThreshold = 120; // 吸い付く距離
+        const snapThreshold = 100; // 吸い付く距離
 
+        // カメラが「今から止まろうとしている場所（target）」に一番近い星を探す
         nodes.forEach(node => {
             const dist = Math.hypot(node.x - (-this.targetX), node.y - (-this.targetY));
             if (dist < minDistance) {
@@ -201,45 +208,33 @@ export class CameraControl {
             }
         });
 
-        const speed = Math.hypot(this.vx, this.vy);
-
+        // ほぼ止まりかけていて、近くに星がある時だけ、最後に目標座標を「星の中心」にスリ替える
         if (closestNode && minDistance < snapThreshold) {
-            // ★【酔い止め対策】
-            // 速度（vx, vy）を加算して重力を作るのをやめました（振り子になって揺れるため）。
-            // その代わり、スピードが落ちてきたら「目標座標（targetX/Y）」だけを優しく星に寄せる。
-            if (speed < 3.0) {
-                this.targetX += (-closestNode.x - this.targetX) * 0.05;
-                this.targetY += (-closestNode.y - this.targetY) * 0.05;
-                
-                // 残った勢いを急速に殺してピタッと止める
-                this.vx *= 0.8;
-                this.vy *= 0.8;
-            }
+            this.targetX = -closestNode.x;
+            this.targetY = -closestNode.y;
+            this.vx = 0; 
+            this.vy = 0;
         }
     }
 
     update(nodes = []) {
         if (!this.isDragging) {
-            const speed = Math.hypot(this.vx, this.vy);
-            if (speed > 50) {
-                this.vx = (this.vx / speed) * 50;
-                this.vy = (this.vy / speed) * 50;
-            }
-
+            // スワイプの勢いを加算
             this.targetX += this.vx;
             this.targetY += this.vy;
             
-            // 摩擦（よく滑るが、ちゃんと止まるバランス）
+            // 摩擦（自然に減速する）
             this.vx *= 0.92;
             this.vy *= 0.92;
 
             if (Math.abs(this.vx) < 0.01) this.vx = 0;
             if (Math.abs(this.vy) < 0.01) this.vy = 0;
 
+            // ほぼ止まりかけた時だけ、着地を補正する
             this.applyMagneticSnap(nodes);
         }
 
-        // ★ カメラの追従速度を元に戻して、目に優しい滑らかさに（酔い止め）
+        // カメラの追従（ここが一番自然な滑らかさ＝イージングを作る）
         this.x += (this.targetX - this.x) * 0.1;
         this.y += (this.targetY - this.y) * 0.1;
         this.scale += (this.targetScale - this.scale) * 0.1;
