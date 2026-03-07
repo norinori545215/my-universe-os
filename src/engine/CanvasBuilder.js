@@ -38,7 +38,7 @@ export class CanvasBuilder {
         this.pressTimer = null;
         this.isLongPressed = false;
 
-        // ★ 新規：ダブルタップ判定用の状態管理
+        // ダブルタップ判定用の状態管理
         this.lastClickTime = 0;
         this.lastClickedNode = null;
         this.singleClickTimeout = null;
@@ -260,7 +260,6 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
-                // 編集モード：メニュー展開（既存のまま）
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
                     clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
@@ -274,54 +273,41 @@ export class CanvasBuilder {
             
             if (this.appMode === 'RUN') {
                 const now = Date.now();
-                // 300ms以内に同じ星をタップしたら「ダブルタップ」と判定
                 const isDoubleTap = (target === this.lastClickedNode) && (now - this.lastClickTime < 300);
 
                 if (isDoubleTap) {
-                    // ダブルタップ成立：シングルタップの予定をキャンセル
                     if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
-                    
-                    if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // 鼓動のような振動
+                    if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
 
-                    // 🎯 空間判定：クリックしたX座標と、星の中心X座標を比較
                     if (worldX < target.x) {
-                        // 【左側ダブルタップ】➡ 深層へダイブ（潜る）
                         this.executeDiveToNode(target);
                     } else {
-                        // 【右側ダブルタップ】➡ 次の星へカメラ移動（横移動）
                         this.moveToNextNode(target);
                     }
 
-                    // 状態リセット
                     this.lastClickTime = 0;
                     this.lastClickedNode = null;
                 } else {
-                    // 1回目のタップ：一旦記録して待機する
                     this.lastClickedNode = target;
                     this.lastClickTime = now;
 
-                    // 300ms経っても2回目が来なければ「シングルタップ」として処理
                     this.singleClickTimeout = setTimeout(() => {
-                        // アプリ（URL）が登録されている星なら開く
                         if (target.url) {
                             const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                             window.open(target.url, targetWin);
                         } else {
-                            // URLがなければ、触れた感覚として小さな音を鳴らす（153bpmエンジンと連動）
                             if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
                         }
                     }, 300);
                 }
             }
         } else {
-            // 何もない宇宙空間をタップ
             this.ui.hideMenu();
             if (this.ui.hideQuickNote) this.ui.hideQuickNote();
             this.lastClickedNode = null;
         }
     }
 
-    // --- 新規：星の深層へ潜る処理の切り出し ---
     executeDiveToNode(target) {
         this.isZoomingIn = true;
         this.targetUniverse = target.innerUniverse;
@@ -330,17 +316,14 @@ export class CanvasBuilder {
         if (window.universeLogger) window.universeLogger.log("DIVE_DEEP", { target: target.name });
     }
 
-    // --- 新規：同階層の次の星へカメラを移動（スライド） ---
     moveToNextNode(currentNode) {
         const nodes = this.currentUniverse.nodes;
-        if (nodes.length <= 1) return; // 星が1つしかない場合は移動しない
+        if (nodes.length <= 1) return; 
 
-        // 現在の星のインデックスを取得し、次の星を決定する（最後なら最初に戻るループ構造）
         const currentIndex = nodes.indexOf(currentNode);
         const nextIndex = (currentIndex + 1) % nodes.length;
         const nextNode = nodes[nextIndex];
 
-        // カメラのターゲット座標を次の星にセット（滑らかに移動する）
         this.camera.targetX = -nextNode.x;
         this.camera.targetY = -nextNode.y;
         
@@ -350,7 +333,9 @@ export class CanvasBuilder {
 
     animate() {
         this.time += 0.02;
-        this.camera.update();
+
+        // ★★★ 修正箇所：現在の星の配列（nodes）をカメラエンジンに渡す ★★★
+        this.camera.update(this.currentUniverse.nodes);
 
         if (this.isZoomingIn && this.camera.scale > 38) {
             this.universeHistory.push(this.currentUniverse);
