@@ -213,25 +213,35 @@ export class CanvasBuilder {
         if (node) { this.isLinking = true; this.linkSourceNode = node; }
     }
 
-    // ★ 結合 / 切断（トグル式）に対応した完全版
+    // ★★★ 結ぶ / 切る の強固な判定ロジック ★★★
     endLink(x, y) {
         if (this.isLinking && this.linkSourceNode) {
             const targetNode = this.getNodeAt(x, y);
             if (targetNode && targetNode !== this.linkSourceNode) {
                 
-                // 既存のリンクが存在するかチェック
-                const existingLinkIndex = this.currentUniverse.links.findIndex(
-                    link => (link.source === this.linkSourceNode && link.target === targetNode) ||
-                            (link.source === targetNode && link.target === this.linkSourceNode)
-                );
+                // 参照比較だけでなく、名前やIDでも確実に既存リンクを見つけ出す
+                const existingLinkIndex = this.currentUniverse.links.findIndex(link => {
+                    const isSameForward = (link.source === this.linkSourceNode && link.target === targetNode) || 
+                                          (link.source.id && link.source.id === this.linkSourceNode.id && link.target.id === targetNode.id);
+                    const isSameReverse = (link.source === targetNode && link.target === this.linkSourceNode) || 
+                                          (link.source.id && link.source.id === targetNode.id && link.target.id === this.linkSourceNode.id);
+                    return isSameForward || isSameReverse;
+                });
 
                 if (existingLinkIndex !== -1) {
-                    // 【解除】すでに結ばれていた場合は切断
+                    // 【解除】
                     this.currentUniverse.links.splice(existingLinkIndex, 1);
+                    
+                    // 解放された星が「ワープして元の場所に戻る」のを防ぐため、現在の軌道座標を基準位置に上書きする
+                    targetNode.baseX = targetNode.x;
+                    targetNode.baseY = targetNode.y;
+                    this.linkSourceNode.baseX = this.linkSourceNode.x;
+                    this.linkSourceNode.baseY = this.linkSourceNode.y;
+
                     if (window.universeLogger) window.universeLogger.log("UNLINKED", { target: targetNode.name });
                     if (window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
                 } else {
-                    // 【結合】結ばれていない場合は新たにリンク（衛星化）
+                    // 【結合】
                     this.currentUniverse.addLink(this.linkSourceNode, targetNode);
                     if (window.universeLogger) window.universeLogger.log("LINKED", { target: targetNode.name });
                 }
@@ -379,6 +389,7 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
+        // 衛星システムの物理演算
         const orbitingNodes = new Map();
         
         this.currentUniverse.links.forEach(link => {
