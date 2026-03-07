@@ -34,9 +34,11 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
+        // 長押し判定用
         this.pressTimer = null;
         this.isLongPressed = false;
 
+        // ダブルタップ判定用の状態管理
         this.lastClickTime = 0;
         this.lastClickedNode = null;
         this.singleClickTimeout = null;
@@ -211,15 +213,34 @@ export class CanvasBuilder {
         if (node) { this.isLinking = true; this.linkSourceNode = node; }
     }
 
+    // ★ 結合 / 切断（トグル式）に対応した完全版
     endLink(x, y) {
         if (this.isLinking && this.linkSourceNode) {
             const targetNode = this.getNodeAt(x, y);
             if (targetNode && targetNode !== this.linkSourceNode) {
-                this.currentUniverse.addLink(this.linkSourceNode, targetNode);
+                
+                // 既存のリンクが存在するかチェック
+                const existingLinkIndex = this.currentUniverse.links.findIndex(
+                    link => (link.source === this.linkSourceNode && link.target === targetNode) ||
+                            (link.source === targetNode && link.target === this.linkSourceNode)
+                );
+
+                if (existingLinkIndex !== -1) {
+                    // 【解除】すでに結ばれていた場合は切断
+                    this.currentUniverse.links.splice(existingLinkIndex, 1);
+                    if (window.universeLogger) window.universeLogger.log("UNLINKED", { target: targetNode.name });
+                    if (window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
+                } else {
+                    // 【結合】結ばれていない場合は新たにリンク（衛星化）
+                    this.currentUniverse.addLink(this.linkSourceNode, targetNode);
+                    if (window.universeLogger) window.universeLogger.log("LINKED", { target: targetNode.name });
+                }
+                
                 this.autoSave(); 
             }
         }
-        this.isLinking = false; this.linkSourceNode = null;
+        this.isLinking = false; 
+        this.linkSourceNode = null;
     }
 
     getNodeAt(x, y) {
@@ -358,17 +379,14 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
-        // ★★★ 衛星システムの物理演算（Gravity.js 布石） ★★★
         const orbitingNodes = new Map();
         
-        // リンクされている「ターゲット（子）」を探し出し、親星を紐付ける
         this.currentUniverse.links.forEach(link => {
             if (!orbitingNodes.has(link.target)) {
                 orbitingNodes.set(link.target, link.source);
             }
         });
 
-        // 1. まず独立した星（親星）の座標を計算
         this.currentUniverse.nodes.forEach(node => {
             if (!orbitingNodes.has(node)) {
                 if (node === this.grabbedNode) {
@@ -381,11 +399,9 @@ export class CanvasBuilder {
             }
         });
 
-        // 2. 次に衛星（子星）を親星の周りに公転させる
         this.currentUniverse.nodes.forEach(node => {
             if (orbitingNodes.has(node)) {
                 if (node === this.grabbedNode) {
-                    // 掴んでいる間は軌道から外れて指に従う
                     node.x = node.baseX;
                     node.y = node.baseY;
                 } else {
@@ -395,11 +411,9 @@ export class CanvasBuilder {
                     const radius = Math.hypot(dx, dy);
                     const baseAngle = Math.atan2(dy, dx);
                     
-                    // ケプラーの法則（もどき）：親に近いほど速く、遠いほどゆっくり回る
                     const speed = 15 / Math.max(radius, 15);
                     const currentAngle = baseAngle + this.time * speed;
 
-                    // 親星の現在の座標を中心に回る
                     node.x = parent.x + Math.cos(currentAngle) * radius;
                     node.y = parent.y + Math.sin(currentAngle) * radius;
                 }
@@ -430,20 +444,17 @@ export class CanvasBuilder {
             }
         });
 
-        // ★★★ 軌道の描画（結ばれた線が円軌道に変わる） ★★★
         this.currentUniverse.links.forEach(link => {
             const dx = link.target.baseX - link.source.baseX;
             const dy = link.target.baseY - link.source.baseY;
             const radius = Math.hypot(dx, dy);
 
-            // 軌道の円（うすいリング）を描画
             this.ctx.strokeStyle = 'rgba(0, 255, 204, 0.15)';
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2);
             this.ctx.stroke();
 
-            // 親から子への薄いレーザー線（繋がりを示す）
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             this.ctx.beginPath();
             this.ctx.moveTo(link.source.x, link.source.y);
