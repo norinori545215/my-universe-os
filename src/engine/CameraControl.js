@@ -116,9 +116,9 @@ export class CameraControl {
                     if (Date.now() - this.lastMoveTime > 50) {
                         this.vx = 0; this.vy = 0;
                     } else {
-                        // ★ スマホの自然なスワイプ感に調整
-                        this.vx *= 18; 
-                        this.vy *= 18;
+                        // 慣性の勢いを少しマイルドに（酔い防止）
+                        this.vx *= 12; 
+                        this.vy *= 12;
                     }
                 }
             }
@@ -191,7 +191,7 @@ export class CameraControl {
 
         let closestNode = null;
         let minDistance = Infinity;
-        const snapThreshold = 150; // ★ 引力の届く範囲を少し広げました
+        const snapThreshold = 120; // 吸い付く距離
 
         nodes.forEach(node => {
             const dist = Math.hypot(node.x - (-this.targetX), node.y - (-this.targetY));
@@ -204,39 +204,34 @@ export class CameraControl {
         const speed = Math.hypot(this.vx, this.vy);
 
         if (closestNode && minDistance < snapThreshold) {
-            // ★【改善】強制停止ではなく、星の方向へ「引っ張る（重力）」
-            if (speed < 6.0) { // スピードが落ちてきたら引力発動
-                const pullX = (-closestNode.x - this.targetX) * 0.04;
-                const pullY = (-closestNode.y - this.targetY) * 0.04;
-                this.vx += pullX;
-                this.vy += pullY;
-            }
-
-            // ★ ほぼ止まりかけたら、スッと吸い付かせる
-            if (speed < 0.3 && minDistance < 5) {
-                this.targetX = -closestNode.x;
-                this.targetY = -closestNode.y;
-                this.vx = 0; 
-                this.vy = 0;
+            // ★【酔い止め対策】
+            // 速度（vx, vy）を加算して重力を作るのをやめました（振り子になって揺れるため）。
+            // その代わり、スピードが落ちてきたら「目標座標（targetX/Y）」だけを優しく星に寄せる。
+            if (speed < 3.0) {
+                this.targetX += (-closestNode.x - this.targetX) * 0.05;
+                this.targetY += (-closestNode.y - this.targetY) * 0.05;
+                
+                // 残った勢いを急速に殺してピタッと止める
+                this.vx *= 0.8;
+                this.vy *= 0.8;
             }
         }
     }
 
     update(nodes = []) {
         if (!this.isDragging) {
-            // ★ 速度制限（速すぎて宇宙の彼方へ飛んでいくのを防ぐ）
             const speed = Math.hypot(this.vx, this.vy);
-            if (speed > 60) {
-                this.vx = (this.vx / speed) * 60;
-                this.vy = (this.vy / speed) * 60;
+            if (speed > 50) {
+                this.vx = (this.vx / speed) * 50;
+                this.vy = (this.vy / speed) * 50;
             }
 
             this.targetX += this.vx;
             this.targetY += this.vy;
             
-            // ★ 摩擦係数（0.95: Appleのネイティブスクロールに近い滑らかさ）
-            this.vx *= 0.95;
-            this.vy *= 0.95;
+            // 摩擦（よく滑るが、ちゃんと止まるバランス）
+            this.vx *= 0.92;
+            this.vy *= 0.92;
 
             if (Math.abs(this.vx) < 0.01) this.vx = 0;
             if (Math.abs(this.vy) < 0.01) this.vy = 0;
@@ -244,9 +239,9 @@ export class CameraControl {
             this.applyMagneticSnap(nodes);
         }
 
-        // カメラの追従速度を少し上げて、遅延感（ラバーバンド感）をなくす
-        this.x += (this.targetX - this.x) * 0.15;
-        this.y += (this.targetY - this.y) * 0.15;
-        this.scale += (this.targetScale - this.scale) * 0.15;
+        // ★ カメラの追従速度を元に戻して、目に優しい滑らかさに（酔い止め）
+        this.x += (this.targetX - this.x) * 0.1;
+        this.y += (this.targetY - this.y) * 0.1;
+        this.scale += (this.targetScale - this.scale) * 0.1;
     }
 }
