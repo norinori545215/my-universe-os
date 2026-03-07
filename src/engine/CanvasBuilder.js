@@ -27,7 +27,6 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // 星を自然に掴むための計算用変数
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
         this.grabStartX = 0;
@@ -35,9 +34,14 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
-        // 長押し判定用のタイマー変数
+        // 長押し判定用
         this.pressTimer = null;
         this.isLongPressed = false;
+
+        // ★ 新規：ダブルタップ判定用の状態管理
+        this.lastClickTime = 0;
+        this.lastClickedNode = null;
+        this.singleClickTimeout = null;
 
         this.appPresets = [
             { name: 'YouTube', url: 'https://youtube.com', icon: 'https://www.google.com/s2/favicons?domain=youtube.com&sz=128' },
@@ -56,7 +60,6 @@ export class CanvasBuilder {
             isLinking: () => this.isLinking,
             isLinkModeActive: () => this.appMode === 'LINK',
             
-            // ★ エラーの元だった余計な引数(e)を削除し、シンプルに元通りにしました！
             onNodeGrabStart: (x, y) => this.grabNode(x, y),
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
@@ -153,63 +156,51 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // 【ルール：総て2】 どのモードでも星を掴めるようにする
     grabNode(x, y) {
         const node = this.getNodeAt(x, y);
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
             
-            // ピクつきを防ぐオフセット記憶
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
             this.grabStartY = y;
 
-            // 長押しタイマーのリセットと開始
             this.isLongPressed = false;
             if (this.pressTimer) clearTimeout(this.pressTimer);
 
-            // 【ルール：実行中は3】 RUNモードの時だけ長押しを判定する
             if (this.appMode === 'RUN') {
                 this.pressTimer = setTimeout(() => {
-                    // 指が動いていない（ドラッグしていない）場合のみ長押し成立
                     if (!this.hasMovedNode && this.grabbedNode) {
                         this.isLongPressed = true;
-                        if (navigator.vibrate) navigator.vibrate(50); // ブルッと震える
+                        if (navigator.vibrate) navigator.vibrate(50);
                         
-                        // エラーにならないよう、カメラ計算から画面上の表示位置を割り出す
                         const screenX = (this.grabbedNode.x + this.camera.x) * this.camera.scale + this.canvas.width / 2;
                         const screenY = (this.grabbedNode.y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
                         
-                        // UI側に「メモだけ」を表示させる
                         if (this.ui.showQuickNote) this.ui.showQuickNote(this.grabbedNode, screenX, screenY);
                     }
-                }, 500); // 0.5秒で長押し成功
+                }, 500);
             }
-
             return true; 
         }
         return false;
     }
 
-    // 【ルール：総て2】 ドラッグで星を動かす処理
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
         
         if (this.grabbedNode) {
-            // 一定距離動くまで「ドラッグ」とみなさない（タップとの区別）
             if (!this.hasMovedNode) {
                 const dx = x - this.grabStartX;
                 const dy = y - this.grabStartY;
-                if (dx * dx + dy * dy > 64) { // 約8px以上動かしたらドラッグ開始
+                if (dx * dx + dy * dy > 64) { 
                     this.hasMovedNode = true;
-                    // 動かしたら長押し判定は即座にキャンセル
                     if (this.pressTimer) clearTimeout(this.pressTimer);
                 }
             }
 
-            // ドラッグ確定時、ズレを維持して滑らかに移動
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -245,12 +236,13 @@ export class CanvasBuilder {
         this.currentUniverse = this.universeHistory.pop();
         this.camera.reset();
         this.ui.updateBreadcrumbs();
+        if (window.universeAudio) window.universeAudio.playWarp();
     }
 
+    // ★★★ 空間的ダブルタップ・エンジン ★★★
     handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
 
-        // ★長押しでメモを出した直後は、クリック（潜る）を無効にする
         if (this.isLongPressed) {
             this.isLongPressed = false;
             this.grabbedNode = null;
@@ -268,34 +260,92 @@ export class CanvasBuilder {
         
         if (target) {
             if (this.appMode === 'EDIT') {
-                // EDITモード：タップで設定のフルメニューを開く
+                // 編集モード：メニュー展開（既存のまま）
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
                     clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
-                } else if (event.touches && event.touches.length > 0) {
-                    clientX = event.touches[0].clientX; clientY = event.touches[0].clientY;
                 }
                 let posX = clientX + 15; let posY = clientY + 15;
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
                 this.ui.showMenu(target, posX, posY);
+                return;
             } 
-            else if (this.appMode === 'RUN') {
-                // 【ルール：実行中は1】 軽くタップした時は、潜るかURLに飛ぶ
-                if (target.url) {
-                    const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
-                    window.open(target.url, targetWin);
+            
+            if (this.appMode === 'RUN') {
+                const now = Date.now();
+                // 300ms以内に同じ星をタップしたら「ダブルタップ」と判定
+                const isDoubleTap = (target === this.lastClickedNode) && (now - this.lastClickTime < 300);
+
+                if (isDoubleTap) {
+                    // ダブルタップ成立：シングルタップの予定をキャンセル
+                    if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
+                    
+                    if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // 鼓動のような振動
+
+                    // 🎯 空間判定：クリックしたX座標と、星の中心X座標を比較
+                    if (worldX < target.x) {
+                        // 【左側ダブルタップ】➡ 深層へダイブ（潜る）
+                        this.executeDiveToNode(target);
+                    } else {
+                        // 【右側ダブルタップ】➡ 次の星へカメラ移動（横移動）
+                        this.moveToNextNode(target);
+                    }
+
+                    // 状態リセット
+                    this.lastClickTime = 0;
+                    this.lastClickedNode = null;
                 } else {
-                    this.isZoomingIn = true;
-                    this.targetUniverse = target.innerUniverse;
-                    this.camera.zoomTo(target.x, target.y);
+                    // 1回目のタップ：一旦記録して待機する
+                    this.lastClickedNode = target;
+                    this.lastClickTime = now;
+
+                    // 300ms経っても2回目が来なければ「シングルタップ」として処理
+                    this.singleClickTimeout = setTimeout(() => {
+                        // アプリ（URL）が登録されている星なら開く
+                        if (target.url) {
+                            const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
+                            window.open(target.url, targetWin);
+                        } else {
+                            // URLがなければ、触れた感覚として小さな音を鳴らす（153bpmエンジンと連動）
+                            if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                        }
+                    }, 300);
                 }
             }
         } else {
-            // 何もない宇宙空間をタップした場合はメニューとメモを閉じる
+            // 何もない宇宙空間をタップ
             this.ui.hideMenu();
             if (this.ui.hideQuickNote) this.ui.hideQuickNote();
+            this.lastClickedNode = null;
         }
+    }
+
+    // --- 新規：星の深層へ潜る処理の切り出し ---
+    executeDiveToNode(target) {
+        this.isZoomingIn = true;
+        this.targetUniverse = target.innerUniverse;
+        this.camera.zoomTo(target.x, target.y);
+        if (window.universeAudio) window.universeAudio.playWarp();
+        if (window.universeLogger) window.universeLogger.log("DIVE_DEEP", { target: target.name });
+    }
+
+    // --- 新規：同階層の次の星へカメラを移動（スライド） ---
+    moveToNextNode(currentNode) {
+        const nodes = this.currentUniverse.nodes;
+        if (nodes.length <= 1) return; // 星が1つしかない場合は移動しない
+
+        // 現在の星のインデックスを取得し、次の星を決定する（最後なら最初に戻るループ構造）
+        const currentIndex = nodes.indexOf(currentNode);
+        const nextIndex = (currentIndex + 1) % nodes.length;
+        const nextNode = nodes[nextIndex];
+
+        // カメラのターゲット座標を次の星にセット（滑らかに移動する）
+        this.camera.targetX = -nextNode.x;
+        this.camera.targetY = -nextNode.y;
+        
+        if (window.universeAudio) window.universeAudio.playSystemSound(400, 'triangle', 0.2, 200);
+        if (window.universeLogger) window.universeLogger.log("SLIDE_NEXT", { from: currentNode.name, to: nextNode.name });
     }
 
     animate() {
