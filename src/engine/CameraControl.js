@@ -9,7 +9,6 @@ export class CameraControl {
         this.targetX = 0; this.targetY = 0;
         this.targetScale = 1;
         
-        // ★ 慣性（スワイプの勢い）を保存する変数
         this.vx = 0; 
         this.vy = 0;
         this.lastMoveTime = 0;
@@ -41,8 +40,6 @@ export class CameraControl {
             const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
             this.targetScale *= zoomFactor;
             this.targetScale = Math.max(0.1, Math.min(this.targetScale, 10)); 
-            
-            // ホイール操作時は慣性を殺す
             this.vx = 0; this.vy = 0;
         }, { passive: false });
 
@@ -56,7 +53,6 @@ export class CameraControl {
             this.lastY = clientY;
             this.lastMoveTime = Date.now();
             
-            // 触った瞬間に慣性をピタッと止める（摩擦感）
             this.vx = 0; this.vy = 0;
             
             if (this.cb.isLinkModeActive()) {
@@ -88,7 +84,6 @@ export class CameraControl {
                 this.x = this.targetX; 
                 this.y = this.targetY;
                 
-                // ★ スワイプの「速度（勢い）」をリアルタイムに計算して記録
                 if (dt > 0) {
                     this.vx = (dx / this.scale) / dt;
                     this.vy = (dy / this.scale) / dt;
@@ -117,15 +112,13 @@ export class CameraControl {
                     }
                 }
             } else {
-                // ★ スワイプして指を離した瞬間の処理
                 if (this.isPanning) {
-                    // 指を離す直前（50ms以内）に動かしていなければ、勢いゼロとみなす
                     if (Date.now() - this.lastMoveTime > 50) {
                         this.vx = 0; this.vy = 0;
                     } else {
-                        // 慣性スクロールの発動（強すぎる場合はここで係数を調整）
-                        this.vx *= 15; 
-                        this.vy *= 15;
+                        // ★ スマホの自然なスワイプ感に調整
+                        this.vx *= 18; 
+                        this.vy *= 18;
                     }
                 }
             }
@@ -143,7 +136,7 @@ export class CameraControl {
         this.canvas.addEventListener('touchstart', e => {
             if (e.touches.length === 2) {
                 this.isPanning = false; 
-                this.vx = 0; this.vy = 0; // ピンチ時は慣性を殺す
+                this.vx = 0; this.vy = 0;
                 this.initialPinchDist = Math.hypot(
                     e.touches[0].clientX - e.touches[1].clientX,
                     e.touches[0].clientY - e.touches[1].clientY
@@ -193,17 +186,14 @@ export class CameraControl {
         this.vx = 0; this.vy = 0;
     }
 
-    // ★ 星の座標リストを受け取り、一番近い星に吸い付く処理を追加
     applyMagneticSnap(nodes) {
         if (!nodes || nodes.length === 0 || this.isDragging || this.cb.isLinkModeActive()) return;
 
-        // 画面の中央（カメラのターゲット位置）に一番近い星を探す
         let closestNode = null;
         let minDistance = Infinity;
-        const snapThreshold = 100; // 吸い付く引力の範囲（ピクセル）
+        const snapThreshold = 150; // ★ 引力の届く範囲を少し広げました
 
         nodes.forEach(node => {
-            // カメラの targetX/Y はマイナス反転しているため、符合を戻して計算
             const dist = Math.hypot(node.x - (-this.targetX), node.y - (-this.targetY));
             if (dist < minDistance) {
                 minDistance = dist;
@@ -211,39 +201,52 @@ export class CameraControl {
             }
         });
 
-        // 慣性が弱まってきた時、かつ星が引力圏内にある時に「スッ」と吸い付く
         const speed = Math.hypot(this.vx, this.vy);
-        if (closestNode && minDistance < snapThreshold && speed < 2.0) {
-            // 引力発生！星の中心をターゲットにする
-            this.targetX = -closestNode.x;
-            this.targetY = -closestNode.y;
-            // 慣性を殺してピタッと止める
-            this.vx = 0; 
-            this.vy = 0;
+
+        if (closestNode && minDistance < snapThreshold) {
+            // ★【改善】強制停止ではなく、星の方向へ「引っ張る（重力）」
+            if (speed < 6.0) { // スピードが落ちてきたら引力発動
+                const pullX = (-closestNode.x - this.targetX) * 0.04;
+                const pullY = (-closestNode.y - this.targetY) * 0.04;
+                this.vx += pullX;
+                this.vy += pullY;
+            }
+
+            // ★ ほぼ止まりかけたら、スッと吸い付かせる
+            if (speed < 0.3 && minDistance < 5) {
+                this.targetX = -closestNode.x;
+                this.targetY = -closestNode.y;
+                this.vx = 0; 
+                this.vy = 0;
+            }
         }
     }
 
     update(nodes = []) {
-        // ★ 慣性の適用（ドラッグしていない時のみ滑る）
         if (!this.isDragging) {
+            // ★ 速度制限（速すぎて宇宙の彼方へ飛んでいくのを防ぐ）
+            const speed = Math.hypot(this.vx, this.vy);
+            if (speed > 60) {
+                this.vx = (this.vx / speed) * 60;
+                this.vy = (this.vy / speed) * 60;
+            }
+
             this.targetX += this.vx;
             this.targetY += this.vy;
             
-            // 摩擦による減速（0.92を掛けて徐々に止める）
-            this.vx *= 0.92;
-            this.vy *= 0.92;
+            // ★ 摩擦係数（0.95: Appleのネイティブスクロールに近い滑らかさ）
+            this.vx *= 0.95;
+            this.vy *= 0.95;
 
-            // 速度が極めて小さくなったら完全に止める
             if (Math.abs(this.vx) < 0.01) this.vx = 0;
             if (Math.abs(this.vy) < 0.01) this.vy = 0;
 
-            // マグネット吸い付き処理の実行
             this.applyMagneticSnap(nodes);
         }
 
-        // カメラを滑らかにターゲット座標へ追従させる
-        this.x += (this.targetX - this.x) * 0.1;
-        this.y += (this.targetY - this.y) * 0.1;
-        this.scale += (this.targetScale - this.scale) * 0.1;
+        // カメラの追従速度を少し上げて、遅延感（ラバーバンド感）をなくす
+        this.x += (this.targetX - this.x) * 0.15;
+        this.y += (this.targetY - this.y) * 0.15;
+        this.scale += (this.targetScale - this.scale) * 0.15;
     }
 }
