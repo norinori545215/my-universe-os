@@ -5,7 +5,6 @@ import { NotePadUI } from './NotePadUI.js';
 import { AudioCore } from '../engine/AudioCore.js';
 import { Gravity } from '../core/Gravity.js'; 
 import { SingularitySearch } from './SingularitySearch.js'; 
-// ★ 追加：タイムマシンをインポート
 import { TimeMachine } from '../core/TimeMachine.js'; 
 
 export class UIManager {
@@ -136,7 +135,7 @@ export class UIManager {
         };
         this.systemCapsule.appendChild(searchBtn);
 
-        // ★ 新規追加：カプセル内：タイムマシンボタン
+        // カプセル内：タイムマシンボタン
         const timeBtn = document.createElement('div');
         timeBtn.innerText = '⏳';
         timeBtn.title = "Time Machine";
@@ -163,7 +162,7 @@ export class UIManager {
         this.protectUI(this.controlPanel);
         document.body.appendChild(this.controlPanel);
 
-        // ★ 新規追加：タイムマシン用のスライダーUI（画面下部からせり上がる）
+        // タイムマシン用のスライダーUI
         this.timeMachineUI = document.createElement('div');
         this.timeMachineUI.style.cssText = 'position:fixed; bottom:-150px; left:50%; transform:translateX(-50%); width:90%; max-width:600px; background:rgba(20,15,0,0.9); border:1px solid #ffcc00; border-radius:16px 16px 0 0; padding:20px; box-shadow:0 0 40px rgba(255,204,0,0.4); backdrop-filter:blur(15px); z-index:9900; transition:bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; align-items:center; pointer-events:auto;';
         this.protectUI(this.timeMachineUI);
@@ -176,7 +175,6 @@ export class UIManager {
         `;
         document.body.appendChild(this.timeMachineUI);
 
-        // タイムトラベルのスライダーイベント設定
         const slider = document.getElementById('time-slider');
         const display = document.getElementById('time-display');
         
@@ -194,7 +192,6 @@ export class UIManager {
                 }
             }
             
-            // スライダーを動かすたびに CanvasBuilder の復元処理を呼ぶ
             if (this.app.executeTimeTravel) {
                 this.app.executeTimeTravel(index);
             }
@@ -214,6 +211,9 @@ export class UIManager {
         this.renderCP();
         this.setupGlobalCanvasEvents();
 
+        // プラグイン状態の初期化
+        this.updateUIState();
+
         // コアボタンのトグル
         coreBtn.onclick = (e) => {
             e.stopPropagation();
@@ -222,7 +222,6 @@ export class UIManager {
         };
     }
 
-    // ★ 新規追加：タイムマシンUIの開閉とスライダーの更新
     toggleTimeMachine() {
         const isClosed = this.timeMachineUI.style.bottom.startsWith('-');
         if (isClosed) {
@@ -231,17 +230,14 @@ export class UIManager {
             if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
         } else {
             this.timeMachineUI.style.bottom = '-150px';
-            // 閉じた瞬間に、過去に戻った状態のまま現在の宇宙としてセーブして歴史を確定する
             this.app.autoSave();
         }
     }
 
-    // ★ 新規追加：スライダーの目盛りを最新の歴史件数に合わせる
     updateTimeSliderParams() {
         const slider = document.getElementById('time-slider');
         const count = Math.max(0, TimeMachine.getHistoryCount() - 1);
         slider.max = count;
-        // UIを開いたときは常に「現在（最新）」にツマミをセット
         if (this.timeMachineUI.style.bottom.startsWith('-')) {
             slider.value = count; 
             document.getElementById('time-display').innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
@@ -313,9 +309,14 @@ export class UIManager {
                 <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODULE EXTENSIONS</div>
                 <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        🖥️ ターミナルボタン追加
+                        <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc;">🤖 自動プレゼンをスロットに追加</span>
                     </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc;">🖥️ ターミナルをスロットに追加</span>
+                    </label>
+                    <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-audio" ${window.universeAudio && !window.universeAudio.isMuted ? 'checked' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff66ff;">🔊 153bpm 音響エンジン</span>
@@ -357,13 +358,11 @@ export class UIManager {
     bindCPEvents() {
         const bind = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
 
-        // タブ制御
         bind('cp-close', () => this.controlPanel.style.display = 'none');
         bind('tab-create', () => { this.state.activeTab = 'create'; this.renderCP(); });
         bind('tab-config', () => { this.state.activeTab = 'config'; this.renderCP(); });
         bind('tab-data', () => { this.state.activeTab = 'data'; this.renderCP(); });
 
-        // モード変更
         bind('cp-mode-run', () => this.updateMode('RUN'));
         bind('cp-mode-link', () => this.updateMode('LINK'));
         bind('cp-mode-edit', () => this.updateMode('EDIT'));
@@ -372,7 +371,6 @@ export class UIManager {
         bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
 
-        // チェックボックスの状態永続化
         const handleCheckbox = (id, storageKey, stateKey = null) => {
             const el = document.getElementById(id);
             if(el) el.onchange = (e) => {
@@ -385,6 +383,10 @@ export class UIManager {
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
         handleCheckbox('cp-auto-menu', 'universe_auto_menu');
         
+        // ★ 追加：オートパイロットのチェックボックスイベント
+        const extAutoPilot = document.getElementById('cp-ext-autopilot');
+        if(extAutoPilot) extAutoPilot.onchange = (e) => { localStorage.setItem('universe_ext_autopilot', e.target.checked); this.updateUIState(); };
+
         const extLogger = document.getElementById('cp-ext-logger');
         if(extLogger) extLogger.onchange = (e) => { localStorage.setItem('universe_ext_logger', e.target.checked); this.updateUIState(); };
 
@@ -394,7 +396,6 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
-        // 中央創造ボタン
         bind('cp-spawn-btn', () => {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
@@ -407,11 +408,9 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // 危険な操作
         bind('cp-btn-logout', () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); });
         bind('cp-btn-reset', () => { if(confirm("【警告】現在の端末の宇宙を初期化します。よろしいですか？")){ localStorage.clear(); window.location.reload(); } });
         
-        // データ管理
         bind('cp-btn-inventory', () => { this.controlPanel.style.display='none'; this.showInventoryUI(); });
         bind('cp-btn-export', () => Singularity.export());
         
@@ -425,7 +424,6 @@ export class UIManager {
             }
         };
 
-        // レーダー検索
         const radar = document.getElementById('cp-radar');
         if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
     }
@@ -437,14 +435,34 @@ export class UIManager {
 
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
+        
+        // （特異点とタイムマシンはデフォルトで常時表示に戻してあります）
+        const isAutoPilot = localStorage.getItem('universe_ext_autopilot') === 'true';
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
 
+        // ★ 追加：オートパイロットの起動ボタン（🤖）
+        if (isAutoPilot) {
+            const btn = document.createElement('div');
+            btn.innerText = '🤖';
+            btn.title = "Auto Presentation Mode";
+            btn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.15); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(0,255,204,0.2); font-size:14px;';
+            btn.onclick = (e) => { 
+                e.stopPropagation(); 
+                if(!this.isCapsuleDragged() && this.app.autoPilot) {
+                    this.controlPanel.style.display = 'none'; // メニューを閉じる
+                    this.app.autoPilot.start(); // 直ちに自動プレゼンを開始
+                }
+            };
+            this.capsuleSlots.appendChild(btn);
+        }
+
+        // ターミナルボタン
         if (isLog) {
             const btn = document.createElement('div');
             btn.innerText = '🖥️'; 
-            btn.title = "ターミナルを開閉";
-            btn.style.cssText = 'width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; display:flex; justify-content:center; align-items:center; cursor:pointer; transition:0.2s;';
+            btn.title = "Terminal Log";
+            btn.style.cssText = 'width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; display:flex; justify-content:center; align-items:center; cursor:pointer; transition:0.2s; font-size:14px;';
             btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) window.universeLogger?.toggle(); };
             this.capsuleSlots.appendChild(btn);
         }
