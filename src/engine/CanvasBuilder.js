@@ -3,8 +3,9 @@ import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
-// ★ 追加：タイムマシンモジュールをインポート
 import { TimeMachine } from '../core/TimeMachine.js';
+// ★ 追加：オートパイロットモジュールをインポート
+import { AutoPilot } from './AutoPilot.js';
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -88,6 +89,9 @@ export class CanvasBuilder {
         
         this.init();
         this.animate();
+
+        // ★ 追加：オートパイロットの起動
+        this.autoPilot = new AutoPilot(this);
     }
 
     async init() {
@@ -118,7 +122,6 @@ export class CanvasBuilder {
         
         this.ui.updateBreadcrumbs();
         
-        // ★ 追加：起動した直後の初期状態をタイムマシンに記録
         let root = this.currentUniverse;
         while (this.universeHistory.length > 0 && root.parentUniverse) { root = root.parentUniverse; }
         TimeMachine.record(root, this.wormholes, this.blackHole);
@@ -134,10 +137,8 @@ export class CanvasBuilder {
         
         await DataManager.save(root, this.wormholes, this.blackHole);
         
-        // ★ 追加：宇宙が変更されるたびに、タイムマシンに歴史を記録
         TimeMachine.record(root, this.wormholes, this.blackHole);
         
-        // UI側のスライダーがあれば最新状態に更新
         if (this.ui && this.ui.updateTimeSliderParams) {
             this.ui.updateTimeSliderParams();
         }
@@ -156,12 +157,10 @@ export class CanvasBuilder {
         }, 3000); 
     }
 
-    // ★ 新規追加：タイムマシンの実行（過去の座標へ逆再生で戻る）
     executeTimeTravel(historyIndex) {
         const pastData = TimeMachine.travel(historyIndex);
         if (!pastData) return;
 
-        // 過去の宇宙データから、全星の座標をフラットなリストとして抽出
         const pastNodes = [];
         const extract = (uni) => {
             if(!uni || !uni.nodes) return;
@@ -172,10 +171,9 @@ export class CanvasBuilder {
         };
         extract(pastData.rootUniverse);
 
-        // 現在の宇宙の星々を、滑らかに過去の座標へ移動させるアニメーション関数
         const animateToPast = (node, pastX, pastY) => {
             const startX = node.baseX; const startY = node.baseY;
-            const duration = 600; // 0.6秒かけて巻き戻る
+            const duration = 600; 
             const startTime = performance.now();
             const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
@@ -193,7 +191,6 @@ export class CanvasBuilder {
             requestAnimationFrame(animate);
         };
 
-        // 目の前にある現在の星と、過去の星をマッチングさせて巻き戻し実行
         this.currentUniverse.nodes.forEach(node => {
             const pastNode = pastNodes.find(n => n.id === node.id || n.name === node.name);
             if (pastNode) {
@@ -203,7 +200,6 @@ export class CanvasBuilder {
             }
         });
         
-        // 空間が歪むエフェクト
         if(window.universeAudio) window.universeAudio.playWarp();
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffcc00', true);
     }
