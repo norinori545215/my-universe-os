@@ -41,7 +41,6 @@ export class SingularitySearch {
 
         // 4. サンドボックス化されたiframe（心臓部）
         const iframe = document.createElement('iframe');
-        // ★ sandbox属性により、親OSへのアクセスやCookieの漏洩を物理的に遮断します
         iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups');
         iframe.style.cssText = 'flex:1; width:100%; border:none; background:#fff;';
         
@@ -52,6 +51,10 @@ export class SingularitySearch {
         header.appendChild(input);
         header.appendChild(closeBtn);
         container.appendChild(header);
+        
+        // ★★★ これが抜けていました！！！（画面を枠にはめ込む） ★★★
+        container.appendChild(iframe); 
+        
         overlay.appendChild(container);
         document.body.appendChild(overlay);
 
@@ -68,7 +71,7 @@ export class SingularitySearch {
                 if (val.match(/^https?:\/\//)) {
                     iframe.src = val; // URLなら直接開く
                 } else {
-                    // ★ 検索なら、iframe表示を許可しており、トラッキングを一切しないDuckDuckGoのHTML版へ強制ルーティング
+                    // ★ 検索ならDuckDuckGoのHTML版へ強制ルーティング
                     iframe.src = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(val);
                 }
             }
@@ -95,13 +98,12 @@ export class SingularitySearch {
         if (!overlay) return;
         if (window.universeAudio) window.universeAudio.playDelete(); // 消滅音
         
-        // 閉鎖アニメーション（ブラックホールに吸い込まれるように縮小・回転）
+        // 閉鎖アニメーション
         overlay.style.transition = 'all 0.4s cubic-bezier(0.5, 0, 0.2, 1)';
         overlay.style.opacity = '0';
         overlay.style.transform = 'scale(0) rotate(-15deg)';
         overlay.style.filter = 'blur(20px)';
         
-        // アニメーション完了後にDOMツリーから完全に実体を削除（揮発）
         setTimeout(() => {
             if (document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
