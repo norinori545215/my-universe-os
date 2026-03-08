@@ -2,7 +2,6 @@
 
 export class SingularitySearch {
     static open() {
-        // すでに開いている場合は無視
         if (document.getElementById('singularity-search-overlay')) return;
 
         // 1. 完全隔離用のオーバーレイ（背景）
@@ -10,80 +9,81 @@ export class SingularitySearch {
         overlay.id = 'singularity-search-overlay';
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: radial-gradient(circle at center, rgba(30,0,40,0.85) 0%, rgba(0,0,0,0.98) 100%);
+            background: radial-gradient(circle at center, rgba(30,0,40,0.95) 0%, rgba(0,0,0,0.98) 100%);
             z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center;
             backdrop-filter: blur(15px); transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
             opacity: 0; transform: scale(0.8) rotate(5deg); pointer-events: auto;
         `;
 
-        // 2. ブラウザのウインドウ枠
+        // 2. ターミナル風のウインドウ
         const container = document.createElement('div');
         container.style.cssText = `
-            width: 90%; max-width: 1100px; height: 85%;
+            width: 90%; max-width: 700px; padding: 40px;
             background: rgba(0,0,0,0.8); border: 1px solid #ff00ff;
-            border-radius: 16px; display: flex; flex-direction: column;
+            border-radius: 16px; display: flex; flex-direction: column; align-items: center;
             box-shadow: 0 0 50px rgba(255,0,255,0.3), inset 0 0 20px rgba(255,0,255,0.1);
-            overflow: hidden;
         `;
 
-        // 3. ヘッダー（検索バーと閉じるボタン）
-        const header = document.createElement('div');
-        header.style.cssText = 'display:flex; padding:15px; background:rgba(255,0,255,0.1); border-bottom:1px solid #ff00ff; align-items:center; gap:10px;';
+        // タイトル
+        const title = document.createElement('div');
+        title.innerHTML = '<h2>👁️‍🗨️ SINGULARITY PORTAL</h2><p style="color:#888; font-size:12px;">Zero-Trace Quantum Catapult Ready.</p>';
+        title.style.cssText = 'color:#ff00ff; text-align:center; text-shadow:0 0 10px #ff00ff; margin-bottom: 30px; font-family: monospace;';
 
+        // 検索入力バー
         const input = document.createElement('input');
         input.type = 'text';
-        input.placeholder = '特異点へアクセス... (検索ワード または URLを入力してEnter)';
-        input.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; font-size:16px; outline:none; text-shadow:0 0 5px #ff00ff; letter-spacing:1px;';
+        input.placeholder = '> 検索ワード または URL を入力...';
+        input.style.cssText = 'width: 100%; padding: 15px; background: rgba(255,0,255,0.05); border: 1px solid #ff00ff; color: #fff; font-size: 18px; outline: none; border-radius: 8px; text-shadow: 0 0 5px #ff00ff; font-family: monospace; letter-spacing: 1px; transition: 0.3s;';
 
+        // 閉鎖ボタン
         const closeBtn = document.createElement('button');
         closeBtn.innerText = '✖ 閉鎖 (Annihilate)';
-        closeBtn.style.cssText = 'background:transparent; border:1px solid #ff4444; color:#ff4444; padding:8px 15px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px; transition:0.2s; box-shadow:0 0 10px rgba(255,68,68,0.2);';
-
-        // 4. サンドボックス化されたiframe（心臓部）
-        const iframe = document.createElement('iframe');
-        iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups');
-        iframe.style.cssText = 'flex:1; width:100%; border:none; background:#fff;';
-        
-        // 初期画面はサイバーなスタンバイ画面
-        iframe.src = 'data:text/html;charset=utf-8,<html><body style="background:%2305050a;color:%23ff00ff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;text-shadow:0 0 15px %23ff00ff;"><h1>SINGULARITY STANDBY</h1><p style="color:%23888;">Zero-Trace Anonymous Connection Ready.</p></body></html>';
+        closeBtn.style.cssText = 'margin-top: 30px; background: transparent; border: 1px solid #ff4444; color: #ff4444; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.2s; box-shadow: 0 0 10px rgba(255,68,68,0.2);';
 
         // 組み立て
-        header.appendChild(input);
-        header.appendChild(closeBtn);
-        container.appendChild(header);
-        
-        // ★★★ これが抜けていました！！！（画面を枠にはめ込む） ★★★
-        container.appendChild(iframe); 
-        
+        container.appendChild(title);
+        container.appendChild(input);
+        container.appendChild(closeBtn);
         overlay.appendChild(container);
         document.body.appendChild(overlay);
 
         // --- イベントバインド ---
         
-        // 検索実行
+        // 検索実行（カタパルト発射）
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 let val = input.value.trim();
                 if (!val) return;
                 
-                if (window.universeAudio) window.universeAudio.playSpawn(); // 検索時の打鍵音
+                if (window.universeAudio) window.universeAudio.playSpawn(); // 打鍵音
                 
-                if (val.match(/^https?:\/\//)) {
-                    iframe.src = val; // URLなら直接開く
-                } else {
-                    // ★ 検索ならDuckDuckGoのHTML版へ強制ルーティング
-                    iframe.src = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(val);
-                }
+                // 演出：ハッキング風の暗号化プロセス
+                input.value = "ENCRYPTING AND LAUNCHING...";
+                input.disabled = true;
+                input.style.color = "#00ffcc";
+                input.style.borderColor = "#00ffcc";
+                input.style.textShadow = "0 0 10px #00ffcc";
+                
+                // 0.6秒後に別次元（ゴーストタブ）へ射出
+                setTimeout(() => {
+                    let targetUrl = val;
+                    if (!val.match(/^https?:\/\//)) {
+                        targetUrl = 'https://duckduckgo.com/?q=' + encodeURIComponent(val);
+                    }
+                    
+                    // ★ 魔法の呪文「noopener, noreferrer」
+                    // これにより、遷移先のサイトに「元のサイト(OS)の情報」が一切送られない完全な匿名通信になります
+                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    
+                    // 射出と同時に、証拠隠滅のためにOS側の窓を閉鎖
+                    SingularitySearch.close(overlay);
+                }, 600);
             }
         });
 
         // 閉鎖（消滅）実行
         closeBtn.onclick = () => SingularitySearch.close(overlay);
-
-        // 背景クリックでも閉鎖
-        overlay.onclick = (e) => {
-            if(e.target === overlay) SingularitySearch.close(overlay);
-        };
+        overlay.onclick = (e) => { if(e.target === overlay) SingularitySearch.close(overlay); };
 
         // --- 開く際のアニメーション ---
         requestAnimationFrame(() => {
