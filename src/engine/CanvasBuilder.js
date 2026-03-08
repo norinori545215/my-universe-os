@@ -34,14 +34,14 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
+        // 長押し・ダブルタップ判定用
         this.pressTimer = null;
         this.isLongPressed = false;
-
         this.lastClickTime = 0;
         this.lastClickedNode = null;
         this.singleClickTimeout = null;
 
-        // ★ 新規：波紋（リップル）エフェクトを管理する配列
+        // ★ 波紋（リップル）エフェクトを管理する配列
         this.ripples = [];
 
         this.appPresets = [
@@ -157,14 +157,13 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // ★ 新規：波紋（リップル）を発生させるメソッド
+    // ★ 波紋（リップル）を発生させるメソッド
     spawnRipple(x, y, color = '#00ffcc', isLarge = false) {
         this.ripples.push({
-            x: x,
-            y: y,
+            x: x, y: y,
             radius: 10,
             maxRadius: isLarge ? 120 : 60,
-            alpha: 0.8,
+            alpha: 0.6, // 上品な薄さ
             color: color,
             speed: isLarge ? 8 : 4
         });
@@ -190,9 +189,8 @@ export class CanvasBuilder {
                         this.isLongPressed = true;
                         if (navigator.vibrate) navigator.vibrate(50);
                         
-                        // 長押し成功時に波紋を出す
                         this.spawnRipple(this.grabbedNode.x, this.grabbedNode.y, '#ff00ff', true);
-
+                        
                         const screenX = (this.grabbedNode.x + this.camera.x) * this.camera.scale + this.canvas.width / 2;
                         const screenY = (this.grabbedNode.y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
                         
@@ -230,6 +228,7 @@ export class CanvasBuilder {
         if (node) { this.isLinking = true; this.linkSourceNode = node; }
     }
 
+    // ★ 結合 / 切断（トグル式）の完全版
     endLink(x, y) {
         if (this.isLinking && this.linkSourceNode) {
             const targetNode = this.getNodeAt(x, y);
@@ -244,6 +243,7 @@ export class CanvasBuilder {
                 });
 
                 if (existingLinkIndex !== -1) {
+                    // 【解除】
                     this.currentUniverse.links.splice(existingLinkIndex, 1);
                     targetNode.baseX = targetNode.x;
                     targetNode.baseY = targetNode.y;
@@ -252,11 +252,12 @@ export class CanvasBuilder {
 
                     if (window.universeLogger) window.universeLogger.log("UNLINKED", { target: targetNode.name });
                     if (window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
-                    this.spawnRipple(targetNode.x, targetNode.y, '#ff4444'); // 切断の波紋
+                    this.spawnRipple(targetNode.x, targetNode.y, '#ff4444'); 
                 } else {
+                    // 【結合】
                     this.currentUniverse.addLink(this.linkSourceNode, targetNode);
                     if (window.universeLogger) window.universeLogger.log("LINKED", { target: targetNode.name });
-                    this.spawnRipple(targetNode.x, targetNode.y, '#00ffcc', true); // 結合の波紋
+                    this.spawnRipple(targetNode.x, targetNode.y, '#00ffcc', true); 
                 }
                 
                 this.autoSave(); 
@@ -279,20 +280,17 @@ export class CanvasBuilder {
         this.camera.reset();
         this.ui.updateBreadcrumbs();
         if (window.universeAudio) window.universeAudio.playWarp();
-        
-        // 戻った瞬間に画面中央から空間の波紋を出す
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffffff', true);
     }
 
+    // ★ 空間的ダブルタップ・エンジン
     handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
-
         if (this.isLongPressed) {
             this.isLongPressed = false;
             this.grabbedNode = null;
             return;
         }
-
         this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
@@ -312,7 +310,7 @@ export class CanvasBuilder {
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
                 this.ui.showMenu(target, posX, posY);
-                this.spawnRipple(target.x, target.y, '#ffcc00'); // メニュー展開の波紋
+                this.spawnRipple(target.x, target.y, '#ffcc00');
                 return;
             } 
             
@@ -324,7 +322,7 @@ export class CanvasBuilder {
                     if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
                     if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
 
-                    this.spawnRipple(target.x, target.y, '#ff00ff', true); // ダブルタップ時の強烈な波紋
+                    this.spawnRipple(target.x, target.y, '#ff00ff', true);
 
                     if (worldX < target.x) {
                         this.executeDiveToNode(target);
@@ -339,8 +337,7 @@ export class CanvasBuilder {
                     this.lastClickTime = now;
 
                     this.singleClickTimeout = setTimeout(() => {
-                        this.spawnRipple(target.x, target.y, target.color); // シングルタップ時の波紋
-
+                        this.spawnRipple(target.x, target.y, target.color);
                         if (target.url) {
                             const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                             window.open(target.url, targetWin);
@@ -354,8 +351,7 @@ export class CanvasBuilder {
             this.ui.hideMenu();
             if (this.ui.hideQuickNote) this.ui.hideQuickNote();
             this.lastClickedNode = null;
-            // 空間をタップした時も小さな波紋を出す
-            this.spawnRipple(worldX, worldY, 'rgba(255,255,255,0.5)');
+            this.spawnRipple(worldX, worldY, 'rgba(255,255,255,0.3)');
         }
     }
 
@@ -385,13 +381,11 @@ export class CanvasBuilder {
     animate() {
         this.time += 0.02;
 
-        // ★★★ 153bpm の絶対時間パルス計算 ★★★
+        // ★ 153bpm のアンビエントパルス（目に優しい呼吸）
         const bpm = 153;
-        const msPerBeat = 60000 / bpm; // 約392ms
-        // 現在時刻から、ビートの「位相（0.0〜1.0）」を計算
+        const msPerBeat = 60000 / (bpm / 2); 
         const beatPhase = (Date.now() % msPerBeat) / msPerBeat; 
-        // 鼓動のような鋭いパルス（ドクンッ…という感じ）を生成
-        const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 4); 
+        const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2) * 0.3; 
 
         this.camera.update(this.currentUniverse.nodes);
 
@@ -416,11 +410,11 @@ export class CanvasBuilder {
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         this.currentUniverse.particles.forEach(p => {
             this.ctx.beginPath();
-            // 背景の粒子も153bpmでわずかに瞬く
-            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.5)), 0, Math.PI * 2);
+            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.2)), 0, Math.PI * 2);
             this.ctx.fill();
         });
 
+        // ★ 衛星システムの物理演算
         const orbitingNodes = new Map();
         
         this.currentUniverse.links.forEach(link => {
@@ -491,8 +485,8 @@ export class CanvasBuilder {
             const dy = link.target.baseY - link.source.baseY;
             const radius = Math.hypot(dx, dy);
 
-            // 軌道リングも脈打たせる
-            this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
+            // 軌道の線もパルスに連動
+            this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.05 + (pulse * 0.1)})`;
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2);
@@ -515,11 +509,11 @@ export class CanvasBuilder {
             this.ctx.setLineDash([]);
         }
 
-        // ★★★ 波紋（リップル）の更新と描画 ★★★
+        // ★ 波紋（リップル）の描画
         for (let i = this.ripples.length - 1; i >= 0; i--) {
             const r = this.ripples[i];
             r.radius += r.speed;
-            r.alpha -= r.speed / r.maxRadius; // 大きくなるにつれて透明に
+            r.alpha -= r.speed / r.maxRadius; 
 
             if (r.alpha <= 0) {
                 this.ripples.splice(i, 1);
@@ -537,13 +531,12 @@ export class CanvasBuilder {
 
         this.currentUniverse.nodes.forEach(node => {
             const isGrabbed = (node === this.grabbedNode);
-            // ★ 星のサイズに153bpmのパルスを加算して脈打たせる
             let drawSize = node.size + (isGrabbed ? 3 : 0);
             drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5;
-            drawSize += pulse * 2.0; // 鼓動による膨張
+            drawSize += pulse; // 微小な膨張
 
-            // ★ 星のオーラ（影）もパルスに連動して光る
-            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15);
+            // 星のオーラも優しく明滅
+            this.ctx.shadowBlur = isGrabbed ? 30 : 12 + (pulse * 10);
             this.ctx.shadowColor = node.color;
 
             if (node.iconUrl) {
@@ -585,7 +578,7 @@ export class CanvasBuilder {
                 this.ctx.fill();
             }
 
-            this.ctx.shadowBlur = 0; // テキスト描画前に影をリセット
+            this.ctx.shadowBlur = 0; 
 
             if (node.isLocked) {
                 this.ctx.fillStyle = "#ffcc00"; 
