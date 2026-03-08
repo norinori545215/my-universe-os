@@ -3,6 +3,7 @@ import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
 import { AudioCore } from '../engine/AudioCore.js';
+import { Gravity } from '../core/Gravity.js'; // ★ 追加：重力モジュールをインポート
 
 export class UIManager {
     constructor(app) {
@@ -188,6 +189,13 @@ export class UIManager {
                         <button id="cp-mode-edit" style="flex:1; padding:10px; background:${this.app.appMode==='EDIT'?'#ffcc00':'#113344'}; color:${this.app.appMode==='EDIT'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; transition:0.2s;">⚙️ 編集</button>
                     </div>
                     
+                    <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">GRAVITY FORMATION</div>
+                    <div style="display:flex; gap:5px; margin-bottom:20px;">
+                        <button id="cp-grav-circle" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">⭕ 円環</button>
+                        <button id="cp-grav-spiral" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🌀 螺旋</button>
+                        <button id="cp-grav-grid" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🔲 均列</button>
+                    </div>
+                    
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RAPID WORKFLOW</div>
                     <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:12px;">
                         <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#ffcc00;">
@@ -269,6 +277,23 @@ export class UIManager {
         bind('cp-mode-run', () => this.updateMode('RUN'));
         bind('cp-mode-link', () => this.updateMode('LINK'));
         bind('cp-mode-edit', () => this.updateMode('EDIT'));
+
+        // ★ 追加：重力ボタンのイベントバインド
+        bind('cp-grav-circle', () => {
+            Gravity.applyFormation(this.app.currentUniverse.nodes, 'circle');
+            if (window.universeAudio) window.universeAudio.playWarp();
+            this.app.autoSave();
+        });
+        bind('cp-grav-spiral', () => {
+            Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral');
+            if (window.universeAudio) window.universeAudio.playWarp();
+            this.app.autoSave();
+        });
+        bind('cp-grav-grid', () => {
+            Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid');
+            if (window.universeAudio) window.universeAudio.playWarp();
+            this.app.autoSave();
+        });
 
         // チェックボックスの状態永続化
         const handleCheckbox = (id, storageKey, stateKey = null) => {
@@ -387,7 +412,7 @@ export class UIManager {
             // UI上のクリックなら無視
             if (e.target !== canvasEl) return;
 
-            // ★ 創造プロセスの発火（以降のイベント伝播を殺す）
+            // 創造プロセスの発火（以降のイベント伝播を殺す）
             e.preventDefault(); 
             e.stopPropagation();
             this.state.lastSpawnTime = now;
