@@ -1,19 +1,16 @@
-const CACHE_NAME = 'universe-os-core-v1';
+const CACHE_NAME = 'universe-os-core-v2';
 
-// インストール時にキャッシュを初期化
 self.addEventListener('install', (event) => {
     self.skipWaiting();
-    console.log('[OS System] Service Worker Installed.');
+    console.log('[OS System] Service Worker Installed (v2).');
 });
 
-// 古いキャッシュのパージ（更新用）
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cache) => {
                     if (cache !== CACHE_NAME) {
-                        console.log('[OS System] Old Cache Purged.');
                         return caches.delete(cache);
                     }
                 })
@@ -23,16 +20,18 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// オフライン・プロキシ（ネットワークが切れていてもアプリを起動させる）
 self.addEventListener('fetch', (event) => {
+    // http/httpsリクエスト以外（拡張機能など）は無視する
+    if (!event.request.url.startsWith('http')) return;
+
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
             if (cachedResponse) {
                 return cachedResponse;
             }
             return fetch(event.request).then((networkResponse) => {
-                // 動的にキャッシュに保存（※APIや外部通信は除く）
-                if (event.request.url.startsWith(self.location.origin)) {
+                // 正常なGETリクエスト、かつ自分自身のドメインのファイルのみをキャッシュする
+                if (event.request.method === 'GET' && networkResponse.status === 200 && event.request.url.startsWith(self.location.origin)) {
                     const clonedResponse = networkResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, clonedResponse);
@@ -40,10 +39,12 @@ self.addEventListener('fetch', (event) => {
                 }
                 return networkResponse;
             }).catch(() => {
-                // 完全オフライン時のフォールバック
+                // オフライン時のフォールバック処理
                 if (event.request.mode === 'navigate') {
                     return caches.match('./index.html');
                 }
+                // エラーでシステムが止まらないように、空のレスポンスを返す（パニック回避）
+                return new Response('', { status: 408, statusText: 'Offline' });
             });
         })
     );

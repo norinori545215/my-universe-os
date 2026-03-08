@@ -1,19 +1,19 @@
 {
   "name": "My Universe OS",
   "short_name": "Universe",
-  "description": "Zero-Knowledge Spatial OS - 空間的思考の拡張",
+  "description": "Zero-Knowledge Spatial OS",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a0a1a",
   "theme_color": "#00ffcc",
   "icons": [
     {
-      "src": "https://via.placeholder.com/192/111111/00ffcc?text=OS",
+      "src": "https://placehold.co/192x192/111111/00ffcc.png?text=OS",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://via.placeholder.com/512/111111/00ffcc?text=OS",
+      "src": "https://placehold.co/512x512/111111/00ffcc.png?text=OS",
       "sizes": "512x512",
       "type": "image/png"
     }
