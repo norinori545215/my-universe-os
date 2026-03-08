@@ -4,7 +4,9 @@ import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
 import { AudioCore } from '../engine/AudioCore.js';
 import { Gravity } from '../core/Gravity.js'; 
-import { SingularitySearch } from './SingularitySearch.js'; // ★ 追加：特異点検索モジュールをインポート
+import { SingularitySearch } from './SingularitySearch.js'; 
+// ★ 追加：タイムマシンをインポート
+import { TimeMachine } from '../core/TimeMachine.js'; 
 
 export class UIManager {
     constructor(app) {
@@ -119,20 +121,31 @@ export class UIManager {
 
         // カプセル内：コアボタン
         const coreBtn = document.createElement('div');
-        coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s;'; // margin-rightを5pxに調整
+        coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
-        // ★ カプセル内：特異点検索（Singularity Search）起動ボタン
+        // カプセル内：特異点検索モジュール
         const searchBtn = document.createElement('div');
         searchBtn.innerText = '👁️‍🗨️';
         searchBtn.title = "特異点検索 (Singularity Search)";
-        searchBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:36px; height:36px; border-radius:50%; background:rgba(255,0,255,0.15); border:1px solid rgba(255,0,255,0.5); color:#ff00ff; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s; box-shadow:0 0 10px rgba(255,0,255,0.2); font-size:16px;';
+        searchBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:36px; height:36px; border-radius:50%; background:rgba(255,0,255,0.15); border:1px solid rgba(255,0,255,0.5); color:#ff00ff; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s; box-shadow:0 0 10px rgba(255,0,255,0.2); font-size:16px;';
         searchBtn.onclick = (e) => {
             e.stopPropagation();
             if(!this.isCapsuleDragged()) SingularitySearch.open();
         };
         this.systemCapsule.appendChild(searchBtn);
+
+        // ★ 新規追加：カプセル内：タイムマシンボタン
+        const timeBtn = document.createElement('div');
+        timeBtn.innerText = '⏳';
+        timeBtn.title = "Time Machine";
+        timeBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:36px; height:36px; border-radius:50%; background:rgba(255,204,0,0.15); border:1px solid rgba(255,204,0,0.5); color:#ffcc00; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s; box-shadow:0 0 10px rgba(255,204,0,0.2); font-size:16px;';
+        timeBtn.onclick = (e) => { 
+            e.stopPropagation(); 
+            if(!this.isCapsuleDragged()) this.toggleTimeMachine(); 
+        };
+        this.systemCapsule.appendChild(timeBtn);
 
         // カプセル内：拡張モジュールスロット
         this.capsuleSlots = document.createElement('div');
@@ -149,6 +162,45 @@ export class UIManager {
         this.controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.98); border:1px solid #00ffcc; border-radius:12px; padding:0; z-index:9001; width:90%; max-width:340px; min-height:420px; max-height:85vh; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.9); backdrop-filter:blur(20px); color:white; font-family:sans-serif; pointer-events:auto;';
         this.protectUI(this.controlPanel);
         document.body.appendChild(this.controlPanel);
+
+        // ★ 新規追加：タイムマシン用のスライダーUI（画面下部からせり上がる）
+        this.timeMachineUI = document.createElement('div');
+        this.timeMachineUI.style.cssText = 'position:fixed; bottom:-150px; left:50%; transform:translateX(-50%); width:90%; max-width:600px; background:rgba(20,15,0,0.9); border:1px solid #ffcc00; border-radius:16px 16px 0 0; padding:20px; box-shadow:0 0 40px rgba(255,204,0,0.4); backdrop-filter:blur(15px); z-index:9900; transition:bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; align-items:center; pointer-events:auto;';
+        this.protectUI(this.timeMachineUI);
+        
+        this.timeMachineUI.innerHTML = `
+            <div style="color:#ffcc00; font-size:14px; font-weight:bold; margin-bottom:15px; letter-spacing:2px; text-shadow:0 0 10px #ffcc00;">⏳ HISTORY RECOVERY</div>
+            <input type="range" id="time-slider" min="0" max="0" value="0" style="width:100%; cursor:pointer;">
+            <div id="time-display" style="color:#aaa; font-size:12px; margin-top:10px; font-family:monospace;">Current Timeline</div>
+            <button id="time-close" style="margin-top:15px; background:transparent; border:1px solid #ffcc00; color:#ffcc00; padding:6px 20px; border-radius:20px; cursor:pointer; font-size:12px; transition:0.2s;">次元を固定して閉じる</button>
+        `;
+        document.body.appendChild(this.timeMachineUI);
+
+        // タイムトラベルのスライダーイベント設定
+        const slider = document.getElementById('time-slider');
+        const display = document.getElementById('time-display');
+        
+        slider.addEventListener('input', (e) => {
+            const index = parseInt(e.target.value, 10);
+            const max = parseInt(e.target.max, 10);
+            
+            if (index === max) {
+                display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
+            } else {
+                const historyRecord = TimeMachine.history[index];
+                if (historyRecord) {
+                    const date = new Date(historyRecord.time);
+                    display.innerHTML = `<span style="color:#ffcc00;">[ PAST ] ${date.getHours()}:${String(date.getMinutes()).padStart(2,'0')}:${String(date.getSeconds()).padStart(2,'0')} に復元中...</span>`;
+                }
+            }
+            
+            // スライダーを動かすたびに CanvasBuilder の復元処理を呼ぶ
+            if (this.app.executeTimeTravel) {
+                this.app.executeTimeTravel(index);
+            }
+        });
+
+        document.getElementById('time-close').onclick = () => this.toggleTimeMachine();
 
         // 4. その他のモーダルUI
         this.inventoryModal = this.createModal('#ff6699', 300);
@@ -168,6 +220,32 @@ export class UIManager {
             if (this.isCapsuleDragged()) return;
             this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
+    }
+
+    // ★ 新規追加：タイムマシンUIの開閉とスライダーの更新
+    toggleTimeMachine() {
+        const isClosed = this.timeMachineUI.style.bottom.startsWith('-');
+        if (isClosed) {
+            this.updateTimeSliderParams();
+            this.timeMachineUI.style.bottom = '0px';
+            if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+        } else {
+            this.timeMachineUI.style.bottom = '-150px';
+            // 閉じた瞬間に、過去に戻った状態のまま現在の宇宙としてセーブして歴史を確定する
+            this.app.autoSave();
+        }
+    }
+
+    // ★ 新規追加：スライダーの目盛りを最新の歴史件数に合わせる
+    updateTimeSliderParams() {
+        const slider = document.getElementById('time-slider');
+        const count = Math.max(0, TimeMachine.getHistoryCount() - 1);
+        slider.max = count;
+        // UIを開いたときは常に「現在（最新）」にツマミをセット
+        if (this.timeMachineUI.style.bottom.startsWith('-')) {
+            slider.value = count; 
+            document.getElementById('time-display').innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
+        }
     }
 
     // ==========================================
@@ -354,7 +432,7 @@ export class UIManager {
 
     updateMode(mode) {
         this.app.appMode = mode;
-        this.renderCP(); // UI再描画でボタンの色を更新
+        this.renderCP(); 
     }
 
     updateUIState() {
@@ -375,9 +453,6 @@ export class UIManager {
         setTimeout(() => this.centerTextEl.style.display = isText ? 'block' : 'none', 300);
     }
 
-    // ==========================================
-    // 連続操作とゴーストクリック防止 (The Shield)
-    // ==========================================
     setupGlobalCanvasEvents() {
         const canvasEl = document.getElementById('universe-canvas');
         if (!canvasEl) return;
@@ -391,29 +466,17 @@ export class UIManager {
         const onUp = (e) => {
             const isRapidSpawn = localStorage.getItem('universe_rapid_spawn') === 'true';
             const isAutoMenu = localStorage.getItem('universe_auto_menu') === 'true';
-            
             if (!isRapidSpawn) return;
 
-            // 🛡️ ゴーストクリック防止シールド (400ms以内の連続イベントを物理遮断)
             const now = Date.now();
-            if (now - this.state.lastSpawnTime < 400) { 
-                e.preventDefault(); 
-                e.stopPropagation(); 
-                return; 
-            }
+            if (now - this.state.lastSpawnTime < 400) { e.preventDefault(); e.stopPropagation(); return; }
 
             const ev = e.changedTouches ? e.changedTouches[0] : e;
-            const dx = ev.clientX - this.state.touchStartX;
-            const dy = ev.clientY - this.state.touchStartY;
-            
-            // ドラッグ（パン操作）の場合は無視
+            const dx = ev.clientX - this.state.touchStartX; const dy = ev.clientY - this.state.touchStartY;
             if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
-            // UI上のクリックなら無視
             if (e.target !== canvasEl) return;
 
-            // 創造プロセスの発火（以降のイベント伝播を殺す）
-            e.preventDefault(); 
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             this.state.lastSpawnTime = now;
 
             const rect = canvasEl.getBoundingClientRect();
@@ -430,35 +493,25 @@ export class UIManager {
 
             if (isAutoMenu) {
                 const node = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
-                // 描画サイクルを待ってからメニューを開く
                 setTimeout(() => this.showMenu(node, ev.clientX, ev.clientY), 50);
             }
         };
 
-        // {passive: false} により preventDefault を許可し、ブラウザのデフォルト挙動を支配する
         canvasEl.addEventListener('mousedown', onDown); 
         canvasEl.addEventListener('touchstart', onDown, {passive: true});
         canvasEl.addEventListener('mouseup', onUp); 
         canvasEl.addEventListener('touchend', onUp, {passive: false});
     }
 
-    // ==========================================
-    // モーダル・メニュー・検索系
-    // ==========================================
     createModal(color, width, centered = true) {
         const el = document.createElement('div');
         el.style.cssText = `position:fixed; display:none; flex-direction:column; background:rgba(15,20,30,0.98); border:1px solid ${color}; padding:15px; border-radius:12px; z-index:9500; min-width:${width}px; color:white; pointer-events:auto; box-shadow:0 10px 40px rgba(0,0,0,0.6); backdrop-filter:blur(10px);`;
         if(centered) { el.style.top = '50%'; el.style.left = '50%'; el.style.transform = 'translate(-50%, -50%)'; }
-        this.protectUI(el); 
-        document.body.appendChild(el); 
-        return el;
+        this.protectUI(el); document.body.appendChild(el); return el;
     }
 
     handleRadar(query) {
-        const res = document.getElementById('cp-radar-results');
-        res.innerHTML = ''; 
-        if(!query) return;
-        
+        const res = document.getElementById('cp-radar-results'); res.innerHTML = ''; if(!query) return;
         let count = 0;
         const search = (u) => {
             u.nodes.forEach(n => {
@@ -466,13 +519,8 @@ export class UIManager {
                     const b = document.createElement('button');
                     b.innerText = `🌌 ${n.name}`; 
                     b.style.cssText = 'width:100%; text-align:left; background:rgba(0,255,204,0.05); color:#00ffcc; border:1px solid rgba(0,255,204,0.2); border-radius:6px; padding:10px; margin-bottom:4px; cursor:pointer;';
-                    b.onclick = () => { 
-                        this.app.executeWarp(n); 
-                        this.controlPanel.style.display='none'; 
-                        if(window.universeAudio) window.universeAudio.playWarp(); 
-                    };
-                    res.appendChild(b);
-                    count++;
+                    b.onclick = () => { this.app.executeWarp(n); this.controlPanel.style.display='none'; if(window.universeAudio) window.universeAudio.playWarp(); };
+                    res.appendChild(b); count++;
                 }
                 search(n.innerUniverse);
             });
@@ -481,19 +529,12 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // 連続収納モードのインターセプト
         if (this.state.isRapidDeleteMode) {
-            this.app.currentUniverse.removeNode(node); 
-            this.app.blackHole.push(node); 
-            this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playDelete();
-            if(window.universeLogger) window.universeLogger.log("RAPID_STORE", { target: node.name });
-            return;
+            this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();
+            if(window.universeAudio) window.universeAudio.playDelete(); return;
         }
 
         this.hideQuickNote();
-        
-        // 画面外にはみ出さないための座標計算
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
         this.actionMenu.style.display = 'flex';
@@ -527,9 +568,7 @@ export class UIManager {
     showQuickNote(node, x, y) {
         if (!node.note || node.note.trim() === "") return;
         this.quickNotePanel.innerHTML = `<div style="color:#00ffcc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">${node.name}</div><div style="font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all;">${node.note}</div>`;
-        this.quickNotePanel.style.left = `${Math.min(x, window.innerWidth-220)}px`;
-        this.quickNotePanel.style.top = `${Math.min(y, window.innerHeight-250)}px`;
-        this.quickNotePanel.style.display = 'flex';
+        this.quickNotePanel.style.left = `${Math.min(x, window.innerWidth-220)}px`; this.quickNotePanel.style.top = `${Math.min(y, window.innerHeight-250)}px`; this.quickNotePanel.style.display = 'flex';
     }
     
     hideQuickNote() { this.quickNotePanel.style.display = 'none'; }
@@ -539,19 +578,12 @@ export class UIManager {
         this.breadcrumbUI.innerHTML = '';
         const path = [...this.app.universeHistory, this.app.currentUniverse];
         path.forEach((uni, i) => {
-            const b = document.createElement('button');
-            const isLast = (i === path.length - 1);
+            const b = document.createElement('button'); const isLast = (i === path.length - 1);
             b.innerText = (i === 0) ? `👤 ${uni.name}` : uni.name;
             b.style.cssText = `background:rgba(255,255,255,${isLast ? '0.15' : '0.0'}); color:${isLast ? '#fff' : '#888'}; border:none; padding:6px 12px; border-radius:20px; font-size:11px; cursor:pointer; transition:0.2s;`;
             b.onclick = (e) => { 
-                e.stopPropagation(); 
-                if(this.isCapsuleDragged()) return;
-                if(!isLast){
-                    this.app.currentUniverse = this.app.universeHistory[i]; 
-                    this.app.universeHistory = this.app.universeHistory.slice(0, i); 
-                    this.app.camera.reset(); this.updateBreadcrumbs(); 
-                    if(window.universeAudio) window.universeAudio.playWarp();
-                } 
+                e.stopPropagation(); if(this.isCapsuleDragged()) return;
+                if(!isLast){ this.app.currentUniverse = this.app.universeHistory[i]; this.app.universeHistory = this.app.universeHistory.slice(0, i); this.app.camera.reset(); this.updateBreadcrumbs(); if(window.universeAudio) window.universeAudio.playWarp(); } 
             };
             this.breadcrumbUI.appendChild(b);
             if(!isLast) { const s = document.createElement('span'); s.innerText = '›'; s.style.cssText = 'color:#555; margin:0 2px;'; this.breadcrumbUI.appendChild(s); }
@@ -561,49 +593,26 @@ export class UIManager {
 
     showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
-        this.app.appPresets.forEach((app, i) => {
-            html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`;
-        });
-        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>
-        <button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
+        this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button> <button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
+        this.appLibraryModal.innerHTML = html; this.appLibraryModal.style.display = 'block';
         
-        this.appLibraryModal.innerHTML = html; 
-        this.appLibraryModal.style.display = 'block';
-        
-        this.app.appPresets.forEach((app, i) => {
-            document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; };
-        });
-        
+        this.app.appPresets.forEach((app, i) => { document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; }; });
         document.getElementById('custom-url-btn').onclick = () => {
-            this.appLibraryModal.style.display='none';
-            const url = prompt("URL:", node.url);
-            if(url) {
-                node.url = url;
-                if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){
-                    try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } 
-                    catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; }
-                }
-                this.app.autoSave();
-            }
+            this.appLibraryModal.style.display='none'; const url = prompt("URL:", node.url);
+            if(url) { node.url = url; if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){ try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; } } this.app.autoSave(); }
         };
         document.getElementById('lib-close').onclick = () => this.appLibraryModal.style.display='none';
     }
 
     showInventoryUI() {
         let html = `<h4 style="margin:0 0 15px 0; color:#ff6699;">亜空間 Storage</h4><div style="max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
-        this.app.blackHole.forEach((node, i) => {
-            html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">🌌 復元</button> <button id="inv-del-${i}" style="background:#330000; color:#ff4444; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">消滅</button></div></div>`;
-        });
+        this.app.blackHole.forEach((node, i) => { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">🌌 復元</button> <button id="inv-del-${i}" style="background:#330000; color:#ff4444; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">消滅</button></div></div>`; });
         html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px; cursor:pointer;">Close</button>`;
-        
-        this.inventoryModal.innerHTML = html; 
-        this.inventoryModal.style.display = 'block';
+        this.inventoryModal.innerHTML = html; this.inventoryModal.style.display = 'block';
         
         this.app.blackHole.forEach((node, i) => {
-            document.getElementById(`inv-res-${i}`).onclick = () => { 
-                this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; 
-                if(window.universeAudio) window.universeAudio.playSpawn(); 
-            };
+            document.getElementById(`inv-res-${i}`).onclick = () => { this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; if(window.universeAudio) window.universeAudio.playSpawn(); };
             document.getElementById(`inv-del-${i}`).onclick = () => { if(confirm("完全に消去しますか？(元に戻せません)")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
         });
         document.getElementById('inv-close').onclick = () => this.inventoryModal.style.display='none';

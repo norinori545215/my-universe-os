@@ -3,6 +3,8 @@ import { CameraControl } from './CameraControl.js';
 import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
+// ★ 追加：タイムマシンモジュールをインポート
+import { TimeMachine } from '../core/TimeMachine.js';
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -41,7 +43,7 @@ export class CanvasBuilder {
         this.lastClickedNode = null;
         this.singleClickTimeout = null;
 
-        // ★ 波紋（リップル）エフェクトを管理する配列
+        // 波紋（リップル）エフェクトを管理する配列
         this.ripples = [];
 
         this.appPresets = [
@@ -115,6 +117,11 @@ export class CanvasBuilder {
         }
         
         this.ui.updateBreadcrumbs();
+        
+        // ★ 追加：起動した直後の初期状態をタイムマシンに記録
+        let root = this.currentUniverse;
+        while (this.universeHistory.length > 0 && root.parentUniverse) { root = root.parentUniverse; }
+        TimeMachine.record(root, this.wormholes, this.blackHole);
     }
 
     async autoSave() {
@@ -126,6 +133,14 @@ export class CanvasBuilder {
         }
         
         await DataManager.save(root, this.wormholes, this.blackHole);
+        
+        // ★ 追加：宇宙が変更されるたびに、タイムマシンに歴史を記録
+        TimeMachine.record(root, this.wormholes, this.blackHole);
+        
+        // UI側のスライダーがあれば最新状態に更新
+        if (this.ui && this.ui.updateTimeSliderParams) {
+            this.ui.updateTimeSliderParams();
+        }
 
         if (this.saveTimeout) clearTimeout(this.saveTimeout);
         this.saveTimeout = setTimeout(async () => {
@@ -139,6 +154,58 @@ export class CanvasBuilder {
                 console.error("OS: クラウド同期エラー", e);
             }
         }, 3000); 
+    }
+
+    // ★ 新規追加：タイムマシンの実行（過去の座標へ逆再生で戻る）
+    executeTimeTravel(historyIndex) {
+        const pastData = TimeMachine.travel(historyIndex);
+        if (!pastData) return;
+
+        // 過去の宇宙データから、全星の座標をフラットなリストとして抽出
+        const pastNodes = [];
+        const extract = (uni) => {
+            if(!uni || !uni.nodes) return;
+            uni.nodes.forEach(n => {
+                pastNodes.push(n);
+                if (n.innerUniverse) extract(n.innerUniverse);
+            });
+        };
+        extract(pastData.rootUniverse);
+
+        // 現在の宇宙の星々を、滑らかに過去の座標へ移動させるアニメーション関数
+        const animateToPast = (node, pastX, pastY) => {
+            const startX = node.baseX; const startY = node.baseY;
+            const duration = 600; // 0.6秒かけて巻き戻る
+            const startTime = performance.now();
+            const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+            const animate = (currentTime) => {
+                let elapsed = currentTime - startTime;
+                if (elapsed > duration) elapsed = duration;
+                const progress = elapsed / duration;
+                const ease = easeOut(progress);
+
+                node.baseX = startX + (pastX - startX) * ease;
+                node.baseY = startY + (pastY - startY) * ease;
+
+                if (progress < 1) requestAnimationFrame(animate);
+            };
+            requestAnimationFrame(animate);
+        };
+
+        // 目の前にある現在の星と、過去の星をマッチングさせて巻き戻し実行
+        this.currentUniverse.nodes.forEach(node => {
+            const pastNode = pastNodes.find(n => n.id === node.id || n.name === node.name);
+            if (pastNode) {
+                animateToPast(node, pastNode.x, pastNode.y);
+                node.size = pastNode.size;
+                node.color = pastNode.color;
+            }
+        });
+        
+        // 空間が歪むエフェクト
+        if(window.universeAudio) window.universeAudio.playWarp();
+        this.spawnRipple(-this.camera.x, -this.camera.y, '#ffcc00', true);
     }
 
     executeWarp(targetNode) {
@@ -157,13 +224,13 @@ export class CanvasBuilder {
         this.canvas.height = window.innerHeight;
     }
 
-    // ★ 波紋（リップル）を発生させるメソッド
     spawnRipple(x, y, color = '#00ffcc', isLarge = false) {
         this.ripples.push({
-            x: x, y: y,
+            x: x,
+            y: y,
             radius: 10,
             maxRadius: isLarge ? 120 : 60,
-            alpha: 0.6, // 上品な薄さ
+            alpha: 0.6,
             color: color,
             speed: isLarge ? 8 : 4
         });
@@ -190,7 +257,7 @@ export class CanvasBuilder {
                         if (navigator.vibrate) navigator.vibrate(50);
                         
                         this.spawnRipple(this.grabbedNode.x, this.grabbedNode.y, '#ff00ff', true);
-                        
+
                         const screenX = (this.grabbedNode.x + this.camera.x) * this.camera.scale + this.canvas.width / 2;
                         const screenY = (this.grabbedNode.y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
                         
@@ -228,7 +295,6 @@ export class CanvasBuilder {
         if (node) { this.isLinking = true; this.linkSourceNode = node; }
     }
 
-    // ★ 結合 / 切断（トグル式）の完全版
     endLink(x, y) {
         if (this.isLinking && this.linkSourceNode) {
             const targetNode = this.getNodeAt(x, y);
@@ -243,7 +309,6 @@ export class CanvasBuilder {
                 });
 
                 if (existingLinkIndex !== -1) {
-                    // 【解除】
                     this.currentUniverse.links.splice(existingLinkIndex, 1);
                     targetNode.baseX = targetNode.x;
                     targetNode.baseY = targetNode.y;
@@ -254,7 +319,6 @@ export class CanvasBuilder {
                     if (window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
                     this.spawnRipple(targetNode.x, targetNode.y, '#ff4444'); 
                 } else {
-                    // 【結合】
                     this.currentUniverse.addLink(this.linkSourceNode, targetNode);
                     if (window.universeLogger) window.universeLogger.log("LINKED", { target: targetNode.name });
                     this.spawnRipple(targetNode.x, targetNode.y, '#00ffcc', true); 
@@ -280,17 +344,19 @@ export class CanvasBuilder {
         this.camera.reset();
         this.ui.updateBreadcrumbs();
         if (window.universeAudio) window.universeAudio.playWarp();
+        
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffffff', true);
     }
 
-    // ★ 空間的ダブルタップ・エンジン
     handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
+
         if (this.isLongPressed) {
             this.isLongPressed = false;
             this.grabbedNode = null;
             return;
         }
+
         this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
@@ -310,7 +376,7 @@ export class CanvasBuilder {
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
                 this.ui.showMenu(target, posX, posY);
-                this.spawnRipple(target.x, target.y, '#ffcc00');
+                this.spawnRipple(target.x, target.y, '#ffcc00'); 
                 return;
             } 
             
@@ -322,7 +388,7 @@ export class CanvasBuilder {
                     if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
                     if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
 
-                    this.spawnRipple(target.x, target.y, '#ff00ff', true);
+                    this.spawnRipple(target.x, target.y, '#ff00ff', true); 
 
                     if (worldX < target.x) {
                         this.executeDiveToNode(target);
@@ -337,7 +403,8 @@ export class CanvasBuilder {
                     this.lastClickTime = now;
 
                     this.singleClickTimeout = setTimeout(() => {
-                        this.spawnRipple(target.x, target.y, target.color);
+                        this.spawnRipple(target.x, target.y, target.color); 
+
                         if (target.url) {
                             const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
                             window.open(target.url, targetWin);
@@ -381,7 +448,6 @@ export class CanvasBuilder {
     animate() {
         this.time += 0.02;
 
-        // ★ 153bpm のアンビエントパルス（目に優しい呼吸）
         const bpm = 153;
         const msPerBeat = 60000 / (bpm / 2); 
         const beatPhase = (Date.now() % msPerBeat) / msPerBeat; 
@@ -410,11 +476,10 @@ export class CanvasBuilder {
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         this.currentUniverse.particles.forEach(p => {
             this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.2)), 0, Math.PI * 2);
+            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.5)), 0, Math.PI * 2);
             this.ctx.fill();
         });
 
-        // ★ 衛星システムの物理演算
         const orbitingNodes = new Map();
         
         this.currentUniverse.links.forEach(link => {
@@ -485,8 +550,7 @@ export class CanvasBuilder {
             const dy = link.target.baseY - link.source.baseY;
             const radius = Math.hypot(dx, dy);
 
-            // 軌道の線もパルスに連動
-            this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.05 + (pulse * 0.1)})`;
+            this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2);
@@ -509,7 +573,6 @@ export class CanvasBuilder {
             this.ctx.setLineDash([]);
         }
 
-        // ★ 波紋（リップル）の描画
         for (let i = this.ripples.length - 1; i >= 0; i--) {
             const r = this.ripples[i];
             r.radius += r.speed;
@@ -533,10 +596,9 @@ export class CanvasBuilder {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
             drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5;
-            drawSize += pulse; // 微小な膨張
+            drawSize += pulse * 2.0; 
 
-            // 星のオーラも優しく明滅
-            this.ctx.shadowBlur = isGrabbed ? 30 : 12 + (pulse * 10);
+            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15);
             this.ctx.shadowColor = node.color;
 
             if (node.iconUrl) {
