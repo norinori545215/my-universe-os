@@ -3,7 +3,8 @@ import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
 import { AudioCore } from '../engine/AudioCore.js';
-import { Gravity } from '../core/Gravity.js'; // ★ 追加：重力モジュールをインポート
+import { Gravity } from '../core/Gravity.js'; 
+import { SingularitySearch } from './SingularitySearch.js'; // ★ 追加：特異点検索モジュールをインポート
 
 export class UIManager {
     constructor(app) {
@@ -118,9 +119,20 @@ export class UIManager {
 
         // カプセル内：コアボタン
         const coreBtn = document.createElement('div');
-        coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s;';
+        coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s;'; // margin-rightを5pxに調整
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
+
+        // ★ カプセル内：特異点検索（Singularity Search）起動ボタン
+        const searchBtn = document.createElement('div');
+        searchBtn.innerText = '👁️‍🗨️';
+        searchBtn.title = "特異点検索 (Singularity Search)";
+        searchBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:36px; height:36px; border-radius:50%; background:rgba(255,0,255,0.15); border:1px solid rgba(255,0,255,0.5); color:#ff00ff; cursor:pointer; margin-right:10px; flex-shrink:0; transition:0.2s; box-shadow:0 0 10px rgba(255,0,255,0.2); font-size:16px;';
+        searchBtn.onclick = (e) => {
+            e.stopPropagation();
+            if(!this.isCapsuleDragged()) SingularitySearch.open();
+        };
+        this.systemCapsule.appendChild(searchBtn);
 
         // カプセル内：拡張モジュールスロット
         this.capsuleSlots = document.createElement('div');
@@ -278,22 +290,9 @@ export class UIManager {
         bind('cp-mode-link', () => this.updateMode('LINK'));
         bind('cp-mode-edit', () => this.updateMode('EDIT'));
 
-        // ★ 追加：重力ボタンのイベントバインド
-        bind('cp-grav-circle', () => {
-            Gravity.applyFormation(this.app.currentUniverse.nodes, 'circle');
-            if (window.universeAudio) window.universeAudio.playWarp();
-            this.app.autoSave();
-        });
-        bind('cp-grav-spiral', () => {
-            Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral');
-            if (window.universeAudio) window.universeAudio.playWarp();
-            this.app.autoSave();
-        });
-        bind('cp-grav-grid', () => {
-            Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid');
-            if (window.universeAudio) window.universeAudio.playWarp();
-            this.app.autoSave();
-        });
+        bind('cp-grav-circle', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'circle'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
+        bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
+        bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
 
         // チェックボックスの状態永続化
         const handleCheckbox = (id, storageKey, stateKey = null) => {
