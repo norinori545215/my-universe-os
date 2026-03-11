@@ -13,16 +13,22 @@ export class UIManager {
         this.app = app;
         this.notePad = new NotePadUI(app);
         
+        // --- 状態管理 (State) ---
+        // ★ 追加：スマホモードの判定（画面幅が狭いか、設定がオンの場合）
+        const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
+        
         this.state = {
             activeTab: 'create', 
             isRapidDeleteMode: false,
             lastSpawnTime: 0,
             touchStartX: 0,
-            touchStartY: 0
+            touchStartY: 0,
+            isMobileMode: isMobile // ★ 追加
         };
         
+        this.app.isMobileMode = this.state.isMobileMode; // アプリ本体に状態を渡す
+        
         window.universeAudio = new AudioCore();
-
         this.createUI();
         
         setTimeout(() => {
@@ -105,13 +111,11 @@ export class UIManager {
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
         document.body.appendChild(this.systemCapsule);
 
-        // ★ コアボタン（これだけは固定配置）
         const coreBtn = document.createElement('div');
         coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
-        // ★ 拡張モジュールスロット（特異点やタイムマシンはここに入る）
         this.capsuleSlots = document.createElement('div');
         this.capsuleSlots.style.cssText = 'display:flex; gap:5px; margin-right:10px;';
         this.systemCapsule.appendChild(this.capsuleSlots);
@@ -125,7 +129,6 @@ export class UIManager {
         this.protectUI(this.controlPanel);
         document.body.appendChild(this.controlPanel);
 
-        // タイムマシンスライダーUI
         this.timeMachineUI = document.createElement('div');
         this.timeMachineUI.style.cssText = 'position:fixed; bottom:-150px; left:50%; transform:translateX(-50%); width:90%; max-width:600px; background:rgba(20,15,0,0.9); border:1px solid #ffcc00; border-radius:16px 16px 0 0; padding:20px; box-shadow:0 0 40px rgba(255,204,0,0.4); backdrop-filter:blur(15px); z-index:9900; transition:bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; align-items:center; pointer-events:auto;';
         this.protectUI(this.timeMachineUI);
@@ -167,8 +170,6 @@ export class UIManager {
 
         this.renderCP();
         this.setupGlobalCanvasEvents();
-        
-        // ★ プラグインスロットの初期描画を実行（ここでボタンが追加される）
         this.updateUIState();
 
         coreBtn.onclick = (e) => {
@@ -219,12 +220,18 @@ export class UIManager {
         if (this.state.activeTab === 'create') {
             content.innerHTML = `
                 <div style="margin-bottom:20px;">
-                    <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODE SELECT</div>
-                    <div style="display:flex; gap:5px; margin-bottom:20px;">
-                        <button id="cp-mode-run" style="flex:1; padding:10px; background:${this.app.appMode==='RUN'?'#00ffcc':'#113344'}; color:${this.app.appMode==='RUN'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; font-weight:bold; transition:0.2s;">👆 実行</button>
-                        <button id="cp-mode-link" style="flex:1; padding:10px; background:${this.app.appMode==='LINK'?'#ff00ff':'#113344'}; color:#fff; border:none; border-radius:6px; font-size:12px; transition:0.2s;">🔗 結ぶ</button>
-                        <button id="cp-mode-edit" style="flex:1; padding:10px; background:${this.app.appMode==='EDIT'?'#ffcc00':'#113344'}; color:${this.app.appMode==='EDIT'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; transition:0.2s;">⚙️ 編集</button>
-                    </div>
+                    ${this.state.isMobileMode ? `
+                        <div style="background:rgba(255,204,0,0.1); border:1px dashed #ffcc00; padding:12px; border-radius:6px; color:#ffcc00; font-size:11px; margin-bottom:20px; text-align:center; line-height:1.5;">
+                            📱 <b>Liteモード稼働中</b><br>モード切替は不要です。星をタップするとメニューが表示されます。
+                        </div>
+                    ` : `
+                        <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODE SELECT (Pro)</div>
+                        <div style="display:flex; gap:5px; margin-bottom:20px;">
+                            <button id="cp-mode-run" style="flex:1; padding:10px; background:${this.app.appMode==='RUN'?'#00ffcc':'#113344'}; color:${this.app.appMode==='RUN'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; font-weight:bold; transition:0.2s;">👆 実行</button>
+                            <button id="cp-mode-link" style="flex:1; padding:10px; background:${this.app.appMode==='LINK'?'#ff00ff':'#113344'}; color:#fff; border:none; border-radius:6px; font-size:12px; transition:0.2s;">🔗 結ぶ</button>
+                            <button id="cp-mode-edit" style="flex:1; padding:10px; background:${this.app.appMode==='EDIT'?'#ffcc00':'#113344'}; color:${this.app.appMode==='EDIT'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; transition:0.2s;">⚙️ 編集</button>
+                        </div>
+                    `}
                     
                     <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">GRAVITY FORMATION</div>
                     <div style="display:flex; gap:5px; margin-bottom:20px;">
@@ -243,11 +250,6 @@ export class UIManager {
                             <input type="checkbox" id="cp-rapid-delete" ${this.state.isRapidDeleteMode?'checked':''} style="accent-color:#ff4444; width:16px; height:16px;"> 
                             🎒 連続収納モード
                         </label>
-                        <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
-                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#00ffcc;">
-                            <input type="checkbox" id="cp-auto-menu" ${localStorage.getItem('universe_auto_menu')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                            ⚙️ 生成直後にメニューを展開
-                        </label>
                     </div>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:20px;">
@@ -256,11 +258,16 @@ export class UIManager {
                 </div>
             `;
         } else if (this.state.activeTab === 'config') {
-            // ★ 4つのチェックボックスが全て揃っています
             content.innerHTML = `
                 <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODULE EXTENSIONS</div>
                 <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                     
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-mobile" ${this.state.isMobileMode?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
+                        <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
+                    </label>
+                    <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
+
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザをスロットに追加</span>
@@ -344,9 +351,16 @@ export class UIManager {
 
         handleCheckbox('cp-rapid-spawn', 'universe_rapid_spawn');
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
-        handleCheckbox('cp-auto-menu', 'universe_auto_menu');
         
-        // ★ 4つのプラグインのオンオフイベントも完備
+        // ★ スマホモードの切り替えイベント
+        const extMobile = document.getElementById('cp-ext-mobile');
+        if(extMobile) extMobile.onchange = (e) => { 
+            localStorage.setItem('universe_mobile_mode', e.target.checked); 
+            this.state.isMobileMode = e.target.checked; 
+            this.app.isMobileMode = e.target.checked; 
+            this.renderCP(); // UIを再描画してメッセージを切り替える
+        };
+
         const extSearch = document.getElementById('cp-ext-search');
         if(extSearch) extSearch.onchange = (e) => { localStorage.setItem('universe_ext_search', e.target.checked); this.updateUIState(); };
 
@@ -370,7 +384,8 @@ export class UIManager {
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             this.app.autoSave(); 
             if(window.universeAudio) window.universeAudio.playSpawn();
-            if(document.getElementById('cp-auto-menu')?.checked) {
+            // スマホモードなら自動でメニューを出すようにする
+            if(this.state.isMobileMode || document.getElementById('cp-auto-menu')?.checked) {
                 const n = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length-1];
                 this.showMenu(n, window.innerWidth/2, window.innerHeight/2);
             }
@@ -402,7 +417,6 @@ export class UIManager {
         this.renderCP(); 
     }
 
-    // ★ スロットの動的生成（これでカプセルにアイコンが着脱されます）
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
@@ -470,7 +484,6 @@ export class UIManager {
 
         const onUp = (e) => {
             const isRapidSpawn = localStorage.getItem('universe_rapid_spawn') === 'true';
-            const isAutoMenu = localStorage.getItem('universe_auto_menu') === 'true';
             if (!isRapidSpawn) return;
 
             const now = Date.now();
@@ -496,7 +509,8 @@ export class UIManager {
             if (window.universeAudio) window.universeAudio.playSpawn();
             if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color });
 
-            if (isAutoMenu) {
+            // スマホモードなら自動でメニューを開く
+            if (this.state.isMobileMode || localStorage.getItem('universe_auto_menu') === 'true') {
                 const node = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
                 setTimeout(() => this.showMenu(node, ev.clientX, ev.clientY), 50);
             }
@@ -546,7 +560,6 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ AI思考拡張ボタンの配置
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -561,7 +574,6 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ AI思考拡張イベント
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
