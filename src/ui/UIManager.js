@@ -147,6 +147,7 @@ export class UIManager {
         slider.addEventListener('input', (e) => {
             const index = parseInt(e.target.value, 10);
             const max = parseInt(e.target.max, 10);
+            
             if (index === max) {
                 display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
             } else {
@@ -178,8 +179,7 @@ export class UIManager {
             this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
     }
-
-    toggleTimeMachine() {
+toggleTimeMachine() {
         const isClosed = this.timeMachineUI.style.bottom.startsWith('-');
         if (isClosed) {
             this.updateTimeSliderParams();
@@ -324,7 +324,8 @@ export class UIManager {
 
         this.bindCPEvents();
     }
-bindCPEvents() {
+
+    bindCPEvents() {
         const bind = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
 
         bind('cp-close', () => this.controlPanel.style.display = 'none');
@@ -408,8 +409,7 @@ bindCPEvents() {
         const radar = document.getElementById('cp-radar');
         if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
     }
-
-    updateMode(mode) {
+updateMode(mode) {
         this.app.appMode = mode;
         this.renderCP(); 
     }
@@ -590,7 +590,7 @@ bindCPEvents() {
         document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
         document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
         
-        // ★ 修正箇所：ゴーストリンクを残さない完全消去
+        // ★ 修正箇所：通常削除時もゴーストリンクを残さず完全消去
         document.getElementById('m-del').onclick = () => { 
             if(confirm("収納しますか？")){ 
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
