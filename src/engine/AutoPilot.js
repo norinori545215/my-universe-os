@@ -3,43 +3,23 @@
 export class AutoPilot {
     constructor(app) {
         this.app = app;
-        this.idleTimer = 0;
-        this.idleThreshold = 10000; // 10秒間操作がないと発動 (10000ms)
         this.isRunning = false;
         this.sequenceTimer = null;
         this.step = 0;
         
         this.bindEvents();
-        this.tick();
     }
 
     bindEvents() {
-        // マウスやタッチ操作が行われたらタイマーをリセットし、自動操縦を解除
-        const reset = () => this.reset();
-        window.addEventListener('mousemove', reset);
-        window.addEventListener('mousedown', reset);
-        window.addEventListener('touchstart', reset);
-        window.addEventListener('keydown', reset);
-        window.addEventListener('wheel', reset);
-    }
-
-    tick() {
-        // 1秒ごとに放置時間をカウントアップ
-        setInterval(() => {
-            if (!this.isRunning) {
-                this.idleTimer += 1000;
-                if (this.idleTimer >= this.idleThreshold) {
-                    this.start();
-                }
-            }
-        }, 1000);
-    }
-
-    reset() {
-        this.idleTimer = 0;
-        if (this.isRunning) {
-            this.stop();
-        }
+        // マウスやタッチ操作が行われたら、進行中の自動プレゼンを即座に中止する
+        const stop = () => {
+            if(this.isRunning) this.stop();
+        };
+        window.addEventListener('mousemove', stop);
+        window.addEventListener('mousedown', stop);
+        window.addEventListener('touchstart', stop);
+        window.addEventListener('keydown', stop);
+        window.addEventListener('wheel', stop);
     }
 
     start() {
@@ -61,8 +41,8 @@ export class AutoPilot {
         if (this.sequenceTimer) clearTimeout(this.sequenceTimer);
         
         // カメラのズームを戻し、UIを閉じる
-        this.app.camera.targetScale = 1;
-        if (this.app.ui) this.app.ui.hideQuickNote();
+        if (this.app.camera) this.app.camera.targetScale = 1;
+        if (this.app.ui && this.app.ui.hideQuickNote) this.app.ui.hideQuickNote();
         
         if (window.universeLogger) window.universeLogger.log("SYSTEM", { msg: "Manual Control Restored" });
     }
@@ -81,14 +61,15 @@ export class AutoPilot {
         const targetNode = nodes[this.step % nodes.length];
         
         // 1. カメラをターゲットの星へ滑らかに移動
-        this.app.camera.targetX = -targetNode.x;
-        this.app.camera.targetY = -targetNode.y;
-        
-        // 2. 星に少しズームイン（没入感）
-        this.app.camera.targetScale = 1.3;
+        if (this.app.camera) {
+            this.app.camera.targetX = -targetNode.x;
+            this.app.camera.targetY = -targetNode.y;
+            // 2. 星に少しズームイン（没入感）
+            this.app.camera.targetScale = 1.3;
+        }
         
         // 3. エフェクトと音響の発生
-        this.app.spawnRipple(targetNode.x, targetNode.y, targetNode.color, true);
+        if (this.app.spawnRipple) this.app.spawnRipple(targetNode.x, targetNode.y, targetNode.color, true);
         if (window.universeAudio) window.universeAudio.playSystemSound(500, 'sine', 0.1);
 
         // 4. 星の記憶（ノート）を画面中央に自動で展開して見せる
@@ -105,8 +86,8 @@ export class AutoPilot {
             if (!this.isRunning) return;
             
             // いったんズームアウトしてUIを閉じる
-            this.app.camera.targetScale = 1.0;
-            if (this.app.ui) this.app.ui.hideQuickNote();
+            if (this.app.camera) this.app.camera.targetScale = 1.0;
+            if (this.app.ui && this.app.ui.hideQuickNote) this.app.ui.hideQuickNote();
             
             // 2秒のインターバルを置いて次の星へ
             this.sequenceTimer = setTimeout(() => this.runSequence(), 2000);
