@@ -330,16 +330,16 @@ export class CanvasBuilder {
         if (this.pressTimer) clearTimeout(this.pressTimer);
         if (this.isLongPressed) { this.isLongPressed = false; this.grabbedNode = null; return; }
         
-        // ★ 修正：確実に掴んでいた星をターゲットにする
         const target = this.grabbedNode || this.getNodeAt(worldX, worldY);
         this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
             this.ui.hideMenu(); return;
         }
-        
+
         if (target) {
-            if (this.appMode === 'EDIT') {
+            // ★ 超重要修正：「EDITモード」または「スマホモード(Lite Mode)」の時は無条件でメニューを開く！
+            if (this.appMode === 'EDIT' || this.app.isMobileMode) {
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
                     clientX = event.changedTouches[0].clientX; clientY = event.changedTouches[0].clientY;
@@ -352,6 +352,7 @@ export class CanvasBuilder {
                 return;
             } 
             
+            // PC版のRUNモード（実行モード）の時の処理
             if (this.appMode === 'RUN') {
                 const now = Date.now();
                 const isDoubleTap = (target === this.lastClickedNode) && (now - this.lastClickTime < 300);
