@@ -6,7 +6,6 @@ import { AudioCore } from '../engine/AudioCore.js';
 import { Gravity } from '../core/Gravity.js'; 
 import { SingularitySearch } from './SingularitySearch.js'; 
 import { TimeMachine } from '../core/TimeMachine.js'; 
-// ★ 追加：AI思考拡張モジュールをインポート
 import { ChaosGen } from '../ai/ChaosGen.js'; 
 
 export class UIManager {
@@ -14,22 +13,18 @@ export class UIManager {
         this.app = app;
         this.notePad = new NotePadUI(app);
         
-        // --- 状態管理 (State) ---
         this.state = {
-            activeTab: 'create', // 'create' | 'config' | 'data'
+            activeTab: 'create', 
             isRapidDeleteMode: false,
             lastSpawnTime: 0,
             touchStartX: 0,
             touchStartY: 0
         };
         
-        // --- サウンドエンジンの初期化 ---
         window.universeAudio = new AudioCore();
 
-        // --- UI構築の実行 ---
         this.createUI();
         
-        // （後方互換）古いDOMのクリーンアップ
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
             const oldReset = document.getElementById('emergency-reset-btn');
@@ -38,9 +33,6 @@ export class UIManager {
         }, 500);
     }
 
-    // ==========================================
-    // ユーティリティ・イベント隔離
-    // ==========================================
     makeDraggable(el) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
         
@@ -62,7 +54,6 @@ export class UIManager {
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
             
-            // 画面外への逸脱を防止
             const nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
             const ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
             
@@ -87,18 +78,13 @@ export class UIManager {
     }
 
     protectUI(el) {
-        // バックグラウンド（宇宙）へのイベント貫通を防ぐ完全シールド
         el.addEventListener('mousedown', e => e.stopPropagation());
         el.addEventListener('mouseup', e => e.stopPropagation());
         el.addEventListener('touchstart', e => e.stopPropagation(), {passive: false});
         el.addEventListener('touchend', e => e.stopPropagation(), {passive: false});
     }
 
-    // ==========================================
-    // UIコンポーネントの構築
-    // ==========================================
     createUI() {
-        // 1. 中央透かしテキスト
         this.centerTextEl = document.createElement('div');
         this.centerTextEl.id = 'center-text';
         this.centerTextEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); color:rgba(255,255,255,0.1); font-size:4vw; font-weight:bold; cursor:pointer; pointer-events:auto; z-index:10; white-space:nowrap; transition: opacity 0.3s ease-out;';
@@ -114,35 +100,32 @@ export class UIManager {
         };
         document.body.appendChild(this.centerTextEl);
 
-        // 2. システムカプセル（フローティングメニュー）
         this.systemCapsule = document.createElement('div');
         this.systemCapsule.style.cssText = 'position:fixed; top:20px; left:20px; z-index:9000; display:flex; align-items:center; background:rgba(10,15,25,0.85); border:1px solid rgba(0,255,204,0.5); border-radius:30px; padding:5px 15px 5px 5px; box-shadow:0 10px 30px rgba(0,255,204,0.2); backdrop-filter:blur(10px); pointer-events:auto; user-select:none; max-width:90vw; overflow-x:auto;';
         this.isCapsuleDragged = this.makeDraggable(this.systemCapsule);
         document.body.appendChild(this.systemCapsule);
 
-        // カプセル内：コアボタン
+        // ★ コアボタン（これだけは固定配置）
         const coreBtn = document.createElement('div');
         coreBtn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:40px; height:40px; border-radius:50%; background:rgba(0,255,204,0.2); color:#00ffcc; font-size:20px; cursor:pointer; margin-right:5px; flex-shrink:0; transition:0.2s;';
         coreBtn.innerText = '🌌';
         this.systemCapsule.appendChild(coreBtn);
 
-        // カプセル内：拡張モジュールスロット
+        // ★ 拡張モジュールスロット（特異点やタイムマシンはここに入る）
         this.capsuleSlots = document.createElement('div');
         this.capsuleSlots.style.cssText = 'display:flex; gap:5px; margin-right:10px;';
         this.systemCapsule.appendChild(this.capsuleSlots);
 
-        // カプセル内：パンくずリスト
         this.breadcrumbUI = document.createElement('div');
         this.breadcrumbUI.style.cssText = 'display:flex; gap:5px; flex-wrap:nowrap; font-family:sans-serif; color:white; align-items:center; white-space:nowrap;';
         this.systemCapsule.appendChild(this.breadcrumbUI);
 
-        // 3. 統合コントロールパネル (Control Panel)
         this.controlPanel = document.createElement('div');
         this.controlPanel.style.cssText = 'position:fixed; display:none; flex-direction:column; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(10,15,25,0.98); border:1px solid #00ffcc; border-radius:12px; padding:0; z-index:9001; width:90%; max-width:340px; min-height:420px; max-height:85vh; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.9); backdrop-filter:blur(20px); color:white; font-family:sans-serif; pointer-events:auto;';
         this.protectUI(this.controlPanel);
         document.body.appendChild(this.controlPanel);
 
-        // タイムマシン用のスライダーUI
+        // タイムマシンスライダーUI
         this.timeMachineUI = document.createElement('div');
         this.timeMachineUI.style.cssText = 'position:fixed; bottom:-150px; left:50%; transform:translateX(-50%); width:90%; max-width:600px; background:rgba(20,15,0,0.9); border:1px solid #ffcc00; border-radius:16px 16px 0 0; padding:20px; box-shadow:0 0 40px rgba(255,204,0,0.4); backdrop-filter:blur(15px); z-index:9900; transition:bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; align-items:center; pointer-events:auto;';
         this.protectUI(this.timeMachineUI);
@@ -161,7 +144,6 @@ export class UIManager {
         slider.addEventListener('input', (e) => {
             const index = parseInt(e.target.value, 10);
             const max = parseInt(e.target.max, 10);
-            
             if (index === max) {
                 display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
             } else {
@@ -176,7 +158,6 @@ export class UIManager {
 
         document.getElementById('time-close').onclick = () => this.toggleTimeMachine();
 
-        // 4. その他のモーダルUI
         this.inventoryModal = this.createModal('#ff6699', 300);
         this.appLibraryModal = this.createModal('#00ffcc', 300);
         this.actionMenu = this.createModal('#00ffcc', 220, false);
@@ -184,11 +165,10 @@ export class UIManager {
         this.quickNotePanel = this.createModal('#00ffcc', 200, false);
         window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
 
-        // 初期描画とイベントバインド
         this.renderCP();
         this.setupGlobalCanvasEvents();
         
-        // プラグインスロットの初期描画を実行
+        // ★ プラグインスロットの初期描画を実行（ここでボタンが追加される）
         this.updateUIState();
 
         coreBtn.onclick = (e) => {
@@ -220,9 +200,6 @@ export class UIManager {
         }
     }
 
-    // ==========================================
-    // コントロールパネルの描画（タブシステム）
-    // ==========================================
     renderCP() {
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -279,7 +256,7 @@ export class UIManager {
                 </div>
             `;
         } else if (this.state.activeTab === 'config') {
-            // ★ 全4種のプラグインチェックボックス完備
+            // ★ 4つのチェックボックスが全て揃っています
             content.innerHTML = `
                 <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODULE EXTENSIONS</div>
                 <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
@@ -369,7 +346,7 @@ export class UIManager {
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
         handleCheckbox('cp-auto-menu', 'universe_auto_menu');
         
-        // ★ 全4種のプラグインのオンオフ制御
+        // ★ 4つのプラグインのオンオフイベントも完備
         const extSearch = document.getElementById('cp-ext-search');
         if(extSearch) extSearch.onchange = (e) => { localStorage.setItem('universe_ext_search', e.target.checked); this.updateUIState(); };
 
@@ -425,7 +402,7 @@ export class UIManager {
         this.renderCP(); 
     }
 
-    // ★ ここで各プラグインのON/OFFを判定してスロットにボタンを追加！
+    // ★ スロットの動的生成（これでカプセルにアイコンが着脱されます）
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
@@ -569,7 +546,7 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ 追加：メニューの一番上に「🧠 AI思考拡張」ボタンを配置
+        // ★ AI思考拡張ボタンの配置
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -584,7 +561,7 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ 追加：AI思考拡張イベントのバインド
+        // ★ AI思考拡張イベント
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
