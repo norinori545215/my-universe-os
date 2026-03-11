@@ -6,6 +6,8 @@ import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { TimeMachine } from '../core/TimeMachine.js';
 // ★ 追加：オートパイロットモジュールをインポート
 import { AutoPilot } from './AutoPilot.js';
+// ★ 追加：ホログラムガイドをインポート
+import { HoloGuide } from '../ui/HoloGuide.js';
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -92,6 +94,9 @@ export class CanvasBuilder {
 
         // ★ 追加：オートパイロットの起動
         this.autoPilot = new AutoPilot(this);
+
+        // ★ 追加：ホログラム・チュートリアルの起動
+        this.holoGuide = new HoloGuide();
     }
 
     async init() {
@@ -258,6 +263,9 @@ export class CanvasBuilder {
                         const screenY = (this.grabbedNode.y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
                         
                         if (this.ui.showQuickNote) this.ui.showQuickNote(this.grabbedNode, screenX, screenY);
+
+                        // ★ 追加：長押し（Hold）に成功したらチュートリアルを消す
+                        if (this.holoGuide) this.holoGuide.dismiss();
                     }
                 }, 500);
             }
@@ -391,6 +399,9 @@ export class CanvasBuilder {
                     } else {
                         this.moveToNextNode(target);
                     }
+
+                    // ★ 追加：ダブルタップに成功したらチュートリアルを消す
+                    if (this.holoGuide) this.holoGuide.dismiss();
 
                     this.lastClickTime = 0;
                     this.lastClickedNode = null;
