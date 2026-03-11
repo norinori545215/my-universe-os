@@ -545,12 +545,12 @@ updateMode(mode) {
 
     showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
-            // ★ 修正箇所：ゴーストリンクを残さず完全消去
+            // ★ ゴーストリンクを残さず完全消去
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
             this.app.blackHole.push(node);
             this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playDelete(); 
+            if(window.universeAudio) window.universeAudio.playDelete();
             return;
         }
 
@@ -561,7 +561,7 @@ updateMode(mode) {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ 修正箇所：AIボタンを先頭に追加
+        // ★ メニューに「AI」と「別の星と結ぶ」を追加
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -573,10 +573,11 @@ updateMode(mode) {
             <button id="m-ren" style="${btnStyle} color:#ccff66;">✏ 名前変更</button>
             <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
+            <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ 修正箇所：AI思考拡張イベント
+        // AI思考拡張の実行
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
@@ -590,7 +591,35 @@ updateMode(mode) {
         document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
         document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
         
-        // ★ 修正箇所：通常削除時もゴーストリンクを残さず完全消去
+        // ★ 追加：ワンタップで線を結ぶ魔法の処理
+        document.getElementById('m-connect').onclick = () => {
+            this.hideMenu();
+            this.app.isLinking = true;
+            this.app.linkSourceNode = node;
+            
+            // 次に画面のどこか（別の星）をタップした瞬間にリンクを確定させる
+            const onNextClick = (e) => {
+                let clientX = e.clientX || 0; let clientY = e.clientY || 0;
+                if (e.changedTouches && e.changedTouches.length > 0) {
+                    clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+                }
+                const rect = this.app.canvas.getBoundingClientRect();
+                const worldX = ((clientX - rect.left) - this.app.canvas.width / 2) / this.app.camera.scale - this.app.camera.x;
+                const worldY = ((clientY - rect.top) - this.app.canvas.height / 2) / this.app.camera.scale - this.app.camera.y;
+                
+                this.app.endLink(worldX, worldY);
+                
+                window.removeEventListener('mouseup', onNextClick);
+                window.removeEventListener('touchend', onNextClick);
+            };
+            
+            setTimeout(() => {
+                window.addEventListener('mouseup', onNextClick);
+                window.addEventListener('touchend', onNextClick);
+            }, 100);
+        };
+
+        // 通常消去時もゴーストリンクを完全消去
         document.getElementById('m-del').onclick = () => { 
             if(confirm("収納しますか？")){ 
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
@@ -657,4 +686,4 @@ updateMode(mode) {
         });
         document.getElementById('inv-close').onclick = () => this.inventoryModal.style.display='none';
     }
-}
+}           
