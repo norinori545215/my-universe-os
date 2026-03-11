@@ -4,10 +4,7 @@ import { Universe, DataManager } from '../core/NodeGraph.js';
 import { UIManager } from '../ui/UIManager.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { TimeMachine } from '../core/TimeMachine.js';
-// ★ 追加：オートパイロットモジュールをインポート
 import { AutoPilot } from './AutoPilot.js';
-// ★ 追加：ホログラムガイドをインポート
-import { HoloGuide } from '../ui/HoloGuide.js';
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -39,14 +36,12 @@ export class CanvasBuilder {
 
         this.saveTimeout = null;
 
-        // 長押し・ダブルタップ判定用
         this.pressTimer = null;
         this.isLongPressed = false;
         this.lastClickTime = 0;
         this.lastClickedNode = null;
         this.singleClickTimeout = null;
 
-        // 波紋（リップル）エフェクトを管理する配列
         this.ripples = [];
 
         this.appPresets = [
@@ -92,25 +87,17 @@ export class CanvasBuilder {
         this.init();
         this.animate();
 
-        // ★ 追加：オートパイロットの起動
         this.autoPilot = new AutoPilot(this);
-
-        // ★ 追加：ホログラム・チュートリアルの起動
-        this.holoGuide = new HoloGuide();
     }
 
     async init() {
-        console.log("OS: データのロードを開始します...");
         const savedData = await DataManager.load();
-        
         let userName = "My Universe";
         try {
             const authModule = await import('../security/Auth.js');
             const user = authModule.auth.currentUser;
             if (user && user.displayName) userName = `${user.displayName}の宇宙`;
-        } catch (e) {
-            console.error("Authモジュールの読み込みに失敗しました:", e);
-        }
+        } catch (e) {}
         
         if (savedData) {
             this.currentUniverse = savedData.rootUniverse;
@@ -139,14 +126,10 @@ export class CanvasBuilder {
             root = this.universeHistory[histIndex];
             histIndex--;
         }
-        
         await DataManager.save(root, this.wormholes, this.blackHole);
-        
         TimeMachine.record(root, this.wormholes, this.blackHole);
         
-        if (this.ui && this.ui.updateTimeSliderParams) {
-            this.ui.updateTimeSliderParams();
-        }
+        if (this.ui && this.ui.updateTimeSliderParams) this.ui.updateTimeSliderParams();
 
         if (this.saveTimeout) clearTimeout(this.saveTimeout);
         this.saveTimeout = setTimeout(async () => {
@@ -156,9 +139,7 @@ export class CanvasBuilder {
                     const dataObj = JSON.parse(rawData);
                     await saveEncryptedUniverse(dataObj);
                 }
-            } catch (e) {
-                console.error("OS: クラウド同期エラー", e);
-            }
+            } catch (e) {}
         }, 3000); 
     }
 
@@ -227,8 +208,7 @@ export class CanvasBuilder {
 
     spawnRipple(x, y, color = '#00ffcc', isLarge = false) {
         this.ripples.push({
-            x: x,
-            y: y,
+            x: x, y: y,
             radius: 10,
             maxRadius: isLarge ? 120 : 60,
             alpha: 0.6,
@@ -242,7 +222,6 @@ export class CanvasBuilder {
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
-            
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
@@ -256,16 +235,10 @@ export class CanvasBuilder {
                     if (!this.hasMovedNode && this.grabbedNode) {
                         this.isLongPressed = true;
                         if (navigator.vibrate) navigator.vibrate(50);
-                        
                         this.spawnRipple(this.grabbedNode.x, this.grabbedNode.y, '#ff00ff', true);
-
                         const screenX = (this.grabbedNode.x + this.camera.x) * this.camera.scale + this.canvas.width / 2;
                         const screenY = (this.grabbedNode.y + this.camera.y) * this.camera.scale + this.canvas.height / 2;
-                        
                         if (this.ui.showQuickNote) this.ui.showQuickNote(this.grabbedNode, screenX, screenY);
-
-                        // ★ 追加：長押し（Hold）に成功したらチュートリアルを消す
-                        if (this.holoGuide) this.holoGuide.dismiss();
                     }
                 }, 500);
             }
@@ -276,17 +249,14 @@ export class CanvasBuilder {
 
     handleMouseMove(x, y) {
         this.mouseWorldX = x; this.mouseWorldY = y;
-        
         if (this.grabbedNode) {
             if (!this.hasMovedNode) {
-                const dx = x - this.grabStartX;
-                const dy = y - this.grabStartY;
+                const dx = x - this.grabStartX; const dy = y - this.grabStartY;
                 if (dx * dx + dy * dy > 64) { 
                     this.hasMovedNode = true;
                     if (this.pressTimer) clearTimeout(this.pressTimer);
                 }
             }
-
             if (this.hasMovedNode) {
                 this.grabbedNode.baseX = x + this.grabOffsetX;
                 this.grabbedNode.baseY = y + this.grabOffsetY;
@@ -303,7 +273,6 @@ export class CanvasBuilder {
         if (this.isLinking && this.linkSourceNode) {
             const targetNode = this.getNodeAt(x, y);
             if (targetNode && targetNode !== this.linkSourceNode) {
-                
                 const existingLinkIndex = this.currentUniverse.links.findIndex(link => {
                     const isSameForward = (link.source === this.linkSourceNode && link.target === targetNode) || 
                                           (link.source.id && link.source.id === this.linkSourceNode.id && link.target.id === targetNode.id);
@@ -314,20 +283,14 @@ export class CanvasBuilder {
 
                 if (existingLinkIndex !== -1) {
                     this.currentUniverse.links.splice(existingLinkIndex, 1);
-                    targetNode.baseX = targetNode.x;
-                    targetNode.baseY = targetNode.y;
-                    this.linkSourceNode.baseX = this.linkSourceNode.x;
-                    this.linkSourceNode.baseY = this.linkSourceNode.y;
-
-                    if (window.universeLogger) window.universeLogger.log("UNLINKED", { target: targetNode.name });
+                    targetNode.baseX = targetNode.x; targetNode.baseY = targetNode.y;
+                    this.linkSourceNode.baseX = this.linkSourceNode.x; this.linkSourceNode.baseY = this.linkSourceNode.y;
                     if (window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
                     this.spawnRipple(targetNode.x, targetNode.y, '#ff4444'); 
                 } else {
                     this.currentUniverse.addLink(this.linkSourceNode, targetNode);
-                    if (window.universeLogger) window.universeLogger.log("LINKED", { target: targetNode.name });
                     this.spawnRipple(targetNode.x, targetNode.y, '#00ffcc', true); 
                 }
-                
                 this.autoSave(); 
             }
         }
@@ -335,11 +298,18 @@ export class CanvasBuilder {
         this.linkSourceNode = null;
     }
 
+    // ★ 修正：手前の星から判定＆当たり判定を拡大（15 -> 25）
     getNodeAt(x, y) {
-        return this.currentUniverse.nodes.find(node => {
-            const dx = x - node.x; const dy = y - node.y;
-            return Math.sqrt(dx * dx + dy * dy) < node.size + 15;
-        });
+        const nodes = this.currentUniverse.nodes;
+        for(let i = nodes.length - 1; i >= 0; i--) {
+            const node = nodes[i];
+            const dx = x - node.x; 
+            const dy = y - node.y;
+            if (Math.sqrt(dx * dx + dy * dy) < node.size + 25) {
+                return node;
+            }
+        }
+        return null;
     }
 
     handleAscend() {
@@ -348,24 +318,16 @@ export class CanvasBuilder {
         this.camera.reset();
         this.ui.updateBreadcrumbs();
         if (window.universeAudio) window.universeAudio.playWarp();
-        
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffffff', true);
     }
 
     handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
-
-        if (this.isLongPressed) {
-            this.isLongPressed = false;
-            this.grabbedNode = null;
-            return;
-        }
-
+        if (this.isLongPressed) { this.isLongPressed = false; this.grabbedNode = null; return; }
         this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
-            this.ui.hideMenu(); 
-            return;
+            this.ui.hideMenu(); return;
         }
 
         const target = this.getNodeAt(worldX, worldY);
@@ -391,33 +353,18 @@ export class CanvasBuilder {
                 if (isDoubleTap) {
                     if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
                     if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
-
                     this.spawnRipple(target.x, target.y, '#ff00ff', true); 
 
-                    if (worldX < target.x) {
-                        this.executeDiveToNode(target);
-                    } else {
-                        this.moveToNextNode(target);
-                    }
+                    if (worldX < target.x) this.executeDiveToNode(target);
+                    else this.moveToNextNode(target);
 
-                    // ★ 追加：ダブルタップに成功したらチュートリアルを消す
-                    if (this.holoGuide) this.holoGuide.dismiss();
-
-                    this.lastClickTime = 0;
-                    this.lastClickedNode = null;
+                    this.lastClickTime = 0; this.lastClickedNode = null;
                 } else {
-                    this.lastClickedNode = target;
-                    this.lastClickTime = now;
-
+                    this.lastClickedNode = target; this.lastClickTime = now;
                     this.singleClickTimeout = setTimeout(() => {
                         this.spawnRipple(target.x, target.y, target.color); 
-
-                        if (target.url) {
-                            const targetWin = target.url.startsWith('http') ? '_blank' : '_self';
-                            window.open(target.url, targetWin);
-                        } else {
-                            if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
-                        }
+                        if (target.url) window.open(target.url, target.url.startsWith('http') ? '_blank' : '_self');
+                        else if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
                     }, 300);
                 }
             }
@@ -434,22 +381,15 @@ export class CanvasBuilder {
         this.targetUniverse = target.innerUniverse;
         this.camera.zoomTo(target.x, target.y);
         if (window.universeAudio) window.universeAudio.playWarp();
-        if (window.universeLogger) window.universeLogger.log("DIVE_DEEP", { target: target.name });
     }
 
     moveToNextNode(currentNode) {
         const nodes = this.currentUniverse.nodes;
         if (nodes.length <= 1) return; 
-
         const currentIndex = nodes.indexOf(currentNode);
-        const nextIndex = (currentIndex + 1) % nodes.length;
-        const nextNode = nodes[nextIndex];
-
-        this.camera.targetX = -nextNode.x;
-        this.camera.targetY = -nextNode.y;
-        
+        const nextNode = nodes[(currentIndex + 1) % nodes.length];
+        this.camera.targetX = -nextNode.x; this.camera.targetY = -nextNode.y;
         if (window.universeAudio) window.universeAudio.playSystemSound(400, 'triangle', 0.2, 200);
-        if (window.universeLogger) window.universeLogger.log("SLIDE_NEXT", { from: currentNode.name, to: nextNode.name });
     }
 
     animate() {
@@ -488,18 +428,14 @@ export class CanvasBuilder {
         });
 
         const orbitingNodes = new Map();
-        
         this.currentUniverse.links.forEach(link => {
-            if (!orbitingNodes.has(link.target)) {
-                orbitingNodes.set(link.target, link.source);
-            }
+            if (!orbitingNodes.has(link.target)) orbitingNodes.set(link.target, link.source);
         });
 
         this.currentUniverse.nodes.forEach(node => {
             if (!orbitingNodes.has(node)) {
                 if (node === this.grabbedNode) {
-                    node.x = node.baseX;
-                    node.y = node.baseY;
+                    node.x = node.baseX; node.y = node.baseY;
                 } else {
                     node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
                     node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
@@ -510,8 +446,7 @@ export class CanvasBuilder {
         this.currentUniverse.nodes.forEach(node => {
             if (orbitingNodes.has(node)) {
                 if (node === this.grabbedNode) {
-                    node.x = node.baseX;
-                    node.y = node.baseY;
+                    node.x = node.baseX; node.y = node.baseY;
                 } else {
                     const parent = orbitingNodes.get(node);
                     const dx = node.baseX - parent.baseX;
@@ -519,7 +454,8 @@ export class CanvasBuilder {
                     const radius = Math.hypot(dx, dy);
                     const baseAngle = Math.atan2(dy, dx);
                     
-                    const speed = 15 / Math.max(radius, 15);
+                    // ★ 修正：公転スピードを減速させてクリックしやすくしました！
+                    const speed = 2.0 / Math.max(radius, 15); 
                     const currentAngle = baseAngle + this.time * speed;
 
                     node.x = parent.x + Math.cos(currentAngle) * radius;
@@ -532,22 +468,14 @@ export class CanvasBuilder {
         this.wormholes.forEach(wh => {
             const hasSource = this.currentUniverse.nodes.includes(wh.source);
             const hasTarget = this.currentUniverse.nodes.includes(wh.target);
-            
             if (hasSource || hasTarget) {
                 const visibleNode = hasSource ? wh.source : wh.target;
                 const destNode = hasSource ? wh.target : wh.source;
-
                 this.ctx.strokeStyle = 'rgba(255, 0, 255, 0.5)';
-                this.ctx.beginPath();
-                this.ctx.moveTo(visibleNode.x, visibleNode.y);
-                const endX = visibleNode.x + Math.sin(this.time)*50;
-                const endY = visibleNode.y - 500;
-                this.ctx.lineTo(endX, endY);
-                this.ctx.stroke();
-
-                this.ctx.fillStyle = '#ff88ff';
-                this.ctx.font = '12px sans-serif';
-                this.ctx.textAlign = 'center';
+                this.ctx.beginPath(); this.ctx.moveTo(visibleNode.x, visibleNode.y);
+                const endX = visibleNode.x + Math.sin(this.time)*50; const endY = visibleNode.y - 500;
+                this.ctx.lineTo(endX, endY); this.ctx.stroke();
+                this.ctx.fillStyle = '#ff88ff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
                 this.ctx.fillText(`➡ ${destNode.name} (${destNode.parentUniverse.name})`, endX, visibleNode.y - 120);
             }
         });
@@ -556,111 +484,49 @@ export class CanvasBuilder {
             const dx = link.target.baseX - link.source.baseX;
             const dy = link.target.baseY - link.source.baseY;
             const radius = Math.hypot(dx, dy);
-
             this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2);
-            this.ctx.stroke();
-
+            this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2); this.ctx.stroke();
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            this.ctx.beginPath();
-            this.ctx.moveTo(link.source.x, link.source.y);
-            this.ctx.lineTo(link.target.x, link.target.y);
-            this.ctx.stroke();
+            this.ctx.beginPath(); this.ctx.moveTo(link.source.x, link.source.y); this.ctx.lineTo(link.target.x, link.target.y); this.ctx.stroke();
         });
 
         if (this.isLinking && this.linkSourceNode) {
             this.ctx.strokeStyle = '#00ffcc';
-            this.ctx.setLineDash([5, 5]);
-            this.ctx.beginPath();
+            this.ctx.setLineDash([5, 5]); this.ctx.beginPath();
             this.ctx.moveTo(this.linkSourceNode.x, this.linkSourceNode.y);
             this.ctx.lineTo(this.mouseWorldX, this.mouseWorldY);
-            this.ctx.stroke();
-            this.ctx.setLineDash([]);
+            this.ctx.stroke(); this.ctx.setLineDash([]);
         }
 
         for (let i = this.ripples.length - 1; i >= 0; i--) {
-            const r = this.ripples[i];
-            r.radius += r.speed;
-            r.alpha -= r.speed / r.maxRadius; 
-
-            if (r.alpha <= 0) {
-                this.ripples.splice(i, 1);
-            } else {
-                this.ctx.save();
-                this.ctx.strokeStyle = r.color;
-                this.ctx.globalAlpha = r.alpha;
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-                this.ctx.stroke();
-                this.ctx.restore();
+            const r = this.ripples[i]; r.radius += r.speed; r.alpha -= r.speed / r.maxRadius; 
+            if (r.alpha <= 0) { this.ripples.splice(i, 1); } 
+            else {
+                this.ctx.save(); this.ctx.strokeStyle = r.color; this.ctx.globalAlpha = r.alpha; this.ctx.lineWidth = 2;
+                this.ctx.beginPath(); this.ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2); this.ctx.stroke(); this.ctx.restore();
             }
         }
 
         this.currentUniverse.nodes.forEach(node => {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
-            drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5;
-            drawSize += pulse * 2.0; 
-
-            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15);
-            this.ctx.shadowColor = node.color;
+            drawSize += Math.sin(this.time * 2 + node.baseX) * 1.5; drawSize += pulse * 2.0; 
+            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); this.ctx.shadowColor = node.color;
 
             if (node.iconUrl) {
-                if (!this.imageCache[node.iconUrl]) {
-                    const img = new Image();
-                    img.src = node.iconUrl;
-                    this.imageCache[node.iconUrl] = img;
-                }
-
+                if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
                 const img = this.imageCache[node.iconUrl];
                 if (img.complete && img.naturalHeight !== 0) {
-                    this.ctx.save();
-                    this.ctx.beginPath();
-                    this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
-                    this.ctx.closePath();
-                    this.ctx.clip(); 
-                    
-                    this.ctx.fillStyle = '#111';
-                    this.ctx.fill();
-
-                    this.ctx.drawImage(img, node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2);
-                    this.ctx.restore();
-
-                    this.ctx.strokeStyle = node.color;
-                    this.ctx.lineWidth = 2;
-                    this.ctx.beginPath();
-                    this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
-                    this.ctx.stroke();
-                } else {
-                    this.ctx.fillStyle = node.color;
-                    this.ctx.beginPath();
-                    this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            } else {
-                this.ctx.fillStyle = node.color;
-                this.ctx.beginPath();
-                this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
+                    this.ctx.save(); this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.closePath(); this.ctx.clip(); 
+                    this.ctx.fillStyle = '#111'; this.ctx.fill(); this.ctx.drawImage(img, node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2); this.ctx.restore();
+                    this.ctx.strokeStyle = node.color; this.ctx.lineWidth = 2; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.stroke();
+                } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
+            } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
 
             this.ctx.shadowBlur = 0; 
-
-            if (node.isLocked) {
-                this.ctx.fillStyle = "#ffcc00"; 
-                this.ctx.font = "16px serif";
-                this.ctx.textAlign = "center";
-                this.ctx.fillText("🔒", node.x, node.y - drawSize - 10);
-            }
-
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.font = '12px sans-serif';
-            this.ctx.textAlign = 'center';
-            const displayName = node.url ? `🔗 ${node.name}` : node.name;
-            this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
+            if (node.isLocked) { this.ctx.fillStyle = "#ffcc00"; this.ctx.font = "16px serif"; this.ctx.textAlign = "center"; this.ctx.fillText("🔒", node.x, node.y - drawSize - 10); }
+            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
+            const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
         });
 
         this.ctx.restore();

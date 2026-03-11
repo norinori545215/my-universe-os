@@ -147,6 +147,7 @@ export class UIManager {
         slider.addEventListener('input', (e) => {
             const index = parseInt(e.target.value, 10);
             const max = parseInt(e.target.max, 10);
+            
             if (index === max) {
                 display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
             } else {
@@ -352,13 +353,12 @@ export class UIManager {
         handleCheckbox('cp-rapid-spawn', 'universe_rapid_spawn');
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
         
-        // ★ スマホモードの切り替えイベント
         const extMobile = document.getElementById('cp-ext-mobile');
         if(extMobile) extMobile.onchange = (e) => { 
             localStorage.setItem('universe_mobile_mode', e.target.checked); 
             this.state.isMobileMode = e.target.checked; 
             this.app.isMobileMode = e.target.checked; 
-            this.renderCP(); // UIを再描画してメッセージを切り替える
+            this.renderCP(); 
         };
 
         const extSearch = document.getElementById('cp-ext-search');
@@ -384,7 +384,6 @@ export class UIManager {
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             this.app.autoSave(); 
             if(window.universeAudio) window.universeAudio.playSpawn();
-            // スマホモードなら自動でメニューを出すようにする
             if(this.state.isMobileMode || document.getElementById('cp-auto-menu')?.checked) {
                 const n = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length-1];
                 this.showMenu(n, window.innerWidth/2, window.innerHeight/2);
@@ -509,7 +508,6 @@ export class UIManager {
             if (window.universeAudio) window.universeAudio.playSpawn();
             if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color });
 
-            // スマホモードなら自動でメニューを開く
             if (this.state.isMobileMode || localStorage.getItem('universe_auto_menu') === 'true') {
                 const node = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
                 setTimeout(() => this.showMenu(node, ev.clientX, ev.clientY), 50);
@@ -549,8 +547,13 @@ export class UIManager {
 
     showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
-            this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playDelete(); return;
+            // ★ 修正：連続消去モードの時もゴーストリンクを完全に削除する
+            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+            this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
+            this.app.blackHole.push(node);
+            this.app.autoSave();
+            if(window.universeAudio) window.universeAudio.playDelete();
+            return;
         }
 
         this.hideQuickNote();
@@ -560,6 +563,7 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
+        // ★ 追加：AIボタンを先頭に配置
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -574,6 +578,7 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
+        // ★ 追加：AIボタンのイベント
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
@@ -586,7 +591,19 @@ export class UIManager {
         document.getElementById('m-ren').onclick = () => { const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
         document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
         document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
-        document.getElementById('m-del').onclick = () => { if(confirm("収納しますか？")){ this.app.currentUniverse.removeNode(node); this.app.blackHole.push(node); this.app.autoSave(); if(window.universeAudio) window.universeAudio.playDelete(); } this.hideMenu(); };
+        
+        // ★ 修正：通常削除時もゴーストリンクを完全に消去する
+        document.getElementById('m-del').onclick = () => { 
+            if(confirm("収納しますか？")){ 
+                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+                this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
+                this.app.blackHole.push(node); 
+                this.app.autoSave(); 
+                if(window.universeAudio) window.universeAudio.playDelete(); 
+            } 
+            this.hideMenu(); 
+        };
+        
         document.getElementById('m-close').onclick = () => this.hideMenu();
     }
 
