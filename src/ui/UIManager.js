@@ -147,7 +147,6 @@ export class UIManager {
         slider.addEventListener('input', (e) => {
             const index = parseInt(e.target.value, 10);
             const max = parseInt(e.target.max, 10);
-            
             if (index === max) {
                 display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
             } else {
@@ -325,8 +324,7 @@ export class UIManager {
 
         this.bindCPEvents();
     }
-
-    bindCPEvents() {
+bindCPEvents() {
         const bind = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
 
         bind('cp-close', () => this.controlPanel.style.display = 'none');
@@ -547,12 +545,12 @@ export class UIManager {
 
     showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
-            // ★ 修正：連続消去モードの時もゴーストリンクを完全に削除する
-            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+            // ★ 修正箇所：ゴーストリンクを残さず完全消去
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
+            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
             this.app.blackHole.push(node);
             this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playDelete();
+            if(window.universeAudio) window.universeAudio.playDelete(); 
             return;
         }
 
@@ -563,7 +561,7 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ 追加：AIボタンを先頭に配置
+        // ★ 修正箇所：AIボタンを先頭に追加
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -578,7 +576,7 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ 追加：AIボタンのイベント
+        // ★ 修正箇所：AI思考拡張イベント
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
@@ -592,18 +590,18 @@ export class UIManager {
         document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
         document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
         
-        // ★ 修正：通常削除時もゴーストリンクを完全に消去する
+        // ★ 修正箇所：ゴーストリンクを残さない完全消去
         document.getElementById('m-del').onclick = () => { 
             if(confirm("収納しますか？")){ 
-                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
+                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
                 this.app.blackHole.push(node); 
                 this.app.autoSave(); 
                 if(window.universeAudio) window.universeAudio.playDelete(); 
             } 
             this.hideMenu(); 
         };
-        
+
         document.getElementById('m-close').onclick = () => this.hideMenu();
     }
 
