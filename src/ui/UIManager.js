@@ -147,7 +147,6 @@ export class UIManager {
         slider.addEventListener('input', (e) => {
             const index = parseInt(e.target.value, 10);
             const max = parseInt(e.target.max, 10);
-            
             if (index === max) {
                 display.innerHTML = `<span style="color:#00ffcc;">[ NOW ] 現在の宇宙</span>`;
             } else {
@@ -548,8 +547,8 @@ export class UIManager {
     showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
             // ★ 修正：連続消去モードの時もゴーストリンクを完全に削除する
+            this.app.currentUniverse.removeNode(node);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
-            this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.blackHole.push(node);
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playDelete();
@@ -595,15 +594,15 @@ export class UIManager {
         // ★ 修正：通常削除時もゴーストリンクを完全に消去する
         document.getElementById('m-del').onclick = () => { 
             if(confirm("収納しますか？")){ 
+                this.app.currentUniverse.removeNode(node);
                 this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
-                this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
                 this.app.blackHole.push(node); 
                 this.app.autoSave(); 
                 if(window.universeAudio) window.universeAudio.playDelete(); 
             } 
             this.hideMenu(); 
         };
-        
+
         document.getElementById('m-close').onclick = () => this.hideMenu();
     }
 

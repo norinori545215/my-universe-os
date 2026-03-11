@@ -222,6 +222,12 @@ export class CanvasBuilder {
         if (node) { 
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
+            
+            // ★ 究極の修正：動いている星を掴んだ瞬間に、見た目の位置を現在の座標で固定する！
+            // これにより、指の下から星がワープして逃げるのを防ぎ、確実にメニューが開くようになります。
+            node.baseX = node.x;
+            node.baseY = node.y;
+
             this.grabOffsetX = node.baseX - x;
             this.grabOffsetY = node.baseY - y;
             this.grabStartX = x;
@@ -298,7 +304,6 @@ export class CanvasBuilder {
         this.linkSourceNode = null;
     }
 
-    // ★ 修正：手前の星から判定＆当たり判定を拡大（15 -> 25）
     getNodeAt(x, y) {
         const nodes = this.currentUniverse.nodes;
         for(let i = nodes.length - 1; i >= 0; i--) {
@@ -324,13 +329,14 @@ export class CanvasBuilder {
     handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
         if (this.isLongPressed) { this.isLongPressed = false; this.grabbedNode = null; return; }
+        
+        // ★ 修正：確実に掴んでいた星をターゲットにする
+        const target = this.grabbedNode || this.getNodeAt(worldX, worldY);
         this.grabbedNode = null; 
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
             this.ui.hideMenu(); return;
         }
-
-        const target = this.getNodeAt(worldX, worldY);
         
         if (target) {
             if (this.appMode === 'EDIT') {
@@ -454,7 +460,6 @@ export class CanvasBuilder {
                     const radius = Math.hypot(dx, dy);
                     const baseAngle = Math.atan2(dy, dx);
                     
-                    // ★ 修正：公転スピードを減速させてクリックしやすくしました！
                     const speed = 2.0 / Math.max(radius, 15); 
                     const currentAngle = baseAngle + this.time * speed;
 
