@@ -433,41 +433,58 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
+        // ＝＝＝ 🪐 星の軌道（公転）計算の完全修復 ＝＝＝
         const orbitingNodes = new Map();
         this.currentUniverse.links.forEach(link => {
-            if (!orbitingNodes.has(link.target)) orbitingNodes.set(link.target, link.source);
+            // クラウドから復元した後でも紐付けが切れないように「ID」で管理する
+            const tId = link.target.id || link.target;
+            const sId = link.source.id || link.source;
+            if (!orbitingNodes.has(tId)) orbitingNodes.set(tId, sId);
         });
 
+        // ① 独立している星（親がいない星）の揺らぎ
         this.currentUniverse.nodes.forEach(node => {
-            if (!orbitingNodes.has(node)) {
+            const nId = node.id || node;
+            if (!orbitingNodes.has(nId)) {
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
                 } else {
-                    node.x = node.baseX + Math.sin(this.time + node.randomOffset) * 5;
-                    node.y = node.baseY + Math.cos(this.time * 0.8 + node.randomOffset) * 5;
+                    node.x = node.baseX + Math.sin(this.time + (node.randomOffset || 0)) * 5;
+                    node.y = node.baseY + Math.cos(this.time * 0.8 + (node.randomOffset || 0)) * 5;
                 }
             }
         });
 
+        // ② 線で結ばれた子星（公転する星）の回転処理
         this.currentUniverse.nodes.forEach(node => {
-            if (orbitingNodes.has(node)) {
+            const nId = node.id || node;
+            if (orbitingNodes.has(nId)) {
+                const parentId = orbitingNodes.get(nId);
+                const parent = this.currentUniverse.nodes.find(n => (n.id || n) === parentId);
+
                 if (node === this.grabbedNode) {
+                    // 掴んでいる間はワープせずにその場に留まる
                     node.x = node.baseX; node.y = node.baseY;
-                } else {
-                    const parent = orbitingNodes.get(node);
+                } else if (parent) {
                     const dx = node.baseX - parent.baseX;
                     const dy = node.baseY - parent.baseY;
-                    const radius = Math.hypot(dx, dy);
+                    
+                    // 【重要】重なっている状態でも回るように、最低限の軌道半径を確保する
+                    let radius = Math.hypot(dx, dy);
+                    if (radius < 20) radius = 80;
+
                     const baseAngle = Math.atan2(dy, dx);
                     
-                    const speed = 2.0 / Math.max(radius, 15); 
-                    const currentAngle = baseAngle + this.time * speed;
+                    // 目に見える速度で美しく回す
+                    const speed = 25 / radius; 
+                    const currentAngle = baseAngle + (this.time * speed);
 
                     node.x = parent.x + Math.cos(currentAngle) * radius;
                     node.y = parent.y + Math.sin(currentAngle) * radius;
                 }
             }
         });
+        // ＝＝＝ 公転計算ここまで ＝＝＝
 
         this.ctx.lineWidth = 3;
         this.wormholes.forEach(wh => {
@@ -488,7 +505,10 @@ export class CanvasBuilder {
         this.currentUniverse.links.forEach(link => {
             const dx = link.target.baseX - link.source.baseX;
             const dy = link.target.baseY - link.source.baseY;
-            const radius = Math.hypot(dx, dy);
+            // 線の円環も、星の軌道と同じように最低半径を考慮して描画
+            let radius = Math.hypot(dx, dy);
+            if (radius < 20) radius = 80;
+            
             this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
             this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.arc(link.source.x, link.source.y, radius, 0, Math.PI * 2); this.ctx.stroke();
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
