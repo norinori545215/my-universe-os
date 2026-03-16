@@ -2,44 +2,44 @@
 
 export class Pathways {
     /**
-     * 指定した星（中心星）から、特定の距離内にある星を自動的に線で結ぶ（星座構築）
-     * @param {Object} app - CanvasBuilder
-     * @param {Object} centerNode - 中心となる星
-     * @param {Number} maxDistance - リンクを張る最大距離
+     * 空間内の星の距離を計算し、近い星同士を自動でリンクして「星座」を構築する
+     * @param {Object} universe - 対象の宇宙（this.app.currentUniverse）
+     * @param {Number} maxDistance - リンクを張る最大距離（ピクセル）
+     * @returns {Number} 新しく作成されたリンクの数
      */
-    static autoConstellation(app, centerNode, maxDistance = 200) {
-        if (!centerNode) return;
+    static autoConstellation(universe, maxDistance = 280) {
         let linkCount = 0;
+        const nodes = universe.nodes;
 
-        app.currentUniverse.nodes.forEach(targetNode => {
-            if (targetNode === centerNode) return;
+        // すべての星の組み合わせの距離を総当たりで計算
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const n1 = nodes[i];
+                const n2 = nodes[j];
 
-            // 中心星との距離を計算
-            const dx = targetNode.baseX - centerNode.baseX;
-            const dy = targetNode.baseY - centerNode.baseY;
-            const distance = Math.hypot(dx, dy);
+                const x1 = n1.baseX !== undefined ? n1.baseX : n1.x;
+                const y1 = n1.baseY !== undefined ? n1.baseY : n1.y;
+                const x2 = n2.baseX !== undefined ? n2.baseX : n2.x;
+                const y2 = n2.baseY !== undefined ? n2.baseY : n2.y;
 
-            // 距離が条件を満たす場合、リンクを作成
-            if (distance <= maxDistance) {
-                // すでにリンクが存在するかチェック
-                const exists = app.currentUniverse.links.some(l => 
-                    (l.source === centerNode && l.target === targetNode) ||
-                    (l.source === targetNode && l.target === centerNode) ||
-                    (l.source.id === centerNode.id && l.target.id === targetNode.id) ||
-                    (l.source.id === targetNode.id && l.target.id === centerNode.id)
-                );
+                const distance = Math.hypot(x1 - x2, y1 - y2);
 
-                if (!exists) {
-                    app.currentUniverse.addLink(centerNode, targetNode);
-                    linkCount++;
+                // 距離が規定値以内の場合、リンクを構築
+                if (distance <= maxDistance) {
+                    const exists = universe.links.some(l => 
+                        (l.source === n1 && l.target === n2) ||
+                        (l.source === n2 && l.target === n1) ||
+                        (l.source.id && l.source.id === n1.id && l.target.id === n2.id) ||
+                        (l.source.id && l.source.id === n2.id && l.target.id === n1.id)
+                    );
+
+                    if (!exists) {
+                        universe.addLink(n1, n2);
+                        linkCount++;
+                    }
                 }
             }
-        });
-
-        if (linkCount > 0) {
-            app.autoSave();
-            if (window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.2); // 構築音
-            if (window.universeLogger) window.universeLogger.log("CONSTELLATION_FORMED", { center: centerNode.name, links: linkCount });
         }
+        return linkCount;
     }
 }

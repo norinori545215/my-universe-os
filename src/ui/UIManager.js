@@ -7,6 +7,7 @@ import { Gravity } from '../core/Gravity.js';
 import { SingularitySearch } from './SingularitySearch.js'; 
 import { TimeMachine } from '../core/TimeMachine.js'; 
 import { ChaosGen } from '../ai/ChaosGen.js'; 
+import { Pathways } from '../core/Pathways.js'; // ★ 追加：星座構築エンジン
 
 export class UIManager {
     constructor(app) {
@@ -238,6 +239,7 @@ export class UIManager {
                         <button id="cp-grav-circle" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">⭕ 円環</button>
                         <button id="cp-grav-spiral" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🌀 螺旋</button>
                         <button id="cp-grav-grid" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🔲 均列</button>
+                        <button id="cp-pathways" style="flex:1; padding:8px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px solid rgba(0,255,204,0.5); border-radius:6px; font-size:11px; cursor:pointer;">✨ 星座</button>
                     </div>
                     
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RAPID WORKFLOW</div>
@@ -340,6 +342,17 @@ export class UIManager {
         bind('cp-grav-circle', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'circle'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
+
+        // ★ 追加：星座ボタンを押した時の処理
+        bind('cp-pathways', () => {
+            const count = Pathways.autoConstellation(this.app.currentUniverse);
+            if (count > 0) {
+                if(window.universeAudio) window.universeAudio.playWarp(); 
+                // エフェクト：すべての星から波紋を出す
+                this.app.currentUniverse.nodes.forEach(n => this.app.spawnRipple(n.x, n.y, '#00ffcc'));
+                this.app.autoSave();
+            }
+        });
 
         const handleCheckbox = (id, storageKey, stateKey = null) => {
             const el = document.getElementById(id);
@@ -669,7 +682,6 @@ export class UIManager {
         document.getElementById('lib-close').onclick = () => this.appLibraryModal.style.display='none';
     }
 
-    // ★ ここだけ変更しています！デザインを壊さずチェックボックスと一括処理を追加しました。
     showInventoryUI() {
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -707,7 +719,6 @@ export class UIManager {
         this.inventoryModal.innerHTML = html; 
         this.inventoryModal.style.display = 'block';
         
-        // 全選択ロジック
         const selectAllCb = document.getElementById('inv-select-all');
         const checkboxes = document.querySelectorAll('.inv-checkbox');
         if (selectAllCb) {
@@ -716,14 +727,13 @@ export class UIManager {
             };
         }
 
-        // 個別の復元・消滅
         this.app.blackHole.forEach((node, i) => {
             document.getElementById(`inv-res-${i}`).onclick = () => { 
                 this.app.blackHole.splice(i, 1); 
                 node.x = -this.app.camera.x; node.y = -this.app.camera.y; 
                 this.app.currentUniverse.nodes.push(node); 
                 this.app.autoSave(); 
-                this.showInventoryUI(); // UIを更新
+                this.showInventoryUI(); 
                 if(window.universeAudio) window.universeAudio.playSpawn(); 
             };
             document.getElementById(`inv-del-${i}`).onclick = () => { 
@@ -735,9 +745,7 @@ export class UIManager {
             };
         });
 
-        // 🌟 まとめて復元
         document.getElementById('inv-bulk-res').onclick = () => {
-            // インデックスのズレを防ぐため、後ろから（降順）処理する
             const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.index)).sort((a,b)=>b-a);
             if (selected.length === 0) return;
             
@@ -753,12 +761,11 @@ export class UIManager {
             if(window.universeAudio) window.universeAudio.playSpawn();
         };
 
-        // 🌟 まとめて消滅
         document.getElementById('inv-bulk-del').onclick = () => {
             const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.index)).sort((a,b)=>b-a);
             if (selected.length === 0) return;
             
-            if(confirm(`選択した ${selected.length} 個の星を完全に消滅させますか？`)) {
+            if(confirm(`選択した ${selected.length} 個の星を完全に消去しますか？`)) {
                 selected.forEach(index => {
                     this.app.blackHole.splice(index, 1);
                 });
