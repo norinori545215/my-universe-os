@@ -14,7 +14,6 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         
         // --- 状態管理 (State) ---
-        // ★ 追加：スマホモードの判定（画面幅が狭いか、設定がオンの場合）
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
         this.state = {
@@ -23,10 +22,10 @@ export class UIManager {
             lastSpawnTime: 0,
             touchStartX: 0,
             touchStartY: 0,
-            isMobileMode: isMobile // ★ 追加
+            isMobileMode: isMobile
         };
         
-        this.app.isMobileMode = this.state.isMobileMode; // アプリ本体に状態を渡す
+        this.app.isMobileMode = this.state.isMobileMode;
         
         window.universeAudio = new AudioCore();
         this.createUI();
@@ -179,7 +178,8 @@ export class UIManager {
             this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
     }
-toggleTimeMachine() {
+
+    toggleTimeMachine() {
         const isClosed = this.timeMachineUI.style.bottom.startsWith('-');
         if (isClosed) {
             this.updateTimeSliderParams();
@@ -409,7 +409,8 @@ toggleTimeMachine() {
         const radar = document.getElementById('cp-radar');
         if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
     }
-updateMode(mode) {
+
+    updateMode(mode) {
         this.app.appMode = mode;
         this.renderCP(); 
     }
@@ -561,7 +562,7 @@ updateMode(mode) {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ メニューに「AI」と「別の星と結ぶ」を追加
+        // ★ メニューに「ポケットに追加」を追加
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -574,6 +575,7 @@ updateMode(mode) {
             <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+            <button id="m-select" style="${btnStyle} color:#ff88ff; border:1px solid rgba(255,0,255,0.3);">🔳 ポケットに追加 (選択)</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
@@ -597,7 +599,6 @@ updateMode(mode) {
             this.app.isLinking = true;
             this.app.linkSourceNode = node;
             
-            // 次に画面のどこか（別の星）をタップした瞬間にリンクを確定させる
             const onNextClick = (e) => {
                 let clientX = e.clientX || 0; let clientY = e.clientY || 0;
                 if (e.changedTouches && e.changedTouches.length > 0) {
@@ -617,6 +618,13 @@ updateMode(mode) {
                 window.addEventListener('mouseup', onNextClick);
                 window.addEventListener('touchend', onNextClick);
             }, 100);
+        };
+
+        // ★ ポケットに追加（マルチセレクト開始）
+        document.getElementById('m-select').onclick = () => {
+            this.hideMenu();
+            node.isSelected = true;
+            if (this.app.multiSelectUI) this.app.multiSelectUI.update();
         };
 
         // 通常消去時もゴーストリンクを完全消去
@@ -686,4 +694,4 @@ updateMode(mode) {
         });
         document.getElementById('inv-close').onclick = () => this.inventoryModal.style.display='none';
     }
-}           
+}

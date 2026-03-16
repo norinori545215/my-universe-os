@@ -5,6 +5,7 @@ import { UIManager } from '../ui/UIManager.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { TimeMachine } from '../core/TimeMachine.js';
 import { AutoPilot } from './AutoPilot.js';
+import { MultiSelectUI } from '../ui/MultiSelectUI.js'; // ★ UIのインポート
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -52,6 +53,7 @@ export class CanvasBuilder {
         ];
 
         this.ui = new UIManager(this);
+        this.multiSelectUI = new MultiSelectUI(this); // ★ マルチセレクトUIの初期化
 
         this.camera = new CameraControl(this.canvas, {
             onClick: (x, y, e) => this.handleNodeClick(x, y, e),
@@ -223,8 +225,6 @@ export class CanvasBuilder {
             this.grabbedNode = node; 
             this.hasMovedNode = false; 
             
-            // ★ 究極の修正：動いている星を掴んだ瞬間に、見た目の位置を現在の座標で固定する！
-            // これにより、指の下から星がワープして逃げるのを防ぎ、確実にメニューが開くようになります。
             node.baseX = node.x;
             node.baseY = node.y;
 
@@ -338,7 +338,14 @@ export class CanvasBuilder {
         }
 
         if (target) {
-            // ★ 修正：this.app ではなく this.isMobileMode が正解でした！これでクラッシュしません。
+            // ★ 追加：ポケットモード（マルチセレクト）がアクティブな場合は選択の切り替えのみ行う
+            if (this.multiSelectUI && this.multiSelectUI.isActive()) {
+                target.isSelected = !target.isSelected;
+                this.multiSelectUI.update();
+                this.spawnRipple(target.x, target.y, target.isSelected ? '#ff00ff' : '#888');
+                return; 
+            }
+
             if (this.appMode === 'EDIT' || this.isMobileMode) {
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
@@ -433,7 +440,6 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
-        // 🌟 クラウド復元などでオブジェクトの参照が切れても強制的に繋ぎ直す魔法
         const findRealNode = (ref) => {
             if (!ref) return null;
             return this.currentUniverse.nodes.find(n => 
@@ -459,7 +465,6 @@ export class CanvasBuilder {
             const parent = orbitingNodes.get(node);
 
             if (!parent) {
-                // ① 独立している星（親がいない星）の揺らぎ
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
                 } else {
@@ -467,7 +472,6 @@ export class CanvasBuilder {
                     node.y = node.baseY + Math.cos(this.time * 0.8 + (node.randomOffset || 0)) * 5;
                 }
             } else {
-                // ② 線で結ばれた子星（公転する星）
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
                 } else {
@@ -477,11 +481,9 @@ export class CanvasBuilder {
                     const dx = node.baseX - parent.baseX;
                     const dy = node.baseY - parent.baseY;
                     let radius = Math.hypot(dx, dy);
-                    // 重なっていても回るように最低半径を確保
                     if (radius < 20) radius = 80; 
 
                     const baseAngle = Math.atan2(dy, dx);
-                    // 確実に目で見て分かる速度に調整（近いほど速く、遠いほど遅く）
                     const speed = 25 / radius; 
                     const currentAngle = baseAngle + (this.time * speed);
 
@@ -560,6 +562,18 @@ export class CanvasBuilder {
             } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
 
             this.ctx.shadowBlur = 0; 
+            
+            // ★ 追加：選択されている星の周りに紫の点線を回すエフェクト
+            if (node.isSelected) {
+                this.ctx.strokeStyle = '#ff00ff';
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.beginPath();
+                this.ctx.arc(node.x, node.y, drawSize + 8, this.time * 2, Math.PI * 2 + this.time * 2);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+            }
+
             if (node.isLocked) { this.ctx.fillStyle = "#ffcc00"; this.ctx.font = "16px serif"; this.ctx.textAlign = "center"; this.ctx.fillText("🔒", node.x, node.y - drawSize - 10); }
             this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
             const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
