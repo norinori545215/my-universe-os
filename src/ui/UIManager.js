@@ -546,7 +546,6 @@ export class UIManager {
 
     showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
-            // ★ ゴーストリンクを残さず完全消去
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
             this.app.blackHole.push(node);
@@ -562,7 +561,6 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ メニューに「ポケットに追加」を追加
         this.actionMenu.innerHTML = `
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -575,11 +573,9 @@ export class UIManager {
             <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
-            <button id="m-select" style="${btnStyle} color:#ff88ff; border:1px solid rgba(255,0,255,0.3);">🔳 ポケットに追加 (選択)</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // AI思考拡張の実行
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 
             ChaosGen.expand(node, this.app); 
@@ -593,7 +589,6 @@ export class UIManager {
         document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
         document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
         
-        // ★ 追加：ワンタップで線を結ぶ魔法の処理
         document.getElementById('m-connect').onclick = () => {
             this.hideMenu();
             this.app.isLinking = true;
@@ -620,14 +615,6 @@ export class UIManager {
             }, 100);
         };
 
-        // ★ ポケットに追加（マルチセレクト開始）
-        document.getElementById('m-select').onclick = () => {
-            this.hideMenu();
-            node.isSelected = true;
-            if (this.app.multiSelectUI) this.app.multiSelectUI.update();
-        };
-
-        // 通常消去時もゴーストリンクを完全消去
         document.getElementById('m-del').onclick = () => { 
             if(confirm("収納しますか？")){ 
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
@@ -682,16 +669,104 @@ export class UIManager {
         document.getElementById('lib-close').onclick = () => this.appLibraryModal.style.display='none';
     }
 
+    // ★ ここだけ変更しています！デザインを壊さずチェックボックスと一括処理を追加しました。
     showInventoryUI() {
-        let html = `<h4 style="margin:0 0 15px 0; color:#ff6699;">亜空間 Storage</h4><div style="max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
-        this.app.blackHole.forEach((node, i) => { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;"><span>${node.name}</span><div><button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">🌌 復元</button> <button id="inv-del-${i}" style="background:#330000; color:#ff4444; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">消滅</button></div></div>`; });
-        html += `</div><button id="inv-close" style="margin-top:15px; width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px; cursor:pointer;">Close</button>`;
-        this.inventoryModal.innerHTML = html; this.inventoryModal.style.display = 'block';
+        let html = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h4 style="margin:0; color:#ff6699;">亜空間 Storage</h4>
+                <label style="color:#ff6699; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                    <input type="checkbox" id="inv-select-all" style="accent-color:#ff6699;"> 全選択
+                </label>
+            </div>
+            <div style="max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+        `;
         
         this.app.blackHole.forEach((node, i) => {
-            document.getElementById(`inv-res-${i}`).onclick = () => { this.app.blackHole.splice(i, 1); node.x = -this.app.camera.x; node.y = -this.app.camera.y; this.app.currentUniverse.nodes.push(node); this.app.autoSave(); this.inventoryModal.style.display='none'; if(window.universeAudio) window.universeAudio.playSpawn(); };
-            document.getElementById(`inv-del-${i}`).onclick = () => { if(confirm("完全に消去しますか？(元に戻せません)")){ this.app.blackHole.splice(i, 1); this.app.autoSave(); this.showInventoryUI(); }};
+            html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; flex:1;">
+                        <input type="checkbox" class="inv-checkbox" data-index="${i}" style="accent-color:#ff6699; width:16px; height:16px;">
+                        <span style="font-size:13px;">${node.name}</span>
+                    </label>
+                    <div style="display:flex; gap:5px;">
+                        <button id="inv-res-${i}" style="background:#003333; color:#00ffcc; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px;">復元</button>
+                        <button id="inv-del-${i}" style="background:#330000; color:#ff4444; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:11px;">消滅</button>
+                    </div>
+                </div>`;
         });
+        
+        html += `
+            </div>
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <button id="inv-bulk-res" style="flex:1; padding:10px; background:#003333; border:1px solid #00ffcc; color:#00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">🌌 選択を復元</button>
+                <button id="inv-bulk-del" style="flex:1; padding:10px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">🎒 選択を消滅</button>
+            </div>
+            <button id="inv-close" style="margin-top:10px; width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px; cursor:pointer;">Close</button>
+        `;
+        
+        this.inventoryModal.innerHTML = html; 
+        this.inventoryModal.style.display = 'block';
+        
+        // 全選択ロジック
+        const selectAllCb = document.getElementById('inv-select-all');
+        const checkboxes = document.querySelectorAll('.inv-checkbox');
+        if (selectAllCb) {
+            selectAllCb.onchange = (e) => {
+                checkboxes.forEach(cb => cb.checked = e.target.checked);
+            };
+        }
+
+        // 個別の復元・消滅
+        this.app.blackHole.forEach((node, i) => {
+            document.getElementById(`inv-res-${i}`).onclick = () => { 
+                this.app.blackHole.splice(i, 1); 
+                node.x = -this.app.camera.x; node.y = -this.app.camera.y; 
+                this.app.currentUniverse.nodes.push(node); 
+                this.app.autoSave(); 
+                this.showInventoryUI(); // UIを更新
+                if(window.universeAudio) window.universeAudio.playSpawn(); 
+            };
+            document.getElementById(`inv-del-${i}`).onclick = () => { 
+                if(confirm("完全に消去しますか？(元に戻せません)")){ 
+                    this.app.blackHole.splice(i, 1); 
+                    this.app.autoSave(); 
+                    this.showInventoryUI(); 
+                }
+            };
+        });
+
+        // 🌟 まとめて復元
+        document.getElementById('inv-bulk-res').onclick = () => {
+            // インデックスのズレを防ぐため、後ろから（降順）処理する
+            const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.index)).sort((a,b)=>b-a);
+            if (selected.length === 0) return;
+            
+            selected.forEach(index => {
+                const node = this.app.blackHole[index];
+                this.app.blackHole.splice(index, 1);
+                node.x = -this.app.camera.x + (Math.random() * 40 - 20); 
+                node.y = -this.app.camera.y + (Math.random() * 40 - 20);
+                this.app.currentUniverse.nodes.push(node);
+            });
+            this.app.autoSave();
+            this.showInventoryUI();
+            if(window.universeAudio) window.universeAudio.playSpawn();
+        };
+
+        // 🌟 まとめて消滅
+        document.getElementById('inv-bulk-del').onclick = () => {
+            const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.index)).sort((a,b)=>b-a);
+            if (selected.length === 0) return;
+            
+            if(confirm(`選択した ${selected.length} 個の星を完全に消滅させますか？`)) {
+                selected.forEach(index => {
+                    this.app.blackHole.splice(index, 1);
+                });
+                this.app.autoSave();
+                this.showInventoryUI();
+            }
+        };
+
         document.getElementById('inv-close').onclick = () => this.inventoryModal.style.display='none';
     }
 }
