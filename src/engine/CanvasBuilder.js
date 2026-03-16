@@ -5,7 +5,6 @@ import { UIManager } from '../ui/UIManager.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { TimeMachine } from '../core/TimeMachine.js';
 import { AutoPilot } from './AutoPilot.js';
-import { MultiSelectUI } from '../ui/MultiSelectUI.js'; // ★ UIのインポート
 
 export class CanvasBuilder {
     constructor(canvasId) {
@@ -53,7 +52,6 @@ export class CanvasBuilder {
         ];
 
         this.ui = new UIManager(this);
-        this.multiSelectUI = new MultiSelectUI(this); // ★ マルチセレクトUIの初期化
 
         this.camera = new CameraControl(this.canvas, {
             onClick: (x, y, e) => this.handleNodeClick(x, y, e),
@@ -338,14 +336,6 @@ export class CanvasBuilder {
         }
 
         if (target) {
-            // ★ 追加：ポケットモード（マルチセレクト）がアクティブな場合は選択の切り替えのみ行う
-            if (this.multiSelectUI && this.multiSelectUI.isActive()) {
-                target.isSelected = !target.isSelected;
-                this.multiSelectUI.update();
-                this.spawnRipple(target.x, target.y, target.isSelected ? '#ff00ff' : '#888');
-                return; 
-            }
-
             if (this.appMode === 'EDIT' || this.isMobileMode) {
                 let clientX = event.clientX || 0; let clientY = event.clientY || 0;
                 if (event.changedTouches && event.changedTouches.length > 0) {
@@ -562,17 +552,6 @@ export class CanvasBuilder {
             } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
 
             this.ctx.shadowBlur = 0; 
-            
-            // ★ 追加：選択されている星の周りに紫の点線を回すエフェクト
-            if (node.isSelected) {
-                this.ctx.strokeStyle = '#ff00ff';
-                this.ctx.lineWidth = 3;
-                this.ctx.setLineDash([5, 5]);
-                this.ctx.beginPath();
-                this.ctx.arc(node.x, node.y, drawSize + 8, this.time * 2, Math.PI * 2 + this.time * 2);
-                this.ctx.stroke();
-                this.ctx.setLineDash([]);
-            }
 
             if (node.isLocked) { this.ctx.fillStyle = "#ffcc00"; this.ctx.font = "16px serif"; this.ctx.textAlign = "center"; this.ctx.fillText("🔒", node.x, node.y - drawSize - 10); }
             this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
