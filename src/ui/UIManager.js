@@ -7,14 +7,14 @@ import { Gravity } from '../core/Gravity.js';
 import { SingularitySearch } from './SingularitySearch.js'; 
 import { TimeMachine } from '../core/TimeMachine.js'; 
 import { ChaosGen } from '../ai/ChaosGen.js'; 
-import { Pathways } from '../core/Pathways.js'; // ★ 星座構築エンジン
-import { LockUI } from './LockUI.js'; // ★ 追加：パスコード封印UI
+import { Pathways } from '../core/Pathways.js'; 
+import { LockUI } from './LockUI.js';
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
-        this.lockUI = new LockUI(app); // ★ 追加：ロック画面の初期化
+        this.lockUI = new LockUI(app);
         
         // --- 状態管理 (State) ---
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
@@ -62,8 +62,11 @@ export class UIManager {
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
             
-            const nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, initX + dx));
-            const ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, initY + dy));
+            // ★ 修正：メニューが画面より大きい場合でも、マイナス方向へ引っ張り上げられるように境界線を拡張
+            const maxW = window.innerWidth - el.offsetWidth;
+            const maxH = window.innerHeight - el.offsetHeight;
+            const nx = Math.max(Math.min(0, maxW), Math.min(Math.max(0, maxW), initX + dx));
+            const ny = Math.max(Math.min(0, maxH), Math.min(Math.max(0, maxH), initY + dy));
             
             el.style.left = `${nx}px`;
             el.style.top = `${ny}px`;
@@ -168,6 +171,10 @@ export class UIManager {
         this.appLibraryModal = this.createModal('#00ffcc', 300);
         this.actionMenu = this.createModal('#00ffcc', 220, false);
         this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
+        
+        // ★ 追加：アクションメニュー自体をドラッグ可能にする
+        this.isActionMenuDragged = this.makeDraggable(this.actionMenu);
+        
         this.quickNotePanel = this.createModal('#00ffcc', 200, false);
         window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
 
@@ -567,7 +574,6 @@ export class UIManager {
             return;
         }
 
-        // ★ セキュリティインターセプト：星がロックされている場合はパスワード画面を強制表示
         if (node.isLocked && !node.isTempUnlocked) {
             this.hideQuickNote();
             this.hideMenu();
@@ -578,19 +584,22 @@ export class UIManager {
         }
 
         this.hideQuickNote();
+        
+        // ★ 修正：メニューが画面外に出ないよう、Y座標の初期値を少し上に調整
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
-        this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
+        this.actionMenu.style.top = `${Math.min(screenY, Math.max(0, window.innerHeight - 480))}px`;
         this.actionMenu.style.display = 'flex';
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
         const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
 
-        // ★ 追加：ロック状態に応じたボタンのデザイン変更
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
 
+        // ★ ドラッグ用のハンドルを追加
         this.actionMenu.innerHTML = `
+            <div style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
             ${openUrlBtn}
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -607,8 +616,12 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
+        // ★ ボタンを押す前に「ドラッグ中だったか」を判定する安全装置
+        const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
+
         if (node.url) {
             document.getElementById('m-open').onclick = () => {
+                if (checkDrag()) return;
                 this.hideMenu();
                 const a = document.createElement('a');
                 a.href = node.url;
@@ -620,8 +633,8 @@ export class UIManager {
             };
         }
 
-        // ★ 追加：ロック・アンロックの設定処理
         document.getElementById('m-lock').onclick = () => {
+            if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
@@ -635,20 +648,17 @@ export class UIManager {
             }
         };
 
-        document.getElementById('m-ai').onclick = () => { 
-            this.hideMenu(); 
-            ChaosGen.expand(node, this.app); 
-        };
-
-        document.getElementById('m-dive').onclick = () => { this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
-        document.getElementById('m-note').onclick = () => { this.hideMenu(); this.notePad.open(node); };
-        document.getElementById('m-up').onclick = () => { node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
-        document.getElementById('m-down').onclick = () => { node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
-        document.getElementById('m-ren').onclick = () => { const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
-        document.getElementById('m-set-icon').onclick = () => { const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
-        document.getElementById('m-link').onclick = () => { this.hideMenu(); this.showAppLibrary(node); };
+        document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
+        document.getElementById('m-dive').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
+        document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
+        document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
+        document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
+        document.getElementById('m-ren').onclick = () => { if (checkDrag()) return; const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
+        document.getElementById('m-set-icon').onclick = () => { if (checkDrag()) return; const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
+        document.getElementById('m-link').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
         
         document.getElementById('m-connect').onclick = () => {
+            if (checkDrag()) return;
             this.hideMenu();
             this.app.isLinking = true;
             this.app.linkSourceNode = node;
@@ -675,6 +685,7 @@ export class UIManager {
         };
 
         document.getElementById('m-del').onclick = () => { 
+            if (checkDrag()) return;
             if(confirm("収納しますか？")){ 
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
                 this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
@@ -685,7 +696,10 @@ export class UIManager {
             this.hideMenu(); 
         };
 
-        document.getElementById('m-close').onclick = () => this.hideMenu();
+        document.getElementById('m-close').onclick = () => {
+            if (checkDrag()) return;
+            this.hideMenu();
+        };
     }
 
     showQuickNote(node, x, y) {
