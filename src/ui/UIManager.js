@@ -41,12 +41,15 @@ export class UIManager {
         }, 500);
     }
 
-    makeDraggable(el) {
+    // ★ 修正：ドラッグ判定を「指定したハンドル（持ち手）」に限定し、「離した」信号を強制キャッチする
+    makeDraggable(el, dragHandleId = null) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
         
         const down = (e) => {
+            // ハンドルが指定されている場合、そこ以外を触ったらドラッグさせない
+            if (dragHandleId && e.target.id !== dragHandleId) return; 
+            
             const ev = e.touches ? e.touches[0] : e;
-            e.stopPropagation(); 
             hasMoved = false;
             startX = ev.clientX; startY = ev.clientY;
             const rect = el.getBoundingClientRect();
@@ -58,11 +61,12 @@ export class UIManager {
         const move = (e) => {
             if (!isDragging) return;
             e.stopPropagation();
+            if (e.cancelable) e.preventDefault(); // スマホの画面スクロールを防ぐ
+            
             const ev = e.touches ? e.touches[0] : e;
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
             
-            // ★ 修正：メニューが画面より大きい場合でも、マイナス方向へ引っ張り上げられるように境界線を拡張
             const maxW = window.innerWidth - el.offsetWidth;
             const maxH = window.innerHeight - el.offsetHeight;
             const nx = Math.max(Math.min(0, maxW), Math.min(Math.max(0, maxW), initX + dx));
@@ -77,13 +81,16 @@ export class UIManager {
             if (isDragging) { 
                 isDragging = false; 
                 el.style.transition = '0.2s'; 
-                e.stopPropagation(); 
             }
         };
 
-        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: false});
-        window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive: false});
-        window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+        el.addEventListener('mousedown', down); 
+        el.addEventListener('touchstart', down, {passive: false});
+        // ★ capture:true をつけることで、他の要素に信号が握りつぶされても強制的にキャッチする
+        window.addEventListener('mousemove', move, true); 
+        window.addEventListener('touchmove', move, {passive: false, capture: true});
+        window.addEventListener('mouseup', up, true); 
+        window.addEventListener('touchend', up, true);
         
         return () => hasMoved; 
     }
@@ -172,8 +179,8 @@ export class UIManager {
         this.actionMenu = this.createModal('#00ffcc', 220, false);
         this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
         
-        // ★ 追加：アクションメニュー自体をドラッグ可能にする
-        this.isActionMenuDragged = this.makeDraggable(this.actionMenu);
+        // ★ 修正：ドラッグする要素のID「m-drag-handle」を指定
+        this.isActionMenuDragged = this.makeDraggable(this.actionMenu, 'm-drag-handle');
         
         this.quickNotePanel = this.createModal('#00ffcc', 200, false);
         window.addEventListener('mousedown', (e) => { if(!this.quickNotePanel.contains(e.target)) this.hideQuickNote(); });
@@ -585,7 +592,6 @@ export class UIManager {
 
         this.hideQuickNote();
         
-        // ★ 修正：メニューが画面外に出ないよう、Y座標の初期値を少し上に調整
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, Math.max(0, window.innerHeight - 480))}px`;
         this.actionMenu.style.display = 'flex';
@@ -597,9 +603,8 @@ export class UIManager {
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
 
-        // ★ ドラッグ用のハンドルを追加
         this.actionMenu.innerHTML = `
-            <div style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
+            <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
             ${openUrlBtn}
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -616,7 +621,6 @@ export class UIManager {
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ ボタンを押す前に「ドラッグ中だったか」を判定する安全装置
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
         if (node.url) {
