@@ -1,4 +1,6 @@
 // src/ui/LockUI.js
+import { DynamicSeal } from '../security/DynamicSeal.js'; // ★ 暗号コアを直結
+
 export class LockUI {
     constructor(app) {
         this.app = app;
@@ -39,7 +41,6 @@ export class LockUI {
         document.body.appendChild(this.overlay);
 
         this.btnCancel.onclick = () => this.close();
-        // 背景クリックで閉じる
         this.overlay.addEventListener('mousedown', (e) => { if(e.target === this.overlay) this.close(); });
         this.overlay.addEventListener('touchstart', (e) => { if(e.target === this.overlay) this.close(); }, {passive:true});
     }
@@ -47,43 +48,57 @@ export class LockUI {
     close() {
         this.overlay.style.display = 'none';
         this.input.value = '';
+        this.btnSubmit.innerText = '';
     }
 
     openForSet(node, onSuccess) {
-        this.title.innerText = 'SECURE THIS NODE';
-        this.btnSubmit.innerText = 'LOCK';
+        this.title.innerText = 'ENCRYPT THIS NODE';
+        this.btnSubmit.innerText = 'SEAL';
         this.input.placeholder = 'NEW PASSCODE';
+        this.input.style.borderColor = '#ff4444';
         this.overlay.style.display = 'flex';
         setTimeout(() => this.input.focus(), 100);
         
-        this.btnSubmit.onclick = () => {
+        this.btnSubmit.onclick = async () => {
             if(this.input.value.length < 1) return;
-            node.isLocked = true;
-            node.lockCode = this.input.value;
-            node.isTempUnlocked = true; // 設定直後は解除状態にしておく
-            this.close();
+            this.btnSubmit.innerText = 'ENCRYPTING...';
+            
+            // ★ 本物の暗号化処理を実行
+            await DynamicSeal.seal(node, this.input.value);
+            
+            node.isTempUnlocked = true; // 自分が暗号化した直後はアクセス可能状態にする
             if(window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
             this.app.autoSave();
+            this.close();
             if(onSuccess) onSuccess();
         };
     }
 
     openForUnlock(node, onSuccess) {
-        this.title.innerText = 'RESTRICTED ACCESS';
+        this.title.innerText = 'DECRYPT REQUIRED';
         this.btnSubmit.innerText = 'AUTHORIZE';
         this.input.placeholder = 'PASSCODE';
+        this.input.style.borderColor = '#ff4444';
         this.overlay.style.display = 'flex';
         setTimeout(() => this.input.focus(), 100);
 
-        this.btnSubmit.onclick = () => {
-            if(this.input.value === node.lockCode) {
+        this.btnSubmit.onclick = async () => {
+            if(this.input.value.length < 1) return;
+            this.btnSubmit.innerText = 'DECRYPTING...';
+
+            // ★ 本物の復号処理を実行
+            const success = await DynamicSeal.unseal(node, this.input.value);
+
+            if(success) {
                 node.isTempUnlocked = true;
-                this.close();
                 if(window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.1);
+                this.close();
                 if(onSuccess) onSuccess();
             } else {
+                // 復号失敗（パスワード間違い）
                 this.input.style.borderColor = '#ffffff';
                 this.input.value = '';
+                this.btnSubmit.innerText = 'AUTHORIZE';
                 if(window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.2);
                 setTimeout(() => this.input.style.borderColor = '#ff4444', 200);
             }

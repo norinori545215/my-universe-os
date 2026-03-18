@@ -41,12 +41,10 @@ export class UIManager {
         }, 500);
     }
 
-    // ★ 修正：ドラッグ判定を「指定したハンドル（持ち手）」に限定し、「離した」信号を強制キャッチする
     makeDraggable(el, dragHandleId = null) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
         
         const down = (e) => {
-            // ハンドルが指定されている場合、そこ以外を触ったらドラッグさせない
             if (dragHandleId && e.target.id !== dragHandleId) return; 
             
             const ev = e.touches ? e.touches[0] : e;
@@ -61,7 +59,7 @@ export class UIManager {
         const move = (e) => {
             if (!isDragging) return;
             e.stopPropagation();
-            if (e.cancelable) e.preventDefault(); // スマホの画面スクロールを防ぐ
+            if (e.cancelable) e.preventDefault(); 
             
             const ev = e.touches ? e.touches[0] : e;
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
@@ -86,7 +84,6 @@ export class UIManager {
 
         el.addEventListener('mousedown', down); 
         el.addEventListener('touchstart', down, {passive: false});
-        // ★ capture:true をつけることで、他の要素に信号が握りつぶされても強制的にキャッチする
         window.addEventListener('mousemove', move, true); 
         window.addEventListener('touchmove', move, {passive: false, capture: true});
         window.addEventListener('mouseup', up, true); 
@@ -179,7 +176,6 @@ export class UIManager {
         this.actionMenu = this.createModal('#00ffcc', 220, false);
         this.actionMenu.style.background = 'rgba(0,0,0,0.95)';
         
-        // ★ 修正：ドラッグする要素のID「m-drag-handle」を指定
         this.isActionMenuDragged = this.makeDraggable(this.actionMenu, 'm-drag-handle');
         
         this.quickNotePanel = this.createModal('#00ffcc', 200, false);
@@ -637,13 +633,14 @@ export class UIManager {
             };
         }
 
+        // ★ 修正：本物の暗号解除プロセスを挟む
         document.getElementById('m-lock').onclick = () => {
             if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
-                    node.lockCode = null;
+                    delete node.sealData; // メモリ上から暗号バイナリを破棄
                     node.isTempUnlocked = false;
                     this.app.autoSave();
                 }
