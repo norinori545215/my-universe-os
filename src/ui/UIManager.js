@@ -8,11 +8,13 @@ import { SingularitySearch } from './SingularitySearch.js';
 import { TimeMachine } from '../core/TimeMachine.js'; 
 import { ChaosGen } from '../ai/ChaosGen.js'; 
 import { Pathways } from '../core/Pathways.js'; // ★ 星座構築エンジン
+import { LockUI } from './LockUI.js'; // ★ 追加：パスコード封印UI
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
+        this.lockUI = new LockUI(app); // ★ 追加：ロック画面の初期化
         
         // --- 状態管理 (State) ---
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
@@ -565,6 +567,16 @@ export class UIManager {
             return;
         }
 
+        // ★ セキュリティインターセプト：星がロックされている場合はパスワード画面を強制表示
+        if (node.isLocked && !node.isTempUnlocked) {
+            this.hideQuickNote();
+            this.hideMenu();
+            this.lockUI.openForUnlock(node, () => {
+                this.showMenu(node, screenX, screenY);
+            });
+            return;
+        }
+
         this.hideQuickNote();
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, window.innerHeight - 380)}px`;
@@ -572,8 +584,11 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
-        // ★ 追加：URLが紐付いている場合のみ出現する「リンクを開く」ボタン
         const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
+
+        // ★ 追加：ロック状態に応じたボタンのデザイン変更
+        const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
+        const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
 
         this.actionMenu.innerHTML = `
             ${openUrlBtn}
@@ -588,10 +603,10 @@ export class UIManager {
             <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+            <button id="m-lock" style="${btnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
-        // ★ 追加：「リンクを開く」のアクション（ポップアップブロックを回避する方式）
         if (node.url) {
             document.getElementById('m-open').onclick = () => {
                 this.hideMenu();
@@ -604,6 +619,21 @@ export class UIManager {
                 document.body.removeChild(a);
             };
         }
+
+        // ★ 追加：ロック・アンロックの設定処理
+        document.getElementById('m-lock').onclick = () => {
+            this.hideMenu();
+            if (node.isLocked) {
+                if(confirm("この星の封印を完全に解除しますか？")) {
+                    node.isLocked = false;
+                    node.lockCode = null;
+                    node.isTempUnlocked = false;
+                    this.app.autoSave();
+                }
+            } else {
+                this.lockUI.openForSet(node);
+            }
+        };
 
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 

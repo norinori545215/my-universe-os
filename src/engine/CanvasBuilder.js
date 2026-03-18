@@ -354,31 +354,51 @@ export class CanvasBuilder {
                 const isDoubleTap = (target === this.lastClickedNode) && (now - this.lastClickTime < 300);
 
                 if (isDoubleTap) {
-                    if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
-                    if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
-                    this.spawnRipple(target.x, target.y, '#ff00ff', true); 
+                    // ★ ロック判定を挟むダブルタップ処理
+                    const executeDoubleTapAction = () => {
+                        if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
+                        if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
+                        this.spawnRipple(target.x, target.y, '#ff00ff', true); 
 
-                    if (worldX < target.x) this.executeDiveToNode(target);
-                    else this.moveToNextNode(target);
+                        if (worldX < target.x) this.executeDiveToNode(target);
+                        else this.moveToNextNode(target);
 
-                    this.lastClickTime = 0; this.lastClickedNode = null;
+                        this.lastClickTime = 0; this.lastClickedNode = null;
+                    };
+
+                    if (target.isLocked && !target.isTempUnlocked) {
+                        this.ui.lockUI.openForUnlock(target, executeDoubleTapAction);
+                    } else {
+                        executeDoubleTapAction();
+                    }
+
                 } else {
                     this.lastClickedNode = target; this.lastClickTime = now;
                     this.singleClickTimeout = setTimeout(() => {
-                        this.spawnRipple(target.x, target.y, target.color); 
                         
-                        // ★ 変更部分：ポップアップブロックを回避して確実にリンクを開く処理
-                        if (target.url) {
-                            const a = document.createElement('a');
-                            a.href = target.url;
-                            a.target = target.url.startsWith('http') ? '_blank' : '_self';
-                            a.rel = 'noopener noreferrer';
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                        } else if (window.universeAudio) {
-                            window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                        // ★ ロック判定とポップアップブロック回避を組み合わせたシングルクリック処理
+                        const executeSingleClickAction = () => {
+                            this.spawnRipple(target.x, target.y, target.color); 
+                            
+                            if (target.url) {
+                                const a = document.createElement('a');
+                                a.href = target.url;
+                                a.target = target.url.startsWith('http') ? '_blank' : '_self';
+                                a.rel = 'noopener noreferrer';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                            } else if (window.universeAudio) {
+                                window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                            }
+                        };
+
+                        if (target.url && target.isLocked && !target.isTempUnlocked) {
+                            this.ui.lockUI.openForUnlock(target, executeSingleClickAction);
+                        } else {
+                            executeSingleClickAction();
                         }
+
                     }, 300);
                 }
             }
@@ -564,7 +584,13 @@ export class CanvasBuilder {
 
             this.ctx.shadowBlur = 0; 
 
-            if (node.isLocked) { this.ctx.fillStyle = "#ffcc00"; this.ctx.font = "16px serif"; this.ctx.textAlign = "center"; this.ctx.fillText("🔒", node.x, node.y - drawSize - 10); }
+            // ★ ロック状態を視覚的に表現
+            if (node.isLocked) { 
+                this.ctx.fillStyle = node.isTempUnlocked ? "#00ffcc" : "#ff4444"; 
+                this.ctx.font = "16px serif"; 
+                this.ctx.textAlign = "center"; 
+                this.ctx.fillText(node.isTempUnlocked ? "🔓" : "🔒", node.x, node.y - drawSize - 10); 
+            }
             this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
             const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
         });
