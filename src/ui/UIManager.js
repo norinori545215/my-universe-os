@@ -633,14 +633,14 @@ export class UIManager {
             };
         }
 
-        // ★ 修正：本物の暗号解除プロセスを挟む
         document.getElementById('m-lock').onclick = () => {
             if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
-                    delete node.sealData; // メモリ上から暗号バイナリを破棄
+                    // ★ 修正箇所：ダミーのパスワード(lockCode)ではなく、本物の暗号化バイナリデータ(sealData)を削除する
+                    delete node.sealData; 
                     node.isTempUnlocked = false;
                     this.app.autoSave();
                 }
