@@ -7,7 +7,7 @@ import { Gravity } from '../core/Gravity.js';
 import { SingularitySearch } from './SingularitySearch.js'; 
 import { TimeMachine } from '../core/TimeMachine.js'; 
 import { ChaosGen } from '../ai/ChaosGen.js'; 
-import { Pathways } from '../core/Pathways.js'; // ★ 追加：星座構築エンジン
+import { Pathways } from '../core/Pathways.js'; // ★ 星座構築エンジン
 
 export class UIManager {
     constructor(app) {
@@ -343,12 +343,10 @@ export class UIManager {
         bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
 
-        // ★ 追加：星座ボタンを押した時の処理
         bind('cp-pathways', () => {
             const count = Pathways.autoConstellation(this.app.currentUniverse);
             if (count > 0) {
                 if(window.universeAudio) window.universeAudio.playWarp(); 
-                // エフェクト：すべての星から波紋を出す
                 this.app.currentUniverse.nodes.forEach(n => this.app.spawnRipple(n.x, n.y, '#00ffcc'));
                 this.app.autoSave();
             }
@@ -574,7 +572,11 @@ export class UIManager {
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
         
+        // ★ 追加：URLが紐付いている場合のみ出現する「リンクを開く」ボタン
+        const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
+
         this.actionMenu.innerHTML = `
+            ${openUrlBtn}
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
             <button id="m-note" style="${btnStyle} color:#aaffff;">📝 記憶を編集</button>
@@ -588,6 +590,20 @@ export class UIManager {
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
+
+        // ★ 追加：「リンクを開く」のアクション（ポップアップブロックを回避する方式）
+        if (node.url) {
+            document.getElementById('m-open').onclick = () => {
+                this.hideMenu();
+                const a = document.createElement('a');
+                a.href = node.url;
+                a.target = node.url.startsWith('http') ? '_blank' : '_self';
+                a.rel = 'noopener noreferrer';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+        }
 
         document.getElementById('m-ai').onclick = () => { 
             this.hideMenu(); 

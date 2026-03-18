@@ -366,8 +366,19 @@ export class CanvasBuilder {
                     this.lastClickedNode = target; this.lastClickTime = now;
                     this.singleClickTimeout = setTimeout(() => {
                         this.spawnRipple(target.x, target.y, target.color); 
-                        if (target.url) window.open(target.url, target.url.startsWith('http') ? '_blank' : '_self');
-                        else if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                        
+                        // ★ 変更部分：ポップアップブロックを回避して確実にリンクを開く処理
+                        if (target.url) {
+                            const a = document.createElement('a');
+                            a.href = target.url;
+                            a.target = target.url.startsWith('http') ? '_blank' : '_self';
+                            a.rel = 'noopener noreferrer';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                        } else if (window.universeAudio) {
+                            window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                        }
                     }, 300);
                 }
             }
