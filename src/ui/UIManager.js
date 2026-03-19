@@ -8,11 +8,13 @@ import { SingularitySearch } from './SingularitySearch.js';
 import { TimeMachine } from '../core/TimeMachine.js'; 
 import { ChaosGen } from '../ai/ChaosGen.js'; 
 import { Pathways } from '../core/Pathways.js'; 
+import { LockUI } from './LockUI.js';
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
+        this.lockUI = new LockUI(app);
         
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
@@ -42,10 +44,10 @@ export class UIManager {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
         
         const down = (e) => {
-            hasMoved = false; 
             if (dragHandleId && e.target.id !== dragHandleId) return; 
             
             const ev = e.touches ? e.touches[0] : e;
+            hasMoved = false;
             startX = ev.clientX; startY = ev.clientY;
             const rect = el.getBoundingClientRect();
             initX = rect.left; initY = rect.top;
@@ -551,7 +553,9 @@ export class UIManager {
         let count = 0;
         const search = (u) => {
             u.nodes.forEach(n => {
-                if(n.isGhost) return; // 幽霊星は検索に出さない
+                // ★ 幽霊星は検索結果から完全に除外する
+                if(n.isGhost) return;
+
                 if(n.name.toLowerCase().includes(query.toLowerCase()) && count < 10) {
                     const b = document.createElement('button');
                     b.innerText = `🌌 ${n.name}`; 
@@ -575,6 +579,15 @@ export class UIManager {
             return;
         }
 
+        if (node.isLocked && !node.isTempUnlocked) {
+            this.hideQuickNote();
+            this.hideMenu();
+            this.lockUI.openForUnlock(node, () => {
+                this.showMenu(node, screenX, screenY);
+            });
+            return;
+        }
+
         this.hideQuickNote();
         
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
@@ -585,6 +598,10 @@ export class UIManager {
         
         const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
 
+        const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
+        const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
+        
+        // ★ 追加：GhostNode（幽霊星）の設定ボタン
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
 
@@ -603,6 +620,7 @@ export class UIManager {
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
             <button id="m-ghost" style="${btnStyle} color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
+            <button id="m-lock" style="${btnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
 
@@ -622,12 +640,28 @@ export class UIManager {
             };
         }
 
+        // ★ 追加：幽霊星への切り替えアクション
         document.getElementById('m-ghost').onclick = () => {
             if (checkDrag()) return;
             this.hideMenu();
             node.isGhost = !node.isGhost;
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playWarp();
+        };
+
+        document.getElementById('m-lock').onclick = () => {
+            if (checkDrag()) return;
+            this.hideMenu();
+            if (node.isLocked) {
+                if(confirm("この星の封印を完全に解除しますか？")) {
+                    node.isLocked = false;
+                    delete node.lockCode; 
+                    node.isTempUnlocked = false;
+                    this.app.autoSave();
+                }
+            } else {
+                this.lockUI.openForSet(node);
+            }
         };
 
         document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
