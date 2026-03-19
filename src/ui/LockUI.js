@@ -2,7 +2,6 @@
 import { DynamicSeal } from '../security/DynamicSeal.js';
 
 export class LockUI {
-    // ★ 修正：UIManagerから自爆指令(onPanic)を受け取るようにしました
     constructor(app, onPanic) {
         this.app = app;
         this.onPanic = onPanic;
@@ -98,7 +97,7 @@ export class LockUI {
         this.btnSubmit.onclick = async () => {
             if(this.input.value.length < 1) return;
 
-            // ★ 修正：パニックコードの検知と発火を確実に行う
+            // ★ ここでパニックコードを検知して自爆する
             const rawPanicCode = localStorage.getItem('universe_panic_code');
             const currentPanicCode = (rawPanicCode !== null && rawPanicCode !== "") ? rawPanicCode : '0000';
             

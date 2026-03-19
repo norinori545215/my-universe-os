@@ -9,6 +9,7 @@ import { TimeMachine } from '../core/TimeMachine.js';
 import { ChaosGen } from '../ai/ChaosGen.js'; 
 import { Pathways } from '../core/Pathways.js'; 
 import { LockUI } from './LockUI.js';
+import { StardustCapsule } from '../security/StardustCapsule.js';
 
 export class UIManager {
     constructor(app) {
@@ -368,10 +369,14 @@ export class UIManager {
                 </div>
                 <div style="font-size:11px; color:#ff6699; margin-bottom:10px; letter-spacing:1px;">STORAGE MANAGEMENT</div>
                 <button id="cp-btn-inventory" style="width:100%; padding:14px; background:#220022; color:#ff6699; border:1px solid #ff6699; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:bold;">🌌 亜空間ポケットを開く</button>
-                <div style="display:flex; gap:10px;">
-                    <button id="cp-btn-export" style="flex:1; padding:12px; background:#112244; color:#66aaff; border:1px solid #66aaff; border-radius:8px; font-size:12px;">💾 出力 (Export)</button>
-                    <button id="cp-btn-import" style="flex:1; padding:12px; background:#442211; color:#ffaa66; border:1px solid #ffaa66; border-radius:8px; font-size:12px;">📂 読込 (Import)</button>
-                    <input type="file" id="cp-import-file" style="display:none;" accept=".universe">
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; gap:10px;">
+                        <button id="cp-btn-export" style="flex:1; padding:12px; background:#112244; color:#66aaff; border:1px solid #66aaff; border-radius:8px; font-size:12px;">💾 出力 (通常)</button>
+                        <button id="cp-btn-export-img" style="flex:1; padding:12px; background:#221144; color:#ff66aa; border:1px solid #ff66aa; border-radius:8px; font-size:12px;">🖼️ 偽装出力 (画像へ隠す)</button>
+                        <input type="file" id="cp-export-img-file" style="display:none;" accept="image/png, image/jpeg">
+                    </div>
+                    <button id="cp-btn-import" style="width:100%; padding:12px; background:#442211; color:#ffaa66; border:1px solid #ffaa66; border-radius:8px; font-size:12px;">📂 読込 (通常 / 偽装画像)</button>
+                    <input type="file" id="cp-import-file" style="display:none;" accept=".universe, image/png, image/jpeg">
                 </div>
             `;
         }
@@ -441,7 +446,6 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
-        // ★ 修正：ボタンを押した時にプロンプトを出し、保存後は一切表示しない
         bind('cp-btn-set-panic', () => {
             const currentCode = localStorage.getItem('universe_panic_code') || '0000';
             const newCode = prompt("ダミーパスワードを入力してください。\n（現在のコード: " + (currentCode === '0000' ? "未設定" : "****") + "）", "");
@@ -469,13 +473,48 @@ export class UIManager {
         bind('cp-btn-inventory', () => { this.controlPanel.style.display='none'; this.showInventoryUI(); });
         bind('cp-btn-export', () => Singularity.export());
         
+        // ★ 追加：画像へ偽装して出力するイベント
+        const exportImgFile = document.getElementById('cp-export-img-file');
+        bind('cp-btn-export-img', () => {
+            alert("データを隠すための「ベースとなる画像（カモフラージュ用）」を選択してください。");
+            exportImgFile.click();
+        });
+        if(exportImgFile) exportImgFile.onchange = async (e) => {
+            if(e.target.files[0]) {
+                const rawData = sessionStorage.getItem('my_universe_save_data');
+                if(!rawData) return alert("保存データがありません。");
+                await StardustCapsule.embedData(rawData, e.target.files[0]);
+                alert("画像の中に宇宙を封印しました！");
+            }
+        };
+        
+        // ★ 修正：通常ファイルと画像ファイルの両方を読み込めるようにする
         const fileInput = document.getElementById('cp-import-file');
         bind('cp-btn-import', () => fileInput.click());
         if(fileInput) fileInput.onchange = async (e) => {
-            if(e.target.files[0] && confirm("現在の宇宙を上書きしてインポートしますか？")){
-                const d = await Singularity.importAndVerify(e.target.files[0]);
-                await saveEncryptedUniverse(d); 
-                window.location.reload();
+            const file = e.target.files[0];
+            if(!file) return;
+            
+            if(confirm("現在の宇宙を上書きしてインポートしますか？")){
+                let dataToImport = null;
+                
+                if (file.type.startsWith('image/')) {
+                    // 画像が選ばれた場合はステガノグラフィの抽出を試みる
+                    const hiddenData = await StardustCapsule.extractData(file);
+                    if (hiddenData) {
+                        dataToImport = JSON.parse(hiddenData);
+                    } else {
+                        return alert("この画像には宇宙のデータが隠されていません。");
+                    }
+                } else {
+                    // 通常の .universe ファイル
+                    dataToImport = await Singularity.importAndVerify(file);
+                }
+                
+                if (dataToImport) {
+                    await saveEncryptedUniverse(dataToImport); 
+                    window.location.reload();
+                }
             }
         };
 
