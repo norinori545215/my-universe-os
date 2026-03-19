@@ -16,7 +16,6 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.lockUI = new LockUI(app);
         
-        // --- 状態管理 (State) ---
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
         this.state = {
@@ -310,6 +309,12 @@ export class UIManager {
                         🔤 中央透かし文字を表示
                     </label>
                 </div>
+
+                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 PANIC WIPE (緊急自爆・擬態)</div>
+                <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
+                    <div style="font-size:11px; color:#ff8888; margin-bottom:5px;">ダミーパスワード（この鍵を入力するとデータが擬態します）</div>
+                    <input type="text" id="cp-panic-code" placeholder="0000" value="${localStorage.getItem('universe_panic_code')||''}" style="width:100%; background:rgba(0,0,0,0.5); color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:8px; box-sizing:border-box; outline:none; font-family:monospace; letter-spacing:2px;">
+                </div>
                 
                 <div style="margin-top:30px;">
                     <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
@@ -401,6 +406,10 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
+        // ★ パニックコードの保存イベント
+        const panicInput = document.getElementById('cp-panic-code');
+        if(panicInput) panicInput.oninput = (e) => localStorage.setItem('universe_panic_code', e.target.value);
+
         bind('cp-spawn-btn', () => {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
@@ -436,6 +445,36 @@ export class UIManager {
     updateMode(mode) {
         this.app.appMode = mode;
         this.renderCP(); 
+    }
+
+    // ★ 追加：自爆・擬態アクション
+    triggerPanic() {
+        // 1. 画面を赤くフラッシュさせて警告音
+        const flash = document.createElement('div');
+        flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#ff0000;z-index:99999;pointer-events:none;transition:opacity 0.8s ease-out;';
+        document.body.appendChild(flash);
+        setTimeout(() => flash.style.opacity = '0', 50);
+        setTimeout(() => flash.remove(), 1000);
+        if (window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.5, 800);
+
+        // 2. 現在の宇宙のすべてのデータを破壊し、無害なダミーデータにすり替える
+        this.app.currentUniverse.name = "System Local Domain";
+        this.app.currentUniverse.nodes = [];
+        this.app.currentUniverse.links = [];
+        
+        // ダミーの星を生成
+        this.app.currentUniverse.addNode('Public Docs', -150, -50, 30, '#888888', 'galaxy');
+        this.app.currentUniverse.addNode('Recycle Bin', 100, -100, 20, '#555555', 'star');
+
+        // 3. 履歴（パンくず）や亜空間ポケットの隠しデータも全消去
+        this.app.universeHistory = [];
+        this.app.blackHole = [];
+        this.app.wormholes = [];
+        this.app.camera.reset();
+        
+        // 4. この「空っぽのダミー状態」をセーブデータに上書き保存し、完全証拠隠滅
+        this.app.autoSave();
+        this.updateBreadcrumbs();
     }
 
     updateUIState() {
@@ -554,8 +593,7 @@ export class UIManager {
         let count = 0;
         const search = (u) => {
             u.nodes.forEach(n => {
-                // ★ 追加：幽霊星はレーダー検索から除外する
-                if(n.isGhost) return;
+                if(n.isGhost) return; 
 
                 if(n.name.toLowerCase().includes(query.toLowerCase()) && count < 10) {
                     const b = document.createElement('button');
@@ -601,8 +639,7 @@ export class UIManager {
 
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
-
-        // ★ 追加：GhostNode（幽霊星）の設定ボタンのテキストと色
+        
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
 
@@ -641,7 +678,6 @@ export class UIManager {
             };
         }
 
-        // ★ 追加：幽霊星への切り替えアクション
         document.getElementById('m-ghost').onclick = () => {
             if (checkDrag()) return;
             this.hideMenu();
@@ -656,7 +692,7 @@ export class UIManager {
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
-                    delete node.lockCode; // 文字列化した暗号データを破棄
+                    delete node.password; 
                     node.isTempUnlocked = false;
                     this.app.autoSave();
                 }
