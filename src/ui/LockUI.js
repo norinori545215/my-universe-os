@@ -2,7 +2,7 @@
 import { DynamicSeal } from '../security/DynamicSeal.js';
 
 export class LockUI {
-    // ★ 修正：自爆ボタンの命令（onPanic）をUIManagerから直接受け取るようにしました
+    // ★ 修正：UIManagerから自爆指令(onPanic)を受け取るようにしました
     constructor(app, onPanic) {
         this.app = app;
         this.onPanic = onPanic;
@@ -98,13 +98,12 @@ export class LockUI {
         this.btnSubmit.onclick = async () => {
             if(this.input.value.length < 1) return;
 
-            // ★ 修正：パニックコードの判定を確実にしました
+            // ★ 修正：パニックコードの検知と発火を確実に行う
             const rawPanicCode = localStorage.getItem('universe_panic_code');
             const currentPanicCode = (rawPanicCode !== null && rawPanicCode !== "") ? rawPanicCode : '0000';
             
             if (this.input.value === currentPanicCode) {
                 this.close();
-                // 確実に自爆システムを発火させる
                 if(this.onPanic) this.onPanic();
                 return;
             }
