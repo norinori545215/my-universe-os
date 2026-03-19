@@ -404,7 +404,7 @@ export class CanvasBuilder {
                             }
                         };
 
-                        if (target.url && target.isLocked && !target.isTempUnlocked) {
+                        if (target.isLocked && !target.isTempUnlocked) {
                             this.ui.lockUI.openForUnlock(target, executeSingleClickAction);
                         } else {
                             executeSingleClickAction();
