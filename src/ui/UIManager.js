@@ -14,7 +14,7 @@ export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
-        this.lockUI = new LockUI(app);
+        this.lockUI = new LockUI(app, () => this.triggerPanic());
         
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
