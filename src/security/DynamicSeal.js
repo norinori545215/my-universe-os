@@ -34,34 +34,39 @@ export class DynamicSeal {
             { name: "AES-GCM", iv: iv }, key, enc.encode(payload)
         );
 
+        // ★ 変更点：セーブシステムに消されないよう、暗号データを文字列化して lockCode に偽装保存する
+        const sealObj = {
+            ciphertext: Array.from(new Uint8Array(encrypted)),
+            iv: Array.from(iv),
+            salt: Array.from(salt)
+        };
+        node.lockCode = JSON.stringify(sealObj);
+
         // 🌟 【絶対守護】元の平文データをメモリ上から物理的に消去・上書き
         node.name = "🔒 封印された星";
         node.note = "";
         node.url = "";
         node.iconUrl = "";
 
-        // 暗号化されたバイナリだけを保存
-        node.sealData = {
-            ciphertext: Array.from(new Uint8Array(encrypted)),
-            iv: Array.from(iv),
-            salt: Array.from(salt)
-        };
-
         node.isLocked = true;
         node.isTempUnlocked = false;
-        delete node.lockCode; // 平文パスワードは絶対に保持しない
+        
+        // 古い形式のデータ(sealData)が残っていればお掃除
+        if (node.sealData) delete node.sealData; 
     }
 
     /**
      * 暗号化された星を復号し、元のデータを復元する
      */
     static async unseal(node, password) {
-        if (!node.sealData) return false;
+        // ★ 変更点：lockCode の中に暗号データ（JSON文字列）が隠されているかチェック
+        if (!node.lockCode || !node.lockCode.startsWith('{')) return false;
 
         try {
-            const salt = new Uint8Array(node.sealData.salt);
-            const iv = new Uint8Array(node.sealData.iv);
-            const ciphertext = new Uint8Array(node.sealData.ciphertext);
+            const sealObj = JSON.parse(node.lockCode);
+            const salt = new Uint8Array(sealObj.salt);
+            const iv = new Uint8Array(sealObj.iv);
+            const ciphertext = new Uint8Array(sealObj.ciphertext);
 
             const key = await this.deriveKey(password, salt);
             const decrypted = await crypto.subtle.decrypt(

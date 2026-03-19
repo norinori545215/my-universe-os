@@ -16,7 +16,6 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.lockUI = new LockUI(app);
         
-        // --- 状態管理 (State) ---
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
         this.state = {
@@ -554,6 +553,9 @@ export class UIManager {
         let count = 0;
         const search = (u) => {
             u.nodes.forEach(n => {
+                // ★ 幽霊星は検索結果から完全に除外する
+                if(n.isGhost) return;
+
                 if(n.name.toLowerCase().includes(query.toLowerCase()) && count < 10) {
                     const b = document.createElement('button');
                     b.innerText = `🌌 ${n.name}`; 
@@ -598,6 +600,10 @@ export class UIManager {
 
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
+        
+        // ★ 追加：GhostNode（幽霊星）の設定ボタン
+        const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
+        const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
 
         this.actionMenu.innerHTML = `
             <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
@@ -613,6 +619,7 @@ export class UIManager {
             <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
             <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
             <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+            <button id="m-ghost" style="${btnStyle} color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
             <button id="m-lock" style="${btnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
             <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
@@ -633,14 +640,22 @@ export class UIManager {
             };
         }
 
+        // ★ 追加：幽霊星への切り替えアクション
+        document.getElementById('m-ghost').onclick = () => {
+            if (checkDrag()) return;
+            this.hideMenu();
+            node.isGhost = !node.isGhost;
+            this.app.autoSave();
+            if(window.universeAudio) window.universeAudio.playWarp();
+        };
+
         document.getElementById('m-lock').onclick = () => {
             if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
-                    // ★ 修正箇所：ダミーのパスワード(lockCode)ではなく、本物の暗号化バイナリデータ(sealData)を削除する
-                    delete node.sealData; 
+                    delete node.lockCode; 
                     node.isTempUnlocked = false;
                     this.app.autoSave();
                 }

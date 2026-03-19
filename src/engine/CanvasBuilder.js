@@ -303,9 +303,22 @@ export class CanvasBuilder {
     }
 
     getNodeAt(x, y) {
+        // ★ 追加：カメラの現在位置（画面の中央）
+        const screenCenterX = -this.camera.x;
+        const screenCenterY = -this.camera.y;
+
         const nodes = this.currentUniverse.nodes;
         for(let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i];
+
+            // ★ 追加：幽霊星の場合、カメラが十分に近づいていなければタップ判定から除外する
+            if (node.isGhost) {
+                const distToCenter = Math.hypot(node.x - screenCenterX, node.y - screenCenterY);
+                if (distToCenter > (300 / this.camera.scale)) {
+                    continue; // 遠い場合は見えないのでタップ不可
+                }
+            }
+
             const dx = x - node.x; 
             const dy = y - node.y;
             if (Math.sqrt(dx * dx + dy * dy) < node.size + 25) {
@@ -354,7 +367,6 @@ export class CanvasBuilder {
                 const isDoubleTap = (target === this.lastClickedNode) && (now - this.lastClickTime < 300);
 
                 if (isDoubleTap) {
-                    // ★ ロック判定を挟むダブルタップ処理
                     const executeDoubleTapAction = () => {
                         if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
                         if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
@@ -376,7 +388,6 @@ export class CanvasBuilder {
                     this.lastClickedNode = target; this.lastClickTime = now;
                     this.singleClickTimeout = setTimeout(() => {
                         
-                        // ★ ロック判定とポップアップブロック回避を組み合わせたシングルクリック処理
                         const executeSingleClickAction = () => {
                             this.spawnRipple(target.x, target.y, target.color); 
                             
@@ -461,6 +472,10 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
+        // ★ 追加：現在のカメラの座標を取得（幽霊星の可視判定用）
+        const screenCenterX = -this.camera.x;
+        const screenCenterY = -this.camera.y;
+
         const findRealNode = (ref) => {
             if (!ref) return null;
             return this.currentUniverse.nodes.find(n => 
@@ -537,6 +552,14 @@ export class CanvasBuilder {
             const realSource = findRealNode(link.source);
             const realTarget = findRealNode(link.target);
             if (realSource && realTarget) {
+                // ★ 追加：親か子が幽霊星で、かつカメラから遠い場合はリンクの線も描画しない
+                if (realSource.isGhost) {
+                    if (Math.hypot(realSource.x - screenCenterX, realSource.y - screenCenterY) > (300 / this.camera.scale)) return;
+                }
+                if (realTarget.isGhost) {
+                    if (Math.hypot(realTarget.x - screenCenterX, realTarget.y - screenCenterY) > (300 / this.camera.scale)) return;
+                }
+
                 const dx = realTarget.baseX - realSource.baseX;
                 const dy = realTarget.baseY - realSource.baseY;
                 let radius = Math.hypot(dx, dy);
@@ -567,6 +590,21 @@ export class CanvasBuilder {
         }
 
         this.currentUniverse.nodes.forEach(node => {
+            // ★ 追加：幽霊星の処理。カメラとの距離に応じて描画をスキップするか、透明度を変えて描画する
+            let globalAlpha = 1.0;
+            if (node.isGhost) {
+                const distToCenter = Math.hypot(node.x - screenCenterX, node.y - screenCenterY);
+                const visibleRadius = 300 / this.camera.scale;
+                
+                // カメラから遠ければ一切描画しない（完全ステルス）
+                if (distToCenter > visibleRadius) return;
+                
+                // 近づくにつれてフワッと浮かび上がる演出（透明度の計算）
+                globalAlpha = 1.0 - (distToCenter / visibleRadius);
+            }
+
+            this.ctx.globalAlpha = globalAlpha;
+
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
             drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; drawSize += pulse * 2.0; 
@@ -584,7 +622,6 @@ export class CanvasBuilder {
 
             this.ctx.shadowBlur = 0; 
 
-            // ★ ロック状態を視覚的に表現
             if (node.isLocked) { 
                 this.ctx.fillStyle = node.isTempUnlocked ? "#00ffcc" : "#ff4444"; 
                 this.ctx.font = "16px serif"; 
@@ -593,6 +630,9 @@ export class CanvasBuilder {
             }
             this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
             const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
+            
+            // 描画後は透明度を元に戻す
+            this.ctx.globalAlpha = 1.0;
         });
 
         this.ctx.restore();
