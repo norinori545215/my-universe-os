@@ -1,5 +1,5 @@
 // src/ui/LockUI.js
-import { DynamicSeal } from '../security/DynamicSeal.js'; // ★ 暗号コアを直結
+import { DynamicSeal } from '../security/DynamicSeal.js';
 
 export class LockUI {
     constructor(app) {
@@ -63,14 +63,25 @@ export class LockUI {
             if(this.input.value.length < 1) return;
             this.btnSubmit.innerText = 'ENCRYPTING...';
             
-            // ★ 本物の暗号化処理を実行
-            await DynamicSeal.seal(node, this.input.value);
-            
-            node.isTempUnlocked = true; // 自分が暗号化した直後はアクセス可能状態にする
-            if(window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
-            this.app.autoSave();
-            this.close();
-            if(onSuccess) onSuccess();
+            try {
+                if (!window.crypto || !window.crypto.subtle) throw new Error("SECURE_CONTEXT_REQUIRED");
+                
+                await DynamicSeal.seal(node, this.input.value);
+                
+                node.isTempUnlocked = true;
+                if(window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
+                this.app.autoSave();
+                this.close();
+                if(onSuccess) onSuccess();
+
+            } catch (error) {
+                if (error.message === "SECURE_CONTEXT_REQUIRED") {
+                    alert("【セキュリティ警告】\n軍事レベルの暗号化機能は、HTTPS通信またはlocalhost環境でのみ動作します。");
+                } else {
+                    alert("暗号化エラー: " + error.message);
+                }
+                this.btnSubmit.innerText = 'SEAL';
+            }
         };
     }
 
@@ -86,21 +97,28 @@ export class LockUI {
             if(this.input.value.length < 1) return;
             this.btnSubmit.innerText = 'DECRYPTING...';
 
-            // ★ 本物の復号処理を実行
-            const success = await DynamicSeal.unseal(node, this.input.value);
+            try {
+                // ここで旧パスワード対応も兼ねた新ロジックを呼び出す
+                const success = await DynamicSeal.unseal(node, this.input.value);
 
-            if(success) {
-                node.isTempUnlocked = true;
-                if(window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.1);
-                this.close();
-                if(onSuccess) onSuccess();
-            } else {
-                // 復号失敗（パスワード間違い）
-                this.input.style.borderColor = '#ffffff';
-                this.input.value = '';
+                if(success) {
+                    node.isTempUnlocked = true;
+                    if(window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.1);
+                    this.close();
+                    if(onSuccess) onSuccess();
+                } else {
+                    // パスワード間違い時
+                    this.input.style.borderColor = '#ffffff';
+                    this.input.value = '';
+                    this.btnSubmit.innerText = 'AUTHORIZE';
+                    if(window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.2);
+                    setTimeout(() => this.input.style.borderColor = '#ff4444', 200);
+                }
+            } catch (error) {
+                // 想定外のエラー時に無反応に見える現象を防ぐ
+                alert("復号処理エラー: " + error.message);
+                console.error(error);
                 this.btnSubmit.innerText = 'AUTHORIZE';
-                if(window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.2);
-                setTimeout(() => this.input.style.borderColor = '#ff4444', 200);
             }
         };
     }
