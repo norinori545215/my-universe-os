@@ -701,7 +701,7 @@ export class UIManager {
             if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
-                if(confirm("この星の封印を解除しますか？\n(完全消去のパニックコードを入力した場合はデータが消滅します)")) {
+                if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
                     delete node.password; 
                     node.isTempUnlocked = false;
