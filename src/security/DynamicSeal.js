@@ -35,7 +35,8 @@ export class DynamicSeal {
             salt: Array.from(salt)
         };
 
-        node.lockCode = JSON.stringify(sealObj);
+        // ★ 修正：セーブシステムに消されないよう、標準プロパティの「password」に暗号データを格納する
+        node.password = JSON.stringify(sealObj);
         node.isLocked = true;
         node.isTempUnlocked = false;
 
@@ -44,29 +45,29 @@ export class DynamicSeal {
         node.url = "";
         node.iconUrl = "";
         
+        if (node.lockCode) delete node.lockCode;
         if (node.sealData) delete node.sealData; 
     }
 
     static async unseal(node, password) {
-        if (!node.lockCode) return false;
+        // ★ 修正：passwordプロパティから暗号データを読み込む
+        if (!node.password) return false;
 
-        // ★ 救済措置：古いシステム（暗号化前）で作られたパスワードならそのまま通す
-        if (typeof node.lockCode === 'string' && !node.lockCode.startsWith('{')) {
-            return node.lockCode === password;
+        // 古い平文パスワードの救済
+        if (typeof node.password === 'string' && !node.password.startsWith('{')) {
+            return node.password === password;
         }
 
         try {
-            // セーブデータの形式（文字列かオブジェクトか）に関わらず安全に読み込む
             let sealObj;
-            if (typeof node.lockCode === 'string') {
-                sealObj = JSON.parse(node.lockCode);
-            } else if (typeof node.lockCode === 'object') {
-                sealObj = node.lockCode;
+            if (typeof node.password === 'string') {
+                sealObj = JSON.parse(node.password);
+            } else if (typeof node.password === 'object') {
+                sealObj = node.password;
             } else {
                 return false;
             }
 
-            // セーブ時に配列が崩れる現象への対策
             const getArray = (data) => Array.isArray(data) ? data : Object.values(data || {});
 
             const salt = new Uint8Array(getArray(sealObj.salt));
@@ -81,7 +82,6 @@ export class DynamicSeal {
             const dec = new TextDecoder();
             const payload = JSON.parse(dec.decode(decrypted));
 
-            // 復号成功時のみデータを復元
             node.name = payload.name;
             node.note = payload.note;
             node.url = payload.url;

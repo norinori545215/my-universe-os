@@ -16,6 +16,7 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         this.lockUI = new LockUI(app);
         
+        // --- 状態管理 (State) ---
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
         this.state = {
@@ -553,7 +554,7 @@ export class UIManager {
         let count = 0;
         const search = (u) => {
             u.nodes.forEach(n => {
-                // ★ 幽霊星は検索結果から完全に除外する
+                // ★ 追加：幽霊星はレーダー検索から除外する
                 if(n.isGhost) return;
 
                 if(n.name.toLowerCase().includes(query.toLowerCase()) && count < 10) {
@@ -600,8 +601,8 @@ export class UIManager {
 
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
-        
-        // ★ 追加：GhostNode（幽霊星）の設定ボタン
+
+        // ★ 追加：GhostNode（幽霊星）の設定ボタンのテキストと色
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
 
@@ -655,7 +656,7 @@ export class UIManager {
             if (node.isLocked) {
                 if(confirm("この星の封印を完全に解除しますか？")) {
                     node.isLocked = false;
-                    delete node.lockCode; 
+                    delete node.lockCode; // 文字列化した暗号データを破棄
                     node.isTempUnlocked = false;
                     this.app.autoSave();
                 }
