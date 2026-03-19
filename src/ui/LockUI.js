@@ -2,8 +2,10 @@
 import { DynamicSeal } from '../security/DynamicSeal.js';
 
 export class LockUI {
-    constructor(app) {
+    // ★ 修正：自爆ボタンの命令（onPanic）をUIManagerから直接受け取るようにしました
+    constructor(app, onPanic) {
         this.app = app;
+        this.onPanic = onPanic;
         this.createUI();
     }
 
@@ -95,10 +97,21 @@ export class LockUI {
 
         this.btnSubmit.onclick = async () => {
             if(this.input.value.length < 1) return;
+
+            // ★ 修正：パニックコードの判定を確実にしました
+            const rawPanicCode = localStorage.getItem('universe_panic_code');
+            const currentPanicCode = (rawPanicCode !== null && rawPanicCode !== "") ? rawPanicCode : '0000';
+            
+            if (this.input.value === currentPanicCode) {
+                this.close();
+                // 確実に自爆システムを発火させる
+                if(this.onPanic) this.onPanic();
+                return;
+            }
+
             this.btnSubmit.innerText = 'DECRYPTING...';
 
             try {
-                // ここで旧パスワード対応も兼ねた新ロジックを呼び出す
                 const success = await DynamicSeal.unseal(node, this.input.value);
 
                 if(success) {
@@ -107,7 +120,6 @@ export class LockUI {
                     this.close();
                     if(onSuccess) onSuccess();
                 } else {
-                    // パスワード間違い時
                     this.input.style.borderColor = '#ffffff';
                     this.input.value = '';
                     this.btnSubmit.innerText = 'AUTHORIZE';
@@ -115,7 +127,6 @@ export class LockUI {
                     setTimeout(() => this.input.style.borderColor = '#ff4444', 200);
                 }
             } catch (error) {
-                // 想定外のエラー時に無反応に見える現象を防ぐ
                 alert("復号処理エラー: " + error.message);
                 console.error(error);
                 this.btnSubmit.innerText = 'AUTHORIZE';
