@@ -214,7 +214,7 @@ export class UIManager {
         }
     }
 
-    // ★ 追加：自爆・擬態アクション
+    // ★ 自爆・擬態アクション
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -228,20 +228,22 @@ export class UIManager {
         setTimeout(() => flash.remove(), 1000);
         if (window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.5, 800);
 
-        // 2. データを完全に破壊し、無害なダミーにすり替える
+        // 2. 現在の宇宙のすべてのデータを破壊し、無害なダミーデータにすり替える
         this.app.currentUniverse.name = "System Local Domain";
         this.app.currentUniverse.nodes = [];
         this.app.currentUniverse.links = [];
         
+        // ダミーの星を生成
         this.app.currentUniverse.addNode('Public Docs', -150, -50, 30, '#888888', 'galaxy');
         this.app.currentUniverse.addNode('Recycle Bin', 100, -100, 20, '#555555', 'star');
 
+        // 3. 履歴（パンくず）や亜空間ポケットの隠しデータも全消去
         this.app.universeHistory = [];
         this.app.blackHole = [];
         this.app.wormholes = [];
         this.app.camera.reset();
         
-        // 3. このダミー状態をセーブデータに上書き保存し、完全証拠隠滅
+        // 4. この「空っぽのダミー状態」をセーブデータに上書き保存し、完全証拠隠滅
         this.app.autoSave();
         this.updateBreadcrumbs();
     }
@@ -345,8 +347,8 @@ export class UIManager {
 
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 PANIC WIPE (緊急自爆・擬態)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
-                    <div style="font-size:11px; color:#ff8888; margin-bottom:5px;">ダミーパスワード（この鍵を入力するとデータが消滅し擬態します）</div>
-                    <input type="text" id="cp-panic-code" placeholder="0000" value="${localStorage.getItem('universe_panic_code')||''}" style="width:100%; background:rgba(0,0,0,0.5); color:#ff4444; border:1px solid #ff4444; border-radius:6px; padding:8px; box-sizing:border-box; outline:none; font-family:monospace; letter-spacing:2px;">
+                    <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">背後から設定を見られてもバレないよう、コードは非表示です。</div>
+                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">コードを極秘に設定 / 変更</button>
                 </div>
                 
                 <div style="margin-top:30px;">
@@ -439,9 +441,15 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
-        // ★ パニックコードの入力保存イベント
-        const panicInput = document.getElementById('cp-panic-code');
-        if(panicInput) panicInput.oninput = (e) => localStorage.setItem('universe_panic_code', e.target.value);
+        // ★ 修正：ボタンを押した時にプロンプトを出し、保存後は一切表示しない
+        bind('cp-btn-set-panic', () => {
+            const currentCode = localStorage.getItem('universe_panic_code') || '0000';
+            const newCode = prompt("ダミーパスワードを入力してください。\n（現在のコード: " + (currentCode === '0000' ? "未設定" : "****") + "）", "");
+            if (newCode !== null && newCode.trim() !== "") {
+                localStorage.setItem('universe_panic_code', newCode.trim());
+                alert("ダミーパスワードを暗黙裏に更新しました。");
+            }
+        });
 
         bind('cp-spawn-btn', () => {
             const color = document.getElementById('cp-spawn-color').value;
@@ -693,7 +701,7 @@ export class UIManager {
             if (checkDrag()) return;
             this.hideMenu();
             if (node.isLocked) {
-                if(confirm("この星の封印を完全に解除しますか？")) {
+                if(confirm("この星の封印を解除しますか？\n(完全消去のパニックコードを入力した場合はデータが消滅します)")) {
                     node.isLocked = false;
                     delete node.password; 
                     node.isTempUnlocked = false;
