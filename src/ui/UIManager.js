@@ -1,4 +1,5 @@
 // src/ui/UIManager.js
+import { NexusUI } from './NexusUI.js';
 import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
@@ -20,6 +21,7 @@ export class UIManager {
         // ★ 修正：LockUIに自爆プログラム（triggerPanic）を渡す
         this.lockUI = new LockUI(app, () => this.triggerPanic());
         this.mediaView = new MediaViewUI(app);
+        this.nexusUI = new NexusUI(app);
         
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
@@ -700,6 +702,7 @@ export class UIManager {
             ${openUrlBtn}
             
             <button id="m-vault" style="${btnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
+            <button id="m-nexus" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold; margin-top:10px;">📡 QRセキュア通信</button>
             <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
 
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
@@ -732,6 +735,8 @@ export class UIManager {
             vaultUpload.click();
         };
 
+        document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
+
         if (vaultUpload) {
             vaultUpload.onchange = async (e) => {
                 const files = e.target.files;
@@ -749,7 +754,7 @@ export class UIManager {
                 alert(`${successCount}件のファイルを暗号化して地下金庫に封印しました。`);
             };
         }
-        
+
         if (vaultUpload) {
             vaultUpload.onchange = async (e) => {
                 const files = e.target.files;
