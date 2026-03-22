@@ -1,5 +1,4 @@
 // src/ui/UIManager.js
-import { NexusUI } from './NexusUI.js';
 import { Singularity } from '../db/Singularity.js';
 import { saveEncryptedUniverse } from '../db/CloudSync.js';
 import { NotePadUI } from './NotePadUI.js';
@@ -13,6 +12,8 @@ import { LockUI } from './LockUI.js';
 import { StardustCapsule } from '../security/StardustCapsule.js';
 import { VaultMedia } from '../db/VaultMedia.js'; // ★ 追加：特異点メディア金庫
 import { MediaViewUI } from './MediaViewUI.js';
+import { NexusUI } from './NexusUI.js';
+import { NexusChatUI } from './NexusChatUI.js';
 
 export class UIManager {
     constructor(app) {
@@ -22,6 +23,7 @@ export class UIManager {
         this.lockUI = new LockUI(app, () => this.triggerPanic());
         this.mediaView = new MediaViewUI(app);
         this.nexusUI = new NexusUI(app);
+        this.nexusChatUI = new NexusChatUI(app);
         
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
