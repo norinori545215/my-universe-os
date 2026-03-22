@@ -6,12 +6,11 @@ export class NexusUI {
         this.app = app;
         this.myKeys = null;
         this.sharedKey = null;
-        this.cryptoError = false; // ★ 暗号化APIのエラー状態を管理
+        this.cryptoError = false;
         this.initKeys();
     }
 
     async initKeys() {
-        // ★ 修正：HTTPS環境（セキュアコンテキスト）かどうかの厳密なチェック
         if (!window.crypto || !window.crypto.subtle) {
             this.cryptoError = true;
             console.error("Web Crypto API is not available.");
@@ -31,8 +30,9 @@ export class NexusUI {
             this.cryptoError = true;
         }
 
-        this.loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js');
-        this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+        // 確実なCDN URLに修正済み
+        this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js');
+        this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js');
     }
 
     loadScript(src) {
@@ -42,9 +42,7 @@ export class NexusUI {
         document.head.appendChild(script);
     }
 
-    // UIManagerから呼ばれる入り口
     openScanner(node) {
-        // ★ 追加：HTTP環境でスマホからアクセスした場合の親切な警告
         if (this.cryptoError) {
             alert("🚨 【セキュリティ制限エラー】\nお使いのブラウザ環境では、量子暗号機能（Web Crypto API）がブロックされています。\n\n※スマホからPCのローカルサーバーに「http://192.168...」のようなURLでアクセスしている場合、暗号化が動作しません。「https://〜」の環境か、PCの「localhost」で実行してください。");
             return;
@@ -73,7 +71,6 @@ export class NexusUI {
         document.getElementById('nx-btn-close').onclick = () => modal.remove();
     }
 
-    // 自分のQRコードを全画面で大きく表示
     showMyQR(node) {
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
@@ -97,11 +94,10 @@ export class NexusUI {
             if (window.QRCode && this.myKeys) {
                 const canvas = document.getElementById('nexus-large-qr');
                 const loading = document.getElementById('nx-qr-loading');
-                if(!canvas) return; // 既に閉じられていたら無視
+                if(!canvas) return; 
                 
                 try {
                     const payload = JSON.stringify({ type: 'nexus_key', pub: this.myKeys.publicKey });
-                    // コールバックを使って確実なエラーハンドリング
                     window.QRCode.toCanvas(canvas, payload, { width: 250, margin: 2, errorCorrectionLevel: 'M', color: { dark:"#000000", light:"#ffffff" } }, (error) => {
                         if (error) {
                             console.error("QR生成エラー:", error);
@@ -117,12 +113,12 @@ export class NexusUI {
                 }
             } else {
                 retryCount++;
-                if (retryCount > 50) { // 10秒待ってもダメならギブアップ
+                if (retryCount > 50) { 
                     const loading = document.getElementById('nx-qr-loading');
                     if(loading) loading.innerText = "Error: QRライブラリの読み込みに失敗しました。";
                     return;
                 }
-                setTimeout(drawQR, 200); // 0.2秒後に再挑戦
+                setTimeout(drawQR, 200);
             }
         };
         drawQR();
@@ -130,7 +126,6 @@ export class NexusUI {
         document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
 
-    // スキャン画面（カメラ ＋ 写真からアップロード）
     startScanning(node) {
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
@@ -157,7 +152,6 @@ export class NexusUI {
         const ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
         let scanning = true;
 
-        // カメラ起動
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
                 video.srcObject = stream;
@@ -166,7 +160,6 @@ export class NexusUI {
                 requestAnimationFrame(tick);
             }).catch(err => {
                 console.warn("カメラが使用できません:", err);
-                // カメラが使えなくても写真アップロードはできるように続行
             });
         }
 
@@ -206,7 +199,6 @@ export class NexusUI {
             requestAnimationFrame(tick);
         };
 
-        // 写真アップロード処理
         document.getElementById('nx-upload-btn').onclick = () => document.getElementById('nx-upload-input').click();
         document.getElementById('nx-upload-input').onchange = (e) => {
             const file = e.target.files[0];
@@ -232,7 +224,7 @@ export class NexusUI {
             scanning = false;
             if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
             modal.remove();
-            this.openScanner(node); // メニューに戻る
+            this.openScanner(node);
         };
     }
 
