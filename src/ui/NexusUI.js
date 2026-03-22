@@ -6,18 +6,31 @@ export class NexusUI {
         this.app = app;
         this.myKeys = null;
         this.sharedKey = null;
+        this.cryptoError = false; // ★ 暗号化APIのエラー状態を管理
         this.initKeys();
     }
 
     async initKeys() {
-        const saved = localStorage.getItem('universe_nexus_identity');
-        if(saved) {
-            this.myKeys = JSON.parse(saved);
-        } else {
-            this.myKeys = await SecretNexus.generateIdentity();
-            localStorage.setItem('universe_nexus_identity', JSON.stringify(this.myKeys));
+        // ★ 修正：HTTPS環境（セキュアコンテキスト）かどうかの厳密なチェック
+        if (!window.crypto || !window.crypto.subtle) {
+            this.cryptoError = true;
+            console.error("Web Crypto API is not available.");
+            return;
         }
-        // ★ 修正：プログラムの読み込みを裏で確実に待機する
+
+        try {
+            const saved = localStorage.getItem('universe_nexus_identity');
+            if(saved) {
+                this.myKeys = JSON.parse(saved);
+            } else {
+                this.myKeys = await SecretNexus.generateIdentity();
+                localStorage.setItem('universe_nexus_identity', JSON.stringify(this.myKeys));
+            }
+        } catch (error) {
+            console.error("鍵の生成に失敗:", error);
+            this.cryptoError = true;
+        }
+
         this.loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js');
         this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
     }
@@ -31,8 +44,14 @@ export class NexusUI {
 
     // UIManagerから呼ばれる入り口
     openScanner(node) {
+        // ★ 追加：HTTP環境でスマホからアクセスした場合の親切な警告
+        if (this.cryptoError) {
+            alert("🚨 【セキュリティ制限エラー】\nお使いのブラウザ環境では、量子暗号機能（Web Crypto API）がブロックされています。\n\n※スマホからPCのローカルサーバーに「http://192.168...」のようなURLでアクセスしている場合、暗号化が動作しません。「https://〜」の環境か、PCの「localhost」で実行してください。");
+            return;
+        }
+
         if (!this.myKeys) {
-            alert("🔐 量子暗号キーを生成中です...数秒後にもう一度お試しください。");
+            alert("🔐 量子暗号キーを生成中、またはライブラリをロード中です...\n数秒後にもう一度お試しください。");
             return;
         }
 
@@ -61,8 +80,9 @@ export class NexusUI {
         
         modal.innerHTML = `
             <div style="margin-bottom:20px; font-size:14px; color:#00ffcc; font-weight:bold; letter-spacing:2px;">YOUR PUBLIC KEY</div>
-            <div style="background:#fff; padding:15px; border-radius:12px; box-shadow:0 0 40px rgba(0,255,204,0.3); display:flex; justify-content:center; align-items:center; min-width:250px; min-height:250px;">
-                <canvas id="nexus-large-qr" width="250" height="250"></canvas>
+            <div id="nx-qr-container" style="background:#fff; padding:15px; border-radius:12px; box-shadow:0 0 40px rgba(0,255,204,0.3); display:flex; justify-content:center; align-items:center; min-width:250px; min-height:250px;">
+                <div id="nx-qr-loading" style="color:#000; font-weight:bold;">Generating QR...</div>
+                <canvas id="nexus-large-qr" width="250" height="250" style="display:none;"></canvas>
             </div>
             <div style="margin-top:20px; color:#aaa; font-size:12px; text-align:center; max-width:80%; line-height:1.5;">
                 このQRコードを相手に読み取らせるか、<br>スクショして送信してください。<br>
@@ -72,14 +92,36 @@ export class NexusUI {
         `;
         document.body.appendChild(modal);
 
-        // ★ 修正：QR生成ライブラリの読み込みが完了するまで「自動リトライ」して待つ
+        let retryCount = 0;
         const drawQR = () => {
             if (window.QRCode && this.myKeys) {
                 const canvas = document.getElementById('nexus-large-qr');
+                const loading = document.getElementById('nx-qr-loading');
                 if(!canvas) return; // 既に閉じられていたら無視
-                const payload = JSON.stringify({ type: 'nexus_key', pub: this.myKeys.publicKey });
-                window.QRCode.toCanvas(canvas, payload, { width: 250, margin: 2, errorCorrectionLevel: 'H', color: { dark:"#000000", light:"#ffffff" } });
+                
+                try {
+                    const payload = JSON.stringify({ type: 'nexus_key', pub: this.myKeys.publicKey });
+                    // コールバックを使って確実なエラーハンドリング
+                    window.QRCode.toCanvas(canvas, payload, { width: 250, margin: 2, errorCorrectionLevel: 'M', color: { dark:"#000000", light:"#ffffff" } }, (error) => {
+                        if (error) {
+                            console.error("QR生成エラー:", error);
+                            loading.innerText = "Error: " + error.message;
+                        } else {
+                            loading.style.display = 'none';
+                            canvas.style.display = 'block';
+                        }
+                    });
+                } catch (e) {
+                    console.error("QR描画例外:", e);
+                    loading.innerText = "Error: " + e.message;
+                }
             } else {
+                retryCount++;
+                if (retryCount > 50) { // 10秒待ってもダメならギブアップ
+                    const loading = document.getElementById('nx-qr-loading');
+                    if(loading) loading.innerText = "Error: QRライブラリの読み込みに失敗しました。";
+                    return;
+                }
                 setTimeout(drawQR, 200); // 0.2秒後に再挑戦
             }
         };
@@ -116,14 +158,17 @@ export class NexusUI {
         let scanning = true;
 
         // カメラ起動
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
-            video.srcObject = stream;
-            video.setAttribute("playsinline", true);
-            video.play();
-            requestAnimationFrame(tick);
-        }).catch(err => {
-            console.warn("カメラが使用できません:", err);
-        });
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
+                video.srcObject = stream;
+                video.setAttribute("playsinline", true);
+                video.play();
+                requestAnimationFrame(tick);
+            }).catch(err => {
+                console.warn("カメラが使用できません:", err);
+                // カメラが使えなくても写真アップロードはできるように続行
+            });
+        }
 
         let linePos = 0; let lineDir = 2;
         const scanLine = document.getElementById('nexus-scan-line');
@@ -140,7 +185,7 @@ export class NexusUI {
                     alert("Nexusの鍵データではありません。");
                 }
             } catch(e) {
-                alert("無効なQRコードです。");
+                alert("無効なQRコードデータです。");
             }
         };
 
