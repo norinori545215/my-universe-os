@@ -11,6 +11,7 @@ import { Pathways } from '../core/Pathways.js';
 import { LockUI } from './LockUI.js';
 import { StardustCapsule } from '../security/StardustCapsule.js';
 import { VaultMedia } from '../db/VaultMedia.js'; // ★ 追加：特異点メディア金庫
+import { MediaViewUI } from './MediaViewUI.js';
 
 export class UIManager {
     constructor(app) {
@@ -18,6 +19,7 @@ export class UIManager {
         this.notePad = new NotePadUI(app);
         // ★ 修正：LockUIに自爆プログラム（triggerPanic）を渡す
         this.lockUI = new LockUI(app, () => this.triggerPanic());
+        this.mediaView = new MediaViewUI(app);
         
         const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
         
@@ -691,15 +693,14 @@ export class UIManager {
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
 
         // ★ 追加：VaultMedia用のテキストとカラー
-        const vaultBtnText = (node.vault && node.vault.length > 0) ? `📸 秘匿写真を見る (${node.vault.length}枚)` : `📥 写真を暗号化格納`;
+        const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
         const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
-
         this.actionMenu.innerHTML = `
             <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
             ${openUrlBtn}
             
             <button id="m-vault" style="${btnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
-            <input type="file" id="m-vault-upload" style="display:none;" accept="image/*" multiple>
+            <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
 
             <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
             <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
@@ -723,33 +724,32 @@ export class UIManager {
         const vaultUpload = document.getElementById('m-vault-upload');
         document.getElementById('m-vault').onclick = async () => {
             if (checkDrag()) return;
-            
             if (node.vault && node.vault.length > 0) {
                 this.hideMenu();
-                if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
-                
-                // 1枚目を復号してインワールドプレビューとして表示
-                const imgUrl = await VaultMedia.retrieveMedia(node.vault[0]);
-                if (imgUrl) {
-                    const preview = document.createElement('div');
-                    preview.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:12000; background:rgba(0,0,0,0.9); padding:15px; border:1px solid #ff66aa; border-radius:12px; box-shadow:0 0 50px rgba(255,102,170,0.3); text-align:center; backdrop-filter:blur(10px); display:flex; flex-direction:column; align-items:center;';
-                    preview.innerHTML = `
-                        <img src="${imgUrl}" style="max-width:85vw; max-height:75vh; border-radius:8px; object-fit:contain;">
-                        <button style="margin-top:15px; background:rgba(255,102,170,0.1); border:1px solid #ff66aa; color:#ff66aa; padding:8px 25px; border-radius:20px; cursor:pointer; font-weight:bold; letter-spacing:2px;">CLOSE VAULT</button>
-                    `;
-                    document.body.appendChild(preview);
-                    
-                    preview.querySelector('button').onclick = () => {
-                        preview.remove();
-                        URL.revokeObjectURL(imgUrl); // メモリの即時パージ
-                    };
-                }
+                this.mediaView.open(node); // ★ 新しい金庫画面を呼び出す
                 return;
             }
-
             vaultUpload.click();
         };
 
+        if (vaultUpload) {
+            vaultUpload.onchange = async (e) => {
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+                this.hideMenu();
+                
+                let successCount = 0;
+                for (let i = 0; i < files.length; i++) {
+                    await VaultMedia.storeMedia(files[i], node);
+                    successCount++;
+                }
+                
+                this.app.autoSave(); 
+                if (window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.2);
+                alert(`${successCount}件のファイルを暗号化して地下金庫に封印しました。`);
+            };
+        }
+        
         if (vaultUpload) {
             vaultUpload.onchange = async (e) => {
                 const files = e.target.files;
