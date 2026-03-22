@@ -17,6 +17,7 @@ export class NexusUI {
             this.myKeys = await SecretNexus.generateIdentity();
             localStorage.setItem('universe_nexus_identity', JSON.stringify(this.myKeys));
         }
+        // ★ 修正：プログラムの読み込みを裏で確実に待機する
         this.loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js');
         this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
     }
@@ -28,8 +29,13 @@ export class NexusUI {
         document.head.appendChild(script);
     }
 
-    // UIManagerから呼ばれる入り口（メニューを表示）
+    // UIManagerから呼ばれる入り口
     openScanner(node) {
+        if (!this.myKeys) {
+            alert("🔐 量子暗号キーを生成中です...数秒後にもう一度お試しください。");
+            return;
+        }
+
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.95); z-index:15000; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; font-family:sans-serif; backdrop-filter:blur(15px);';
 
@@ -55,21 +61,29 @@ export class NexusUI {
         
         modal.innerHTML = `
             <div style="margin-bottom:20px; font-size:14px; color:#00ffcc; font-weight:bold; letter-spacing:2px;">YOUR PUBLIC KEY</div>
-            <div style="background:#fff; padding:15px; border-radius:12px; box-shadow:0 0 40px rgba(0,255,204,0.3);">
+            <div style="background:#fff; padding:15px; border-radius:12px; box-shadow:0 0 40px rgba(0,255,204,0.3); display:flex; justify-content:center; align-items:center; min-width:250px; min-height:250px;">
                 <canvas id="nexus-large-qr" width="250" height="250"></canvas>
             </div>
-            <div style="margin-top:20px; color:#aaa; font-size:12px; text-align:center; max-width:80%;">このQRコードを相手に読み取らせるか、<br>スクショして送信してください。</div>
+            <div style="margin-top:20px; color:#aaa; font-size:12px; text-align:center; max-width:80%; line-height:1.5;">
+                このQRコードを相手に読み取らせるか、<br>スクショして送信してください。<br>
+                <span style="color:#ffcc00;">※一人でテストする場合は、これをスクショして「写真から読み込む」で自分自身と繋がれます。</span>
+            </div>
             <button id="nx-qr-close" style="margin-top:40px; background:transparent; border:1px solid #00ffcc; color:#00ffcc; padding:12px 40px; border-radius:30px; cursor:pointer; font-weight:bold; letter-spacing:2px;">戻る</button>
         `;
         document.body.appendChild(modal);
 
-        setTimeout(() => {
-            if(window.QRCode && this.myKeys) {
+        // ★ 修正：QR生成ライブラリの読み込みが完了するまで「自動リトライ」して待つ
+        const drawQR = () => {
+            if (window.QRCode && this.myKeys) {
                 const canvas = document.getElementById('nexus-large-qr');
+                if(!canvas) return; // 既に閉じられていたら無視
                 const payload = JSON.stringify({ type: 'nexus_key', pub: this.myKeys.publicKey });
                 window.QRCode.toCanvas(canvas, payload, { width: 250, margin: 2, errorCorrectionLevel: 'H', color: { dark:"#000000", light:"#ffffff" } });
+            } else {
+                setTimeout(drawQR, 200); // 0.2秒後に再挑戦
             }
-        }, 100);
+        };
+        drawQR();
 
         document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
@@ -109,7 +123,6 @@ export class NexusUI {
             requestAnimationFrame(tick);
         }).catch(err => {
             console.warn("カメラが使用できません:", err);
-            // カメラが使えなくても写真アップロードはできるように続行
         });
 
         let linePos = 0; let lineDir = 2;
@@ -153,15 +166,19 @@ export class NexusUI {
         document.getElementById('nx-upload-input').onchange = (e) => {
             const file = e.target.files[0];
             if(!file) return;
+            
+            if(!window.jsQR) {
+                alert("解析プログラムをロード中です。数秒待ってから再度お試しください。");
+                return;
+            }
+
             const img = new Image();
             img.onload = () => {
                 scanCanvas.width = img.width; scanCanvas.height = img.height;
                 ctx.drawImage(img, 0, 0);
                 const imageData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-                if(window.jsQR) {
-                    const code = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-                    if(code) { processQRData(code.data); } else { alert("画像からQRコードを検出できませんでした。"); }
-                }
+                const code = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                if(code) { processQRData(code.data); } else { alert("画像からQRコードを検出できませんでした。"); }
             };
             img.src = URL.createObjectURL(file);
         };
@@ -184,6 +201,6 @@ export class NexusUI {
         this.app.autoSave();
         
         if(window.universeAudio) window.universeAudio.playWarp();
-        alert("🔐 鍵の交換に成功しました！\n\n画面右端の『⟨』タブをクリック（またはタップ）して、\n通信ターミナルを開いてください。");
+        alert("🔐 鍵の交換に成功しました！\n\n画面右端の『⟨』タブをクリックして、\n通信ターミナルを開いてください。");
     }
 }
