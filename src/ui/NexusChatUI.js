@@ -10,9 +10,16 @@ export class NexusChatUI {
     }
 
     createUI() {
-        // ① スライドしてくるメインパネル
+        // ① 確実にタップできる、サイバーパンクな「引き出しタブ」
+        this.triggerTab = document.createElement('div');
+        this.triggerTab.style.cssText = 'position:fixed; top:50%; right:0; transform:translateY(-50%); width:25px; height:70px; background:rgba(0,255,204,0.15); border:1px solid #00ffcc; border-right:none; border-radius:12px 0 0 12px; z-index:99999; display:flex; align-items:center; justify-content:center; color:#00ffcc; cursor:pointer; box-shadow:-2px 0 15px rgba(0,255,204,0.3); backdrop-filter:blur(5px); font-weight:bold; transition:right 0.3s;';
+        this.triggerTab.innerHTML = '⟨';
+        this.triggerTab.onclick = () => this.toggle();
+        document.body.appendChild(this.triggerTab);
+
+        // ② スライドしてくるメインパネル
         this.panel = document.createElement('div');
-        this.panel.style.cssText = 'position:fixed; top:0; right:-400px; width:100%; max-width:400px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #00ffcc; z-index:9800; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(0,255,204,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white;';
+        this.panel.style.cssText = 'position:fixed; top:0; right:-400px; width:100%; max-width:400px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #00ffcc; z-index:99998; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(0,255,204,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white;';
         document.body.appendChild(this.panel);
 
         // ヘッダー部分
@@ -42,7 +49,6 @@ export class NexusChatUI {
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.5);';
         body.appendChild(this.chatArea);
 
-        // メッセージ表示コンテナ
         this.msgContainer = document.createElement('div');
         this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
@@ -65,33 +71,21 @@ export class NexusChatUI {
         inputArea.appendChild(this.inputField);
         inputArea.appendChild(sendBtn);
         this.chatArea.appendChild(inputArea);
-
-        // ② ステルス起動トリガー（画面右端の透明エリア）
-        const triggerZone = document.createElement('div');
-        triggerZone.style.cssText = 'position:fixed; top:20%; right:0; width:15px; height:60%; z-index:9799; cursor:ew-resize;'; // 透明な壁
-        
-        // スマホ用：右端から左へスワイプで起動
-        let touchStartX = 0;
-        triggerZone.addEventListener('touchstart', (e) => touchStartX = e.touches[0].clientX, {passive:true});
-        triggerZone.addEventListener('touchend', (e) => {
-            if(touchStartX - e.changedTouches[0].clientX > 30) this.toggle();
-        });
-        
-        // PC用：右端をダブルクリックで起動
-        triggerZone.addEventListener('dblclick', () => this.toggle());
-        document.body.appendChild(triggerZone);
     }
 
     toggle() {
         this.isOpen = !this.isOpen;
+        // パネルをスライドさせると同時に、トリガータブも一緒に左へ移動させる
         this.panel.style.right = this.isOpen ? '0px' : '-400px';
+        this.triggerTab.style.right = this.isOpen ? (window.innerWidth < 400 ? window.innerWidth+'px' : '400px') : '0px';
+        this.triggerTab.innerHTML = this.isOpen ? '⟩' : '⟨';
+        
         if (this.isOpen) {
             this.refreshContacts();
             if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
         }
     }
 
-    // 宇宙全体から「鍵を持っている星（QR交換済み）」を探してリスト化する
     refreshContacts() {
         this.contactList.innerHTML = '';
         let nexusNodes = [];
@@ -105,7 +99,7 @@ export class NexusChatUI {
         findNexus(this.app.currentUniverse.nodes);
 
         if (nexusNodes.length === 0) {
-            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px;">NO SECURE LINKS</div>';
+            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px;">NO LINKS</div>';
             this.msgContainer.innerHTML = '<div style="margin:auto; color:#444; font-size:12px;">星のメニューから[📡 QRセキュア通信]を実行し、鍵を交換してください。</div>';
             this.activeNode = null;
             return;
@@ -120,7 +114,6 @@ export class NexusChatUI {
             this.contactList.appendChild(btn);
         });
 
-        // 初期選択
         if (!this.activeNode || !nexusNodes.includes(this.activeNode)) {
             this.openChat(nexusNodes[0]);
         }
@@ -132,11 +125,7 @@ export class NexusChatUI {
         this.msgContainer.innerHTML = `<div style="text-align:center; color:#00ffcc; font-size:10px; letter-spacing:2px; margin-bottom:10px; opacity:0.5;">- E2EE SECURE CHANNEL -</div>`;
         
         if (!node.messages) node.messages = [];
-        
-        // データベース（星）に保存されている暗号化されたメッセージをその場で復号して表示
-        for (let msg of node.messages) {
-            await this.renderMessageObj(msg);
-        }
+        for (let msg of node.messages) { await this.renderMessageObj(msg); }
         this.scrollToBottom();
     }
 
@@ -149,47 +138,24 @@ export class NexusChatUI {
         bubble.style.cssText = `max-width:80%; padding:10px 14px; border-radius:16px; font-size:13px; line-height:1.4; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.5);`;
         
         if (isMe) {
-            bubble.style.background = 'rgba(0,255,204,0.2)';
-            bubble.style.border = '1px solid rgba(0,255,204,0.4)';
-            bubble.style.color = '#00ffff';
-            bubble.style.borderBottomRightRadius = '4px';
+            bubble.style.background = 'rgba(0,255,204,0.2)'; bubble.style.border = '1px solid rgba(0,255,204,0.4)'; bubble.style.color = '#00ffff'; bubble.style.borderBottomRightRadius = '4px';
         } else {
-            bubble.style.background = 'rgba(255,0,255,0.1)';
-            bubble.style.border = '1px solid rgba(255,0,255,0.3)';
-            bubble.style.color = '#ff88ff';
-            bubble.style.borderBottomLeftRadius = '4px';
+            bubble.style.background = 'rgba(255,0,255,0.1)'; bubble.style.border = '1px solid rgba(255,0,255,0.3)'; bubble.style.color = '#ff88ff'; bubble.style.borderBottomLeftRadius = '4px';
         }
 
-        // 相手との共通鍵で復号化
         let text = "[Decryption Error]";
-        try {
-            text = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey);
-        } catch(e) {
-            console.error(e);
-        }
-
-        bubble.innerText = text;
-        wrap.appendChild(bubble);
-        this.msgContainer.appendChild(wrap);
+        try { text = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); } catch(e) {}
+        bubble.innerText = text; wrap.appendChild(bubble); this.msgContainer.appendChild(wrap);
     }
 
     async sendMessage() {
         const text = this.inputField.value.trim();
         if (!text || !this.activeNode) return;
-        
         this.inputField.value = '';
         
-        // 1. 送信するテキストをAES-GCMで完全に暗号化する
         const encrypted = await SecretNexus.encryptData(text, this.activeNode.sharedKey);
+        const msgObj = { sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now() };
         
-        const msgObj = {
-            sender: 'me',
-            cipher: encrypted.cipher, // 画面には出ない暗号データ
-            iv: encrypted.iv,
-            timestamp: Date.now()
-        };
-        
-        // 2. 星のデータの中に保存する（保存ファイルを見られても暗号化されているので安全）
         if (!this.activeNode.messages) this.activeNode.messages = [];
         this.activeNode.messages.push(msgObj);
         this.app.autoSave();
@@ -197,17 +163,13 @@ export class NexusChatUI {
         await this.renderMessageObj(msgObj);
         this.scrollToBottom();
 
-        // 🌟【P2P通信のモック（仮の自動返信）】
-        // ※次回のステップで、ここをWebRTCを使った本当の通信処理に書き換えます！
-        // 今はテスト用として、1秒後に相手から暗号化された返信が届くようにしています。
+        // モック（テスト用自動返信）
         setTimeout(async () => {
             const replyText = "Re: " + text; 
             const replyEnc = await SecretNexus.encryptData(replyText, this.activeNode.sharedKey);
             const replyObj = { sender: 'peer', cipher: replyEnc.cipher, iv: replyEnc.iv, timestamp: Date.now() };
-            
             this.activeNode.messages.push(replyObj);
             this.app.autoSave();
-            
             if(this.isOpen && this.activeNode === this.activeNode) {
                 await this.renderMessageObj(replyObj);
                 this.scrollToBottom();
@@ -216,9 +178,5 @@ export class NexusChatUI {
         }, 1000);
     }
 
-    scrollToBottom() {
-        setTimeout(() => {
-            this.msgContainer.scrollTop = this.msgContainer.scrollHeight;
-        }, 50);
-    }
+    scrollToBottom() { setTimeout(() => { this.msgContainer.scrollTop = this.msgContainer.scrollHeight; }, 50); }
 }
