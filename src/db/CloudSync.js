@@ -36,6 +36,7 @@ export async function loadEncryptedUniverse() {
     if (!window.universeCryptoKey) return null;
 
     let capsule = null;
+    let isNewUser = false; // ★ 追加：完全新規ユーザーかどうかの判定フラグ
 
     // ① ログインしていればクラウドから取得を試みる
     if (auth && auth.currentUser) {
@@ -50,14 +51,18 @@ export async function loadEncryptedUniverse() {
                 };
                 await LocalVault.save(capsule); // ついでに地下金庫も最新化
                 console.log("☁️ クラウドから暗号カプセルを取得しました。");
+            } else {
+                // ★ ここが原因でした！ クラウドが空っぽ＝新規アカウントであることを記憶します
+                isNewUser = true; 
             }
         } catch (error) {
             console.warn("📡 クラウドに接続できません。地下金庫からの展開に切り替えます...");
         }
     }
 
-    // ② 圏外（または未ログイン）の場合は、地下金庫からカプセルを取り出す
-    if (!capsule) {
+    // ② 圏外（または未ログイン）で、かつ「新規アカウントではない」場合のみ、地下金庫から取り出す
+    // （※新規アカウントが、前の人の地下金庫のデータを読み込んでエラーになるのを防ぐため）
+    if (!capsule && !isNewUser) {
         capsule = await LocalVault.load();
         if (capsule) {
             console.log("📦 地下金庫から暗号カプセルを発見しました！");
@@ -76,5 +81,6 @@ export async function loadEncryptedUniverse() {
         }
     }
     
+    // カプセルがない（完全新規ユーザー）場合は、空っぽの宇宙としてスタートさせる
     return null; 
 }
