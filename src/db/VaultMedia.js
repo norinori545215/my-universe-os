@@ -33,6 +33,7 @@ export class VaultMedia {
         const key = await this.generateKey();
         const iv = crypto.getRandomValues(new Uint8Array(12));
         
+        // メインスレッドで暗号化（※数十MB以上はUIが数ミリ秒ブロックする可能性あり）
         const encryptedData = await crypto.subtle.encrypt(
             { name: "AES-GCM", iv: iv },
             key,
@@ -47,14 +48,13 @@ export class VaultMedia {
             const store = transaction.objectStore(this.storeName);
             const request = store.put({
                 id: mediaId,
-                data: encryptedData,
+                data: encryptedData, // ArrayBufferのまま保存（正解です）
                 iv: iv,
                 mimeType: file.type
             });
 
             request.onsuccess = () => {
                 if (!node.vault) node.vault = [];
-                // ★ V2拡張：ファイル名と種類、サイズも星に記憶させる（復号しなくてもリスト表示できるようにするため）
                 node.vault.push({
                     id: mediaId,
                     key: exportedKey,
@@ -62,6 +62,7 @@ export class VaultMedia {
                     type: file.type || 'application/octet-stream',
                     size: file.size
                 });
+                // NodeGraphにセーブトリガーを走らせる準備
                 resolve(mediaId);
             };
             request.onerror = () => reject(request.error);
@@ -96,7 +97,6 @@ export class VaultMedia {
                     );
 
                     const blob = new Blob([decryptedData], { type: record.mimeType || mediaMeta.type });
-                    // ★ V2拡張：URLだけでなく、メタデータも一緒に返す
                     resolve({
                         url: URL.createObjectURL(blob),
                         name: mediaMeta.name || 'encrypted_data.bin',
