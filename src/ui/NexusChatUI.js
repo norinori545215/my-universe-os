@@ -45,7 +45,7 @@ export class NexusChatUI {
         if (!myId) return;
 
         const myPubStr = JSON.stringify(myId.publicKey);
-        const myShortId = this.getShortId(myId.publicKey); // ★修正：短いIDを使用
+        const myShortId = this.getShortId(myId.publicKey);
         const channelsRef = collection(db, "nexus_channels");
         const q = query(channelsRef, where("participants", "array-contains", myPubStr));
 
@@ -54,7 +54,6 @@ export class NexusChatUI {
                 const channelData = change.doc.data();
                 const channelId = change.doc.id;
 
-                // ★修正：エラー回避のため短いIDを使用
                 const myLastRead = (channelData.lastRead && channelData.lastRead[myShortId]) ? channelData.lastRead[myShortId] : 0;
                 const lastUpdated = channelData.updatedAt ? channelData.updatedAt.toMillis() : 0;
                 
@@ -91,7 +90,14 @@ export class NexusChatUI {
                     }
                 }
             });
-        }, (err) => console.warn("Inbox Listener Wait...", err));
+        }, (err) => {
+            // ★ 修正：圏外モードならエラーを出さずにステルスモードとして扱う
+            if (!navigator.onLine || err.code === 'permission-denied') {
+                console.log("🛰️ [Stealth Mode] 圏外のため、着信レーダーを一時停止しています。");
+            } else {
+                console.warn("Inbox Listener Error:", err);
+            }
+        });
     }
 
     createUI() {
@@ -191,7 +197,7 @@ export class NexusChatUI {
             if(this.activeNode && this.activeNode.channelId && db && this.getMyIdentity()) {
                 if(this.typingTimer) clearTimeout(this.typingTimer);
                 else {
-                    const myShortId = this.getShortId(this.getMyIdentity().publicKey); // ★修正：短いIDを使用
+                    const myShortId = this.getShortId(this.getMyIdentity().publicKey);
                     updateDoc(doc(db, "nexus_channels", this.activeNode.channelId), { [`typing.${myShortId}`]: Date.now() }).catch(()=>{});
                 }
                 this.typingTimer = setTimeout(() => { this.typingTimer = null; }, 2000);
@@ -293,7 +299,7 @@ export class NexusChatUI {
         }
 
         this.activeNode = node;
-        if(node.channelId) this.unreadChannels.delete(node.channelId); // 開いたら未読解除
+        if(node.channelId) this.unreadChannels.delete(node.channelId); 
         this.refreshContacts();
         
         const shortId = this.getShortId(node.peerPublicKey);
@@ -351,11 +357,9 @@ export class NexusChatUI {
             node.channelId = channelId;
             const myPubStr = JSON.stringify(myId.publicKey);
             
-            // ★修正：短いIDを使用
             const myShortId = this.getShortId(myId.publicKey);
             const peerShortId = this.getShortId(node.peerPublicKey);
 
-            // ★ 開いた瞬間に自分の既読時間を更新（バッジを消す）
             if(db) updateDoc(doc(db, "nexus_channels", channelId), { [`lastRead.${myShortId}`]: Date.now() }).catch(()=>{});
 
             let peerLastRead = 0;
@@ -421,6 +425,13 @@ export class NexusChatUI {
                 }
 
                 if (isNewRendered) { this.app.autoSave(); this.scrollToBottom(); }
+            }, (err) => {
+                // ★ 修正：圏外モードならエラーを出さずにステルスモードとして扱う
+                if (!navigator.onLine || err.code === 'permission-denied') {
+                    console.log("🛰️ [Stealth Mode] 圏外のため、リアルタイム通信網を一時遮断しています。");
+                } else {
+                    console.warn("Network Listener Error:", err);
+                }
             });
         } catch (e) { console.error("ワームホールエラー", e); }
     }
@@ -537,6 +548,7 @@ export class NexusChatUI {
             this.mediaRecorder.stop();
             this.micBtn.innerText = '🎙️';
             this.micBtn.style.color = '#00ffcc';
+            this.micBtn.style.textShadow = 'none';
             this.inputField.placeholder = 'Secure Message...';
         } else {
             try {
@@ -565,6 +577,7 @@ export class NexusChatUI {
                 this.mediaRecorder.start();
                 this.micBtn.innerText = '🔴';
                 this.micBtn.style.color = '#ff4444';
+                this.micBtn.style.textShadow = '0 0 10px #ff4444';
                 this.inputField.placeholder = 'Recording... (タップで送信)';
             } catch(e) { alert("マイクのアクセスが許可されていません。"); }
         }
@@ -604,7 +617,7 @@ export class NexusChatUI {
     async dispatchToNetwork(encrypted) {
         const myId = this.getMyIdentity(); if (!myId) return;
         const myPubStr = JSON.stringify(myId.publicKey);
-        const myShortId = this.getShortId(myId.publicKey); // ★修正：短いIDを使用
+        const myShortId = this.getShortId(myId.publicKey); 
         
         if (!this.activeNode.channelId || !db) {
             const msgObj = { id: "", sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now() };
@@ -615,7 +628,6 @@ export class NexusChatUI {
 
         try {
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
-            // ★修正：短いIDを使用
             await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp(), [`lastRead.${myShortId}`]: Date.now() }, { merge: true });
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
             await addDoc(messagesRef, { cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), isDeleted: false });
