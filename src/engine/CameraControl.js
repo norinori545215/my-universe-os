@@ -186,20 +186,20 @@ export class CameraControl {
         this.vx = 0; this.vy = 0;
     }
 
-    // ★ 究極にシンプルな「着地補正（スナップ）」
     applyMagneticSnap(nodes) {
+        // ★ 修正ポイント：PC（画面幅が広い、またはモバイルモードでない）場合は、おせっかいな自動追従を完全にシャットアウトする
+        const isMobile = window.innerWidth <= 768 || localStorage.getItem('universe_mobile_mode') === 'true';
+        if (!isMobile) return;
+
         if (!nodes || nodes.length === 0 || this.isDragging || this.cb.isLinkModeActive()) return;
 
         const speed = Math.hypot(this.vx, this.vy);
-
-        // 【改善】勢いよく滑っている最中は、絶対に邪魔をしない（自然に滑らせる）
         if (speed > 0.5) return;
 
         let closestNode = null;
         let minDistance = Infinity;
-        const snapThreshold = 100; // 吸い付く距離
+        const snapThreshold = 100;
 
-        // カメラが「今から止まろうとしている場所（target）」に一番近い星を探す
         nodes.forEach(node => {
             const dist = Math.hypot(node.x - (-this.targetX), node.y - (-this.targetY));
             if (dist < minDistance) {
@@ -208,7 +208,6 @@ export class CameraControl {
             }
         });
 
-        // ほぼ止まりかけていて、近くに星がある時だけ、最後に目標座標を「星の中心」にスリ替える
         if (closestNode && minDistance < snapThreshold) {
             this.targetX = -closestNode.x;
             this.targetY = -closestNode.y;
@@ -219,22 +218,18 @@ export class CameraControl {
 
     update(nodes = []) {
         if (!this.isDragging) {
-            // スワイプの勢いを加算
             this.targetX += this.vx;
             this.targetY += this.vy;
             
-            // 摩擦（自然に減速する）
             this.vx *= 0.92;
             this.vy *= 0.92;
 
             if (Math.abs(this.vx) < 0.01) this.vx = 0;
             if (Math.abs(this.vy) < 0.01) this.vy = 0;
 
-            // ほぼ止まりかけた時だけ、着地を補正する
             this.applyMagneticSnap(nodes);
         }
 
-        // カメラの追従（ここが一番自然な滑らかさ＝イージングを作る）
         this.x += (this.targetX - this.x) * 0.1;
         this.y += (this.targetY - this.y) * 0.1;
         this.scale += (this.targetScale - this.scale) * 0.1;
