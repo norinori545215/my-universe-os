@@ -13,6 +13,7 @@ export class EntityNode {
         
         // ★ メモ機能：星の中に刻まれるテキストデータ
         this.note = ""; 
+        this.vault = []; // ★ 金庫（VaultMedia）のメタデータ用
         
         // ★ セキュリティ機能：星に鍵をかけるための属性
         this.isLocked = false;       // 鍵がかかっているか
@@ -80,7 +81,8 @@ export const DataManager = {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
-            note: n.note, // ★ 保存対象に追加！
+            note: n.note,
+            vault: n.vault || [], // ★ 保存対象に追加！
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -96,7 +98,11 @@ export const DataManager = {
             blackHole: blackHole.map(serializeNode)
         };
 
-        sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
+        try {
+            sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
+        } catch (e) {
+            console.warn("ローカルストレージの上限に達しました。");
+        }
     },
 
     // 💾 【完全ローカル読込】
@@ -121,7 +127,8 @@ export const DataManager = {
                 node.id = nData.id;
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
-                node.note = nData.note || ""; // ★ 読み込み対象に追加！
+                node.note = nData.note || "";
+                node.vault = nData.vault || []; // ★ 読み込み対象に追加！
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -156,7 +163,8 @@ export const DataManager = {
             node.id = nData.id; 
             node.url = nData.url || ""; 
             node.iconUrl = nData.iconUrl || "";
-            node.note = nData.note || ""; // ★ 亜空間データも対応！
+            node.note = nData.note || "";
+            node.vault = nData.vault || []; // ★ 亜空間データも対応！
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);

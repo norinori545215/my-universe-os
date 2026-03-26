@@ -48,7 +48,7 @@ export async function encryptUniverseData(dataObject, cryptoKey) {
         encodedData
     );
 
-    // 保存しやすいように文字列（Base64）に変換して返す
+    // ★ 修正: FirebaseのFirestoreが受け取れるようにBase64文字列に変換して返す
     const encryptedArray = Array.from(new Uint8Array(encryptedBuffer));
     const encryptedBase64 = btoa(String.fromCharCode.apply(null, encryptedArray));
     const ivBase64 = btoa(String.fromCharCode.apply(null, Array.from(iv)));
@@ -62,6 +62,7 @@ export async function encryptUniverseData(dataObject, cryptoKey) {
 // 3. 別の端末で「暗号カプセル」を解読し、宇宙を復元する
 export async function decryptUniverseData(encryptedObj, cryptoKey) {
     try {
+        // ★ 修正: Firebaseから降りてきたBase64文字列を解読する
         const encryptedArray = new Uint8Array(atob(encryptedObj.cipher).split('').map(c => c.charCodeAt(0)));
         const ivArray = new Uint8Array(atob(encryptedObj.iv).split('').map(c => c.charCodeAt(0)));
 
@@ -74,6 +75,7 @@ export async function decryptUniverseData(encryptedObj, cryptoKey) {
         const dec = new TextDecoder();
         return JSON.parse(dec.decode(decryptedBuffer));
     } catch (error) {
+        console.error("復号エラー:", error);
         throw new Error("⚠️ マスターパスワードが間違っているか、データが破損しています。");
     }
 }
