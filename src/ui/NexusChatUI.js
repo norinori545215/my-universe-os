@@ -9,7 +9,7 @@ export class NexusChatUI {
         this.isOpen = false;
         this.activeNode = null;
         this.unsubscribeNetwork = null;
-        this.unsubscribeTyping = null; // タイピング検知用
+        this.unsubscribeTyping = null; 
         this.typingTimer = null;
         
         this.mediaRecorder = null;
@@ -71,6 +71,21 @@ export class NexusChatUI {
     }
 
     createUI() {
+        // ★ カスタムスクロールバーのスタイルを注入
+        if (!document.getElementById('nexus-chat-styles')) {
+            const style = document.createElement('style');
+            style.id = 'nexus-chat-styles';
+            style.innerHTML = `
+                .nexus-scroll::-webkit-scrollbar { width: 6px; }
+                .nexus-scroll::-webkit-scrollbar-track { background: transparent; }
+                .nexus-scroll::-webkit-scrollbar-thumb { background: rgba(255, 0, 255, 0.2); border-radius: 10px; }
+                .nexus-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 0, 255, 0.5); }
+                .nexus-input-scroll::-webkit-scrollbar { width: 4px; }
+                .nexus-input-scroll::-webkit-scrollbar-thumb { background: rgba(0, 255, 204, 0.3); border-radius: 10px; }
+            `;
+            document.head.appendChild(style);
+        }
+
         this.triggerTab = document.createElement('div');
         this.triggerTab.style.cssText = 'position:fixed; top:50%; right:20px; transform:translateY(-50%); width:30px; height:80px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; border-radius:15px; z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; cursor:pointer; box-shadow:0 0 20px rgba(0,255,204,0.3); backdrop-filter:blur(5px); font-weight:bold; transition:all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); font-size:18px; letter-spacing:2px;';
         this.triggerTab.innerHTML = '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
@@ -98,59 +113,63 @@ export class NexusChatUI {
         this.panel.appendChild(body);
 
         this.contactList = document.createElement('div');
-        this.contactList.style.cssText = 'width:160px; border-right:1px solid rgba(255,0,255,0.2); overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; scrollbar-width: none; flex-shrink:0;';
+        this.contactList.className = 'nexus-scroll';
+        this.contactList.style.cssText = 'width:160px; border-right:1px solid rgba(255,0,255,0.2); overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; flex-shrink:0;';
         body.appendChild(this.contactList);
 
         this.chatArea = document.createElement('div');
-        this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.5); overflow:hidden; position:relative;';
+        this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative;';
         body.appendChild(this.chatArea);
 
         this.chatHeader = document.createElement('div');
-        this.chatHeader.style.cssText = 'padding:10px 15px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:12px; background:rgba(255,0,255,0.03); flex-shrink:0;';
+        this.chatHeader.style.cssText = 'padding:12px 20px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:15px; background:rgba(0,0,0,0.4); flex-shrink:0; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:5;';
         this.chatArea.appendChild(this.chatHeader);
 
         this.msgContainer = document.createElement('div');
-        this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; scroll-behavior:smooth;';
+        this.msgContainer.className = 'nexus-scroll';
+        this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px 25px; display:flex; flex-direction:column; gap:20px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
 
-        // ★ タイピングインジケーター（相手が入力中）
+        // タイピングインジケーター（スタイリッシュに修正）
         this.typingIndicator = document.createElement('div');
-        this.typingIndicator.style.cssText = 'font-size:11px; color:#00ffcc; padding:5px 25px; height:15px; opacity:0; transition:opacity 0.3s; font-family:monospace; position:absolute; bottom:85px; left:0; width:100%; pointer-events:none; background:linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); text-shadow:0 0 5px #00ffcc;';
+        this.typingIndicator.style.cssText = 'font-size:11px; color:#00ffcc; padding:8px 25px; opacity:0; transition:opacity 0.3s; font-family:monospace; position:absolute; bottom:80px; left:0; width:100%; pointer-events:none; background:linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); text-shadow:0 0 5px #00ffcc; z-index:10;';
         this.typingIndicator.innerText = '🌐 相手が暗号を編集中...';
         this.chatArea.appendChild(this.typingIndicator);
 
+        // ★★★ 入力エリアの大幅改善（LINEのようなスマートなピル型デザイン） ★★★
         const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(255,0,255,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:8px; align-items:flex-end; z-index:10;';
+        inputContainer.style.cssText = 'padding:15px 20px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:12px; z-index:15;';
         
-        // 📎 画像添付ボタン
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+        fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
+
+        const inputWrapper = document.createElement('div');
+        inputWrapper.style.cssText = 'flex:1; display:flex; align-items:flex-end; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,204,0.3); border-radius:24px; padding:6px 6px 6px 15px; transition:0.3s; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);';
+
+        // 📎 画像添付ボタン（入力枠の左側に統合）
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像暗号化';
-        attachBtn.style.cssText = 'background:transparent; border:none; font-size:22px; cursor:pointer; color:#ff00ff; transition:0.2s; padding-bottom:8px; flex-shrink:0;';
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+        attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
         attachBtn.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
-        // 🎙️ 音声録音ボタン
+        // 🎙️ 音声録音ボタン（入力枠の左側に統合）
         this.micBtn = document.createElement('button');
         this.micBtn.innerText = '🎙️';
-        this.micBtn.title = '音声暗号化（タップで録音/停止）';
-        this.micBtn.style.cssText = 'background:transparent; border:none; font-size:22px; cursor:pointer; color:#00ffcc; transition:0.2s; padding-bottom:8px; flex-shrink:0;';
+        this.micBtn.title = '音声暗号化';
+        this.micBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
-        const inputWrapper = document.createElement('div');
-        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(255,0,255,0.05); border:1px solid rgba(255,0,255,0.3); border-radius:15px; padding:8px 10px 8px 15px; transition:0.2s; align-items:flex-end;';
-        
         this.inputField = document.createElement('textarea');
+        this.inputField.className = 'nexus-input-scroll';
         this.inputField.placeholder = 'Secure Message...';
         this.inputField.rows = 1;
-        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:150px; overflow-y:auto;';
+        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:8px 0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:120px; overflow-y:auto; margin-right:10px;';
         
-        // ★ タイピング検知：文字を打ったらFirebaseにステータスを送る
         this.inputField.addEventListener('input', () => {
             this.inputField.style.height = 'auto';
-            this.inputField.style.height = this.inputField.scrollHeight + 'px';
+            this.inputField.style.height = Math.min(this.inputField.scrollHeight, 120) + 'px';
 
             if(this.activeNode && this.activeNode.channelId && db && this.getMyIdentity()) {
                 if(this.typingTimer) clearTimeout(this.typingTimer);
@@ -158,9 +177,7 @@ export class NexusChatUI {
                     const myPubStr = JSON.stringify(this.getMyIdentity().publicKey);
                     updateDoc(doc(db, "nexus_channels", this.activeNode.channelId), { [`typing.${myPubStr}`]: Date.now() }).catch(()=>{});
                 }
-                this.typingTimer = setTimeout(() => {
-                    this.typingTimer = null;
-                }, 2000); // 2秒間入力がなければタイピング判定を消す
+                this.typingTimer = setTimeout(() => { this.typingTimer = null; }, 2000);
             }
         });
 
@@ -168,14 +185,20 @@ export class NexusChatUI {
             if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
         };
         
+        this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
+        this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
+        
+        // 送信ボタン
         const sendBtn = document.createElement('button');
-        sendBtn.innerText = '➤';
-        sendBtn.style.cssText = 'background:#ff00ff; color:#000; border:none; width:36px; height:36px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.2s; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom:1px;';
+        sendBtn.innerHTML = '➤';
+        sendBtn.style.cssText = 'background:linear-gradient(135deg, #00ffcc 0%, #00ccff 100%); color:#000; border:none; width:36px; height:36px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.3s; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 0 10px rgba(0,255,204,0.3); outline:none;';
+        sendBtn.onmouseover = () => { sendBtn.style.transform = 'scale(1.1)'; sendBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.6)'; };
+        sendBtn.onmouseout = () => { sendBtn.style.transform = 'scale(1)'; sendBtn.style.boxShadow = '0 0 10px rgba(0,255,204,0.3)'; };
         sendBtn.onclick = () => this.sendMessage();
 
-        inputContainer.appendChild(attachBtn);
         inputContainer.appendChild(fileInput);
-        inputContainer.appendChild(this.micBtn);
+        inputWrapper.appendChild(attachBtn);
+        inputWrapper.appendChild(this.micBtn);
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
@@ -214,16 +237,16 @@ export class NexusChatUI {
         nexusNodes.forEach(node => {
             const btn = document.createElement('div');
             const isActive = this.activeNode === node;
-            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; border:1px solid transparent; cursor:pointer; transition:0.2s; overflow:hidden; ${isActive ? 'background:rgba(255,0,255,0.1); border-color:rgba(255,0,255,0.3);' : ''}`;
+            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; border:1px solid transparent; cursor:pointer; transition:0.3s; overflow:hidden; ${isActive ? 'background:rgba(255,0,255,0.15); border-color:rgba(255,0,255,0.4);' : ''}`;
             
             const iconWrap = document.createElement('div');
-            iconWrap.style.cssText = `width:30px; height:30px; border-radius:50%; overflow:hidden; border:2px solid ${isActive?'#ff00ff':'#444'}; flex-shrink:0; display:flex; justify-content:center; align-items:center; background:#111;`;
+            iconWrap.style.cssText = `width:36px; height:36px; border-radius:50%; overflow:hidden; border:2px solid ${isActive?'#ff00ff':'#444'}; flex-shrink:0; display:flex; justify-content:center; align-items:center; background:#111; transition:0.3s;`;
             if (node.iconUrl) iconWrap.innerHTML = `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
             else iconWrap.style.background = isActive ? 'radial-gradient(circle, #ff00ff 0%, #111 70%)' : 'radial-gradient(circle, #444 0%, #111 70%)';
             
             const nameEl = document.createElement('div');
             const displayName = node.name.replace('Nexus Channel', 'Channel').replace('Nexus: ', '');
-            nameEl.style.cssText = `font-size:12px; color:${isActive?'#fff':'#aaa'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+            nameEl.style.cssText = `font-size:13px; font-weight:${isActive?'bold':'normal'}; color:${isActive?'#fff':'#aaa'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
             nameEl.innerText = '🌌 ' + displayName;
             
             btn.appendChild(iconWrap); btn.appendChild(nameEl);
@@ -249,19 +272,18 @@ export class NexusChatUI {
         
         const displayName = node.name.replace('Nexus Channel', 'Secure Channel').replace('Nexus: ', '');
         this.chatHeader.innerHTML = `
-            <div style="width:36px; height:36px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;">
+            <div style="width:44px; height:44px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3);">
                 ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
             </div>
             <div style="display:flex; flex-direction:column; gap:2px;">
-                <div style="font-size:15px; font-weight:bold; color:#fff; letter-spacing:1px;">${displayName}</div>
-                <div style="font-size:10px; color:#ff00ff; text-shadow:0 0 5px #ff00ff;">🔐 Hybrid E2EE Secured</div>
+                <div style="font-size:16px; font-weight:bold; color:#fff; letter-spacing:1px;">${displayName}</div>
+                <div style="font-size:11px; color:#ff00ff; font-family:monospace;">● End-to-End Encrypted</div>
             </div>
         `;
         
         this.msgContainer.innerHTML = '';
         if (!node.messages) node.messages = [];
         
-        // 既存メッセージの再描画
         for (let msg of node.messages) { await this.renderMessageObj(msg); }
         this.scrollToBottom();
 
@@ -277,22 +299,16 @@ export class NexusChatUI {
             const myPubStr = JSON.stringify(myId.publicKey);
             const peerPubStr = JSON.stringify(node.peerPublicKey);
 
-            // ★ タイピング状態の監視（チャンネルドキュメント自体を監視）
             this.unsubscribeTyping = onSnapshot(doc(db, "nexus_channels", channelId), (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.typing && data.typing[peerPubStr]) {
-                        // 相手の最終入力が3秒以内なら「入力中」とみなす
-                        if (Date.now() - data.typing[peerPubStr] < 3000) {
-                            this.typingIndicator.style.opacity = '1';
-                        } else {
-                            this.typingIndicator.style.opacity = '0';
-                        }
+                        if (Date.now() - data.typing[peerPubStr] < 3000) this.typingIndicator.style.opacity = '1';
+                        else this.typingIndicator.style.opacity = '0';
                     }
                 }
             });
 
-            // メッセージ自体の監視
             const messagesRef = collection(db, "nexus_channels", channelId, "messages");
             const q = query(messagesRef, orderBy("timestamp", "asc"));
 
@@ -308,12 +324,8 @@ export class NexusChatUI {
                         if (!isDuplicate) {
                             const senderType = (data.senderPubKey === myPubStr) ? 'me' : 'peer';
                             const msgObj = { 
-                                id: docId, 
-                                sender: senderType, 
-                                cipher: data.cipher, 
-                                iv: data.iv, 
-                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(),
-                                isDeleted: data.isDeleted || false 
+                                id: docId, sender: senderType, cipher: data.cipher, iv: data.iv, 
+                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), isDeleted: data.isDeleted || false 
                             };
                             
                             node.messages.push(msgObj);
@@ -324,18 +336,13 @@ export class NexusChatUI {
                                 window.universeAudio.playSystemSound(400, 'triangle', 0.1);
                             }
                         }
-                    } 
-                    // ★ 送信取り消し（削除フラグ）を受信したときの処理
-                    else if (change.type === "modified") {
+                    } else if (change.type === "modified") {
                         if (data.isDeleted) {
                             const targetMsg = node.messages.find(m => m.id === docId);
                             if (targetMsg && !targetMsg.isDeleted) {
-                                targetMsg.isDeleted = true;
-                                targetMsg.cipher = "";
+                                targetMsg.isDeleted = true; targetMsg.cipher = "";
                                 const domEl = document.getElementById(`msg-${docId}`);
-                                if (domEl) {
-                                    domEl.innerHTML = '<div style="font-size:12px; color:#666; font-style:italic; padding:10px; border:1px dashed #444; border-radius:8px;">🚫 空間から通信記録が消去されました</div>';
-                                }
+                                if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
                             }
                         }
                     }
@@ -349,75 +356,67 @@ export class NexusChatUI {
     async renderMessageObj(msg) {
         const isMe = msg.sender === 'me';
         
-        // メッセージ全体のラッパー。IDを付与して後から「送信取消」でDOMを書き換えられるようにする
         const wrapper = document.createElement('div');
         wrapper.id = `msg-${msg.id}`;
         wrapper.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:10px; position:relative;`;
         
-        // ★ 削除済みのメッセージの場合の描画
+        // ★ 消去済みメッセージのエレガントな表現
         if (msg.isDeleted) {
-            wrapper.innerHTML = '<div style="font-size:12px; color:#666; font-style:italic; padding:10px; border:1px dashed #444; border-radius:8px;">🚫 空間から通信記録が消去されました</div>';
+            wrapper.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
             this.msgContainer.appendChild(wrapper);
             return;
         }
 
-        // アイコン（相手のみ）
         if (!isMe) {
             const peerIcon = document.createElement('div');
-            peerIcon.style.cssText = `width:28px; height:28px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;`;
+            peerIcon.style.cssText = `width:34px; height:34px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; margin-bottom: 2px;`;
             if (this.activeNode.iconUrl) peerIcon.innerHTML = `<img src="${this.activeNode.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
             else peerIcon.style.background = 'radial-gradient(circle, #ff00ff 0%, #111 70%)';
             wrapper.appendChild(peerIcon);
         }
 
-        // 時間と削除ボタンを入れるコンテナ
+        // ★ メタデータ（時間とゴミ箱）の配置を最適化
         const metaContainer = document.createElement('div');
-        metaContainer.style.cssText = `display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'}; margin-bottom:5px; opacity:0.6;`;
+        metaContainer.style.cssText = `display:flex; align-items:flex-end; gap:6px; opacity:0.6; margin-bottom:2px;`;
 
-        // ★ タイムスタンプ
         const timeDate = new Date(msg.timestamp);
         const timeStr = `${timeDate.getHours().toString().padStart(2,'0')}:${timeDate.getMinutes().toString().padStart(2,'0')}`;
         const timeEl = document.createElement('div');
         timeEl.innerText = timeStr;
-        timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:monospace; margin-${isMe ? 'right' : 'left'}:5px;`;
+        timeEl.style.cssText = `font-size:11px; color:#aaa; font-family:sans-serif;`;
         
-        // ★ 送信取り消しボタン（自分のみ、24時間以内）
-        const timeDiff = Date.now() - msg.timestamp;
-        if (isMe && timeDiff < 24 * 60 * 60 * 1000) {
+        if (isMe && (Date.now() - msg.timestamp) < 24 * 60 * 60 * 1000) {
             const delBtn = document.createElement('div');
-            delBtn.innerText = '🗑️ 消去';
-            delBtn.style.cssText = 'font-size:9px; color:#ff4444; cursor:pointer; margin-top:3px; margin-right:5px; transition:0.2s;';
-            delBtn.onmouseover = () => delBtn.style.textShadow = '0 0 5px #ff4444';
-            delBtn.onmouseout = () => delBtn.style.textShadow = 'none';
+            delBtn.innerHTML = '🗑️';
+            delBtn.title = 'メッセージを完全消去';
+            delBtn.style.cssText = 'font-size:12px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
+            delBtn.onmouseover = () => delBtn.style.transform = 'scale(1.2)';
+            delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
             delBtn.onclick = async () => {
-                if(confirm('このメッセージを空間から完全に消去しますか？（相手の画面からも消えます）')) {
-                    if(!msg.id) return alert("ローカルの未同期メッセージです。リロード後に実行してください。");
+                if(confirm('空間からこの通信記録を完全に消去しますか？')) {
+                    if(!msg.id) return alert("同期中です。数秒後にやり直してください。");
                     try {
-                        const docRef = doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id);
-                        await updateDoc(docRef, { isDeleted: true, cipher: "", iv: "" });
-                    } catch(e) { alert("消去に失敗しました"); }
+                        await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id), { isDeleted: true, cipher: "", iv: "" });
+                    } catch(e) {}
                 }
             };
-            metaContainer.appendChild(timeEl);
             metaContainer.appendChild(delBtn);
-        } else {
-            metaContainer.appendChild(timeEl);
         }
+        metaContainer.appendChild(timeEl);
 
         const bubble = document.createElement('div');
-        bubble.style.cssText = `max-width:70%; padding:12px 16px; font-size:14px; line-height:1.6; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.5); white-space:pre-wrap;`;
+        // ★ 吹き出しのデザインをより柔らかく美しく
+        bubble.style.cssText = `max-width:75%; padding:12px 18px; font-size:14px; line-height:1.5; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
         
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(0,255,204,0.3)'; bubble.style.color = '#ccffff'; bubble.style.borderRadius = '16px 16px 4px 16px';
+            bubble.style.border = '1px solid rgba(0,255,204,0.4)'; bubble.style.color = '#ccffff'; bubble.style.borderRadius = '18px 18px 4px 18px';
         } else {
-            bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.1) 0%, rgba(255,102,204,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(255,102,204,0.3)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '16px 16px 16px 4px';
+            bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.15) 0%, rgba(255,102,204,0.05) 100%)';
+            bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '18px 18px 18px 4px';
         }
 
-        let text = "[ 復号エラー: 鍵不一致 ]"; 
-        let isImage = false;
-        let isVoice = false;
+        let text = ""; let isImage = false; let isVoice = false;
         
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
@@ -427,18 +426,18 @@ export class NexusChatUI {
                 else if (parsed.type === 'voice') { isVoice = true; text = parsed.data; }
                 else if (parsed.type === 'text') { text = parsed.text; }
             } catch(e) { text = decrypted; }
-        } catch(e) {}
+        } catch(e) { text = "[ 復号エラー: 鍵不一致 ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
         
-        // ペイロードに応じた描画
         if (isImage) {
-            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open('${text}')">`;
+            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:10px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
+            bubble.style.padding = '8px';
         } else if (isVoice) {
-            // 暗号化された音声を再生するカスタムオーディオ
-            bubble.innerHTML = `<div style="font-size:10px; color:#00ffcc; margin-bottom:5px;">🎙️ Encrypted Voice Memo</div><audio src="${text}" controls style="height:35px; max-width:200px; outline:none; filter:invert(1) hue-rotate(180deg);"></audio>`;
+            bubble.innerHTML = `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:35px; max-width:200px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:20px;"></audio>`;
         } else {
             bubble.innerText = text;
         }
         
+        // ★ 時間と吹き出しの配置を美しく
         if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubble); }
         else { wrapper.appendChild(bubble); wrapper.appendChild(metaContainer); }
         
@@ -457,25 +456,22 @@ export class NexusChatUI {
         await this.dispatchToNetwork(encrypted);
     }
 
-    // ★ 🎙️ 音声録音機能のトグル
     async toggleVoiceRecord() {
         if (!this.activeNode) return;
 
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-            // 録音停止して送信
             this.mediaRecorder.stop();
             this.micBtn.innerText = '🎙️';
             this.micBtn.style.color = '#00ffcc';
             this.micBtn.style.textShadow = 'none';
+            this.inputField.placeholder = 'Secure Message...';
         } else {
-            // 録音開始
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 this.mediaRecorder = new MediaRecorder(stream);
                 this.audioChunks = [];
                 
                 this.mediaRecorder.ondataavailable = e => this.audioChunks.push(e.data);
-                
                 this.mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
                     const reader = new FileReader();
@@ -490,7 +486,7 @@ export class NexusChatUI {
                         finally { this.inputField.placeholder = 'Secure Message...'; }
                     };
                     reader.readAsDataURL(audioBlob);
-                    stream.getTracks().forEach(t => t.stop()); // マイク解放
+                    stream.getTracks().forEach(t => t.stop()); 
                 };
                 
                 this.mediaRecorder.start();
@@ -498,9 +494,7 @@ export class NexusChatUI {
                 this.micBtn.style.color = '#ff4444';
                 this.micBtn.style.textShadow = '0 0 10px #ff4444';
                 this.inputField.placeholder = 'Recording... (タップで送信)';
-            } catch(e) {
-                alert("マイクのアクセスが許可されていません。");
-            }
+            } catch(e) { alert("マイクのアクセスが許可されていません。"); }
         }
     }
 
@@ -539,7 +533,6 @@ export class NexusChatUI {
         const myId = this.getMyIdentity(); if (!myId) return;
         const myPubStr = JSON.stringify(myId.publicKey);
         
-        // オフライン用（Firestore未接続時）
         if (!this.activeNode.channelId || !db) {
             const msgObj = { id: "", sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now() };
             if (!this.activeNode.messages) this.activeNode.messages = [];
@@ -550,7 +543,6 @@ export class NexusChatUI {
         try {
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
             await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp() }, { merge: true });
-
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
             await addDoc(messagesRef, { cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), isDeleted: false });
         } catch (e) {}
