@@ -1,6 +1,10 @@
 // src/core/Gravity.js
 
 export class Gravity {
+    // ★ 進行中のアニメーションを管理する特異点（辞書）
+    static activeAnimations = new Map();
+    static isLoopRunning = false;
+
     /**
      * 宇宙の星々を指定の陣形（フォーメーション）に整列させます
      * @param {Array} nodes - 現在の宇宙にある星の配列
@@ -45,38 +49,61 @@ export class Gravity {
                     break;
             }
 
-            // スゥーッ…と滑らかに移動させるアニメーションを実行
-            this.animateNodeTo(node, targetX, targetY);
+            // ★ 修正点：個別にループを作らず、アニメーションキュー（Map）に登録するだけ
+            this.activeAnimations.set(node.id, {
+                node,
+                startX: node.baseX,
+                startY: node.baseY,
+                targetX,
+                targetY,
+                startTime: performance.now(),
+                duration: 1200
+            });
         });
+
+        // マスタークロックが止まっていれば再起動
+        if (!this.isLoopRunning) {
+            this.startMasterClock();
+        }
     }
 
     /**
-     * イージング関数を用いて、星を目標座標まで滑らかに移動させる
+     * ★ 追加：単一のマスタークロック（153bpmのUIスレッドを保護）
      */
-    static animateNodeTo(node, targetX, targetY) {
-        const startX = node.baseX;
-        const startY = node.baseY;
-        const duration = 1200; // 1.2秒かけてゆっくり移動
-        const startTime = performance.now();
-
+    static startMasterClock() {
+        this.isLoopRunning = true;
         // 滑らかに減速する計算式（Ease Out Quart）
         const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
 
-        const animate = (currentTime) => {
-            let elapsed = currentTime - startTime;
-            if (elapsed > duration) elapsed = duration;
+        const tick = (currentTime) => {
+            let stillAnimating = false;
 
-            const progress = elapsed / duration;
-            const ease = easeOutQuart(progress);
+            this.activeAnimations.forEach((anim, id) => {
+                let elapsed = currentTime - anim.startTime;
+                if (elapsed >= anim.duration) {
+                    // 到達完了
+                    anim.node.baseX = anim.targetX;
+                    anim.node.baseY = anim.targetY;
+                    this.activeAnimations.delete(id); // キューから削除
+                } else {
+                    // 移動中
+                    const progress = elapsed / anim.duration;
+                    const ease = easeOutQuart(progress);
+                    
+                    // 星の基準座標を少しずつ書き換える
+                    anim.node.baseX = anim.startX + (anim.targetX - anim.startX) * ease;
+                    anim.node.baseY = anim.startY + (anim.targetY - anim.startY) * ease;
+                    stillAnimating = true;
+                }
+            });
 
-            // 星の基準座標を少しずつ書き換える
-            node.baseX = startX + (targetX - startX) * ease;
-            node.baseY = startY + (targetY - startY) * ease;
-
-            if (progress < 1) {
-                requestAnimationFrame(animate);
+            // まだ動いている星があれば次のフレームを要求、なければ完全停止
+            if (stillAnimating) {
+                requestAnimationFrame(tick);
+            } else {
+                this.isLoopRunning = false;
             }
         };
-        requestAnimationFrame(animate);
+        requestAnimationFrame(tick);
     }
 }
