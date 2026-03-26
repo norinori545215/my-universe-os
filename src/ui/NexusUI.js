@@ -60,14 +60,44 @@ export class NexusUI {
             <div style="display:flex; flex-direction:column; gap:15px; width:80%; max-width:300px;">
                 <button id="nx-btn-show" style="padding:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">1️⃣ 自分の鍵を表示 (QR)</button>
                 <button id="nx-btn-scan" style="padding:15px; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; color:#ff00ff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">2️⃣ 相手の鍵を読み取る</button>
-                <button id="nx-btn-close" style="padding:15px; background:transparent; border:1px solid #666; color:#888; border-radius:8px; cursor:pointer; margin-top:20px; font-weight:bold;">キャンセル</button>
+                <div style="height:1px; background:rgba(255,255,255,0.2); margin:10px 0;"></div>
+                <button id="nx-btn-clone" style="padding:15px; background:rgba(255,204,0,0.1); border:1px solid #ffcc00; color:#ffcc00; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">🧬 端末の引継ぎ (Identity Clone)</button>
+                <button id="nx-btn-close" style="padding:15px; background:transparent; border:1px solid #666; color:#888; border-radius:8px; cursor:pointer; margin-top:10px; font-weight:bold;">キャンセル</button>
             </div>
         `;
         document.body.appendChild(modal);
 
         document.getElementById('nx-btn-show').onclick = () => { modal.remove(); this.showMyQR(node); };
-        document.getElementById('nx-btn-scan').onclick = () => { modal.remove(); this.startScanning(node); };
+        document.getElementById('nx-btn-scan').onclick = () => { modal.remove(); this.startScanning(node, 'connect'); };
+        document.getElementById('nx-btn-clone').onclick = () => { modal.remove(); this.openIdentityManager(node); };
         document.getElementById('nx-btn-close').onclick = () => modal.remove();
+    }
+
+    openIdentityManager(node) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif; text-align:center;';
+        
+        modal.innerHTML = `
+            <div style="margin-bottom:10px; font-size:16px; color:#ffcc00; font-weight:bold; letter-spacing:2px;">IDENTITY CLONE</div>
+            <div style="color:#aaa; font-size:12px; margin-bottom:20px; line-height:1.5;">スマホ等にデータを引き継ぐための<br>秘密鍵を含んだ非常に強力なQRコードです。<br><span style="color:#ff4444;">※絶対に他人に教えないでください！</span></div>
+            <div id="nx-qr-container" style="background:#fff; padding:15px; border-radius:12px; box-shadow:0 0 40px rgba(255,204,0,0.3); display:flex; justify-content:center; align-items:center; min-width:250px; min-height:250px;">
+                <canvas id="nexus-clone-qr" width="250" height="250"></canvas>
+            </div>
+            <button id="nx-btn-scan-clone" style="margin-top:30px; padding:12px 30px; background:#221100; border:1px solid #ffcc00; color:#ffcc00; border-radius:8px; font-weight:bold; cursor:pointer;">📸 別の端末から復元する</button>
+            <button id="nx-qr-close" style="margin-top:15px; background:transparent; border:1px solid #666; color:#aaa; padding:10px 40px; border-radius:30px; cursor:pointer; font-weight:bold;">戻る</button>
+        `;
+        document.body.appendChild(modal);
+
+        const drawQR = () => {
+            if (window.QRCode && this.myKeys) {
+                const payload = JSON.stringify({ type: 'identity_clone', keys: this.myKeys });
+                window.QRCode.toCanvas(document.getElementById('nexus-clone-qr'), payload, { width: 250, margin: 2, errorCorrectionLevel: 'L' });
+            } else setTimeout(drawQR, 200);
+        };
+        drawQR();
+
+        document.getElementById('nx-btn-scan-clone').onclick = () => { modal.remove(); this.startScanning(node, 'clone'); };
+        document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
 
     showMyQR(node) {
@@ -125,21 +155,22 @@ export class NexusUI {
         document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
 
-    startScanning(node) {
+    startScanning(node, mode = 'connect') {
         const modal = document.createElement('div');
+        const color = mode === 'clone' ? '#ffcc00' : '#ff00ff';
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
         
         modal.innerHTML = `
-            <div style="margin-bottom:20px; font-size:14px; color:#ff00ff; font-weight:bold; letter-spacing:2px;">SCAN PARTNER'S KEY</div>
+            <div style="margin-bottom:20px; font-size:14px; color:${color}; font-weight:bold; letter-spacing:2px;">${mode === 'clone' ? 'SCAN BACKUP QR' : "SCAN PARTNER'S KEY"}</div>
             
-            <div style="position:relative; width:250px; height:250px; overflow:hidden; border-radius:12px; background:#111; border:2px solid rgba(255,0,255,0.5); box-shadow:0 0 40px rgba(255,0,255,0.2);">
+            <div style="position:relative; width:250px; height:250px; overflow:hidden; border-radius:12px; background:#111; border:2px solid rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5); box-shadow:0 0 40px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.2);">
                 <video id="nexus-video" width="250" height="250" style="object-fit:cover; transform:scaleX(-1);" playsinline></video>
-                <div id="nexus-scan-line" style="position:absolute; top:0; left:0; width:100%; height:2px; background:#ff00ff; box-shadow:0 0 15px 5px rgba(255,0,255,0.5);"></div>
+                <div id="nexus-scan-line" style="position:absolute; top:0; left:0; width:100%; height:2px; background:${color}; box-shadow:0 0 15px 5px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5);"></div>
             </div>
             <canvas id="nexus-scan-canvas" style="display:none;"></canvas>
 
             <div style="margin-top:30px; display:flex; flex-direction:column; gap:15px; width:250px;">
-                <button id="nx-upload-btn" style="padding:12px; background:#220022; border:1px solid #ff00ff; color:#ff00ff; border-radius:8px; font-weight:bold; cursor:pointer;">🖼️ 写真(画像)から読み込む</button>
+                <button id="nx-upload-btn" style="padding:12px; background:#111; border:1px solid ${color}; color:${color}; border-radius:8px; font-weight:bold; cursor:pointer;">🖼️ 写真(画像)から読み込む</button>
                 <input type="file" id="nx-upload-input" style="display:none;" accept="image/*">
                 <button id="nx-cam-close" style="padding:12px; background:transparent; border:1px solid #666; color:#888; border-radius:8px; cursor:pointer;">戻る</button>
             </div>
@@ -168,13 +199,19 @@ export class NexusUI {
         const processQRData = async (dataStr) => {
             try {
                 const data = JSON.parse(dataStr);
-                if (data.type === 'nexus_key' && data.pub) {
-                    scanning = false;
-                    if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
-                    modal.remove();
+                scanning = false;
+                if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+                modal.remove();
+
+                if (mode === 'connect' && data.type === 'nexus_key' && data.pub) {
                     await this.establishConnection(data.pub, node);
+                } else if (mode === 'clone' && data.type === 'identity_clone' && data.keys) {
+                    localStorage.setItem('universe_nexus_identity', JSON.stringify(data.keys));
+                    this.myKeys = data.keys;
+                    alert("🧬 魂（秘密鍵）の引き継ぎに成功しました！\nこれでこの端末でも暗号化通信が可能です。");
                 } else {
-                    alert("Nexusの鍵データではありません。");
+                    alert("無効なQRコードデータです。");
+                    this.openScanner(node);
                 }
             } catch(e) {
                 alert("無効なQRコードデータです。");

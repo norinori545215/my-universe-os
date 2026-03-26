@@ -1,7 +1,8 @@
 // src/ui/NexusChatUI.js
 import { SecretNexus } from '../security/SecretNexus.js';
 import { db } from '../security/Auth.js';
-import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// ★ limit をインポートに追加し、Memory Pagination（無限スクロール基礎）に対応
+import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class NexusChatUI {
     constructor(app) {
@@ -14,6 +15,7 @@ export class NexusChatUI {
         
         this.mediaRecorder = null;
         this.audioChunks = [];
+        this.unreadChannels = new Set(); // ★ 未読チャンネルの管理
 
         this.createUI();
         
@@ -27,7 +29,6 @@ export class NexusChatUI {
         } catch (e) { return null; }
     }
 
-    // ★ 追加：相手の公開鍵から「短い固有ID」を生成する関数
     getShortId(pubKeyObj) {
         if (!pubKeyObj) return "UNKNOWN";
         const str = JSON.stringify(pubKeyObj);
@@ -50,9 +51,19 @@ export class NexusChatUI {
 
         onSnapshot(q, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
+                const channelData = change.doc.data();
+                const channelId = change.doc.id;
+
+                // ★ 未読判定：相手の最新更新が、自分の最終既読時間より新しいか
+                const myLastRead = (channelData.lastRead && channelData.lastRead[myPubStr]) ? channelData.lastRead[myPubStr] : 0;
+                const lastUpdated = channelData.updatedAt ? channelData.updatedAt.toMillis() : 0;
+                
+                if (lastUpdated > myLastRead && (!this.isOpen || this.activeNode?.channelId !== channelId)) {
+                    this.unreadChannels.add(channelId);
+                    if(this.isOpen) this.refreshContacts();
+                }
+
                 if (change.type === "added") {
-                    const channelData = change.doc.data();
-                    const channelId = change.doc.id;
                     const peerPubStr = channelData.participants.find(p => p !== myPubStr);
                     if (!peerPubStr) return;
 
@@ -69,7 +80,6 @@ export class NexusChatUI {
                         const peerPubObj = JSON.parse(peerPubStr);
                         const shortId = this.getShortId(peerPubObj);
                         
-                        // ★ 着信時、固有IDをデフォルト名にして星を生成
                         const newNode = this.app.currentUniverse.addNode(`User ${shortId}`, 0, 0, 30, '#ff00ff', 'star');
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
@@ -134,7 +144,6 @@ export class NexusChatUI {
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative;';
         body.appendChild(this.chatArea);
 
-        // ★ チャットヘッダー（ここで名前の変更などを行う）
         this.chatHeader = document.createElement('div');
         this.chatHeader.style.cssText = 'padding:12px 20px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:15px; background:rgba(0,0,0,0.4); flex-shrink:0; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:5;';
         this.chatArea.appendChild(this.chatHeader);
@@ -161,13 +170,11 @@ export class NexusChatUI {
 
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
-        attachBtn.title = '画像暗号化';
         attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
         attachBtn.onclick = () => fileInput.click();
 
         this.micBtn = document.createElement('button');
         this.micBtn.innerText = '🎙️';
-        this.micBtn.title = '音声暗号化';
         this.micBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
@@ -237,7 +244,7 @@ export class NexusChatUI {
         findNexus(this.app.currentUniverse.nodes);
 
         if (nexusNodes.length === 0) {
-            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px; border:1px dashed #444; border-radius:8px;">NO CHANNELS</div>';
+            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px;">NO CHANNELS</div>';
             this.chatHeader.innerHTML = '';
             this.msgContainer.innerHTML = '';
             this.activeNode = null;
@@ -247,19 +254,28 @@ export class NexusChatUI {
         nexusNodes.forEach(node => {
             const btn = document.createElement('div');
             const isActive = this.activeNode === node;
-            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; border:1px solid transparent; cursor:pointer; transition:0.3s; overflow:hidden; ${isActive ? 'background:rgba(255,0,255,0.15); border-color:rgba(255,0,255,0.4);' : ''}`;
+            const isUnread = node.channelId && this.unreadChannels.has(node.channelId); // ★ 未読バッジ判定
+            
+            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; border:1px solid transparent; cursor:pointer; transition:0.3s; overflow:hidden; position:relative; ${isActive ? 'background:rgba(255,0,255,0.15); border-color:rgba(255,0,255,0.4);' : ''}`;
             
             const iconWrap = document.createElement('div');
             iconWrap.style.cssText = `width:36px; height:36px; border-radius:50%; overflow:hidden; border:2px solid ${isActive?'#ff00ff':'#444'}; flex-shrink:0; display:flex; justify-content:center; align-items:center; background:#111; transition:0.3s;`;
             if (node.iconUrl) iconWrap.innerHTML = `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
             else iconWrap.style.background = isActive ? 'radial-gradient(circle, #ff00ff 0%, #111 70%)' : 'radial-gradient(circle, #444 0%, #111 70%)';
             
-            // 左側のリストにも変更した名前を反映
             const nameEl = document.createElement('div');
-            nameEl.style.cssText = `font-size:13px; font-weight:${isActive?'bold':'normal'}; color:${isActive?'#fff':'#aaa'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+            nameEl.style.cssText = `font-size:13px; font-weight:${(isActive || isUnread)?'bold':'normal'}; color:${isActive?'#fff':(isUnread?'#ff00ff':'#aaa')}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
             nameEl.innerText = '🌌 ' + node.name;
             
             btn.appendChild(iconWrap); btn.appendChild(nameEl);
+
+            // ★ 未読の赤い丸バッジを追加
+            if (isUnread && !isActive) {
+                const badge = document.createElement('div');
+                badge.style.cssText = 'position:absolute; right:10px; width:10px; height:10px; background:#ff4444; border-radius:50%; box-shadow:0 0 10px #ff4444;';
+                btn.appendChild(badge);
+            }
+
             btn.onclick = () => this.openChat(node);
             this.contactList.appendChild(btn);
         });
@@ -278,11 +294,10 @@ export class NexusChatUI {
         }
 
         this.activeNode = node;
+        if(node.channelId) this.unreadChannels.delete(node.channelId); // 開いたら未読解除
         this.refreshContacts();
         
-        // ★ IDと名前表示の改修
         const shortId = this.getShortId(node.peerPublicKey);
-        
         this.chatHeader.innerHTML = `
             <div id="nx-header-icon" title="アイコン画像を設定" style="width:44px; height:44px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
                 ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
@@ -295,37 +310,39 @@ export class NexusChatUI {
             </div>
         `;
 
-        // ★ 名前変更（アドレス帳）機能
         document.getElementById('nx-header-name').onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
         document.getElementById('nx-header-name').onmouseout = (e) => e.currentTarget.style.color = '#fff';
         document.getElementById('nx-header-name').onclick = () => {
             const newName = prompt("この通信相手の名前を入力してください:", node.name);
             if (newName && newName.trim() !== "") {
-                node.name = newName.trim();
-                this.app.autoSave();
-                this.openChat(node); // 再描画
+                node.name = newName.trim(); this.app.autoSave(); this.openChat(node);
             }
         };
 
-        // ★ アイコン変更機能
         document.getElementById('nx-header-icon').onmouseover = (e) => e.currentTarget.style.transform = 'scale(1.1)';
         document.getElementById('nx-header-icon').onmouseout = (e) => e.currentTarget.style.transform = 'scale(1)';
         document.getElementById('nx-header-icon').onclick = () => {
             const url = prompt("相手のアイコン画像のURLを入力してください:", node.iconUrl || "");
             if (url !== null) {
-                node.iconUrl = url.trim();
-                this.app.autoSave();
-                this.openChat(node); // 再描画
+                node.iconUrl = url.trim(); this.app.autoSave(); this.openChat(node);
             }
         };
         
         this.msgContainer.innerHTML = '';
         if (!node.messages) node.messages = [];
         
-        for (let msg of node.messages) { await this.renderMessageObj(msg); }
-        this.scrollToBottom();
-
         if (node.peerPublicKey && myId && db) await this.listenToNetwork(node, myId);
+    }
+
+    // ★ 既読マーク「👁️」をDOMに反映させる
+    updateReadReceipts(peerLastRead) {
+        if (!this.activeNode || !this.activeNode.messages) return;
+        this.activeNode.messages.forEach(msg => {
+            if (msg.sender === 'me' && !msg.isDeleted && msg.timestamp <= peerLastRead) {
+                const readEl = document.getElementById(`read-${msg.id}`);
+                if (readEl) readEl.style.opacity = '1';
+            }
+        });
     }
 
     async listenToNetwork(node, myId) {
@@ -337,6 +354,11 @@ export class NexusChatUI {
             const myPubStr = JSON.stringify(myId.publicKey);
             const peerPubStr = JSON.stringify(node.peerPublicKey);
 
+            // ★ 開いた瞬間に自分の既読時間を更新（バッジを消す）
+            if(db) updateDoc(doc(db, "nexus_channels", channelId), { [`lastRead.${myPubStr}`]: Date.now() }).catch(()=>{});
+
+            let peerLastRead = 0;
+
             this.unsubscribeTyping = onSnapshot(doc(db, "nexus_channels", channelId), (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -344,16 +366,25 @@ export class NexusChatUI {
                         if (Date.now() - data.typing[peerPubStr] < 3000) this.typingIndicator.style.opacity = '1';
                         else this.typingIndicator.style.opacity = '0';
                     }
+                    // ★ 相手の既読時間を取得して反映
+                    if (data.lastRead && data.lastRead[peerPubStr]) {
+                        peerLastRead = data.lastRead[peerPubStr];
+                        this.updateReadReceipts(peerLastRead);
+                    }
                 }
             });
 
+            // ★ Memory Pagination: メモリクラッシュを防ぐため、常に最新50件のみを監視
             const messagesRef = collection(db, "nexus_channels", channelId, "messages");
-            const q = query(messagesRef, orderBy("timestamp", "asc"));
+            const q = query(messagesRef, orderBy("timestamp", "desc"), limit(50));
 
             this.unsubscribeNetwork = onSnapshot(q, async (snapshot) => {
                 let isNewRendered = false;
+                
+                // descで取得しているので、古い順に並べ直して描画
+                const changes = snapshot.docChanges().reverse();
 
-                snapshot.docChanges().forEach((change) => {
+                changes.forEach((change) => {
                     const data = change.doc.data();
                     const docId = change.doc.id;
 
@@ -367,11 +398,13 @@ export class NexusChatUI {
                             };
                             
                             node.messages.push(msgObj);
-                            this.renderMessageObj(msgObj);
+                            this.renderMessageObj(msgObj, peerLastRead);
                             isNewRendered = true;
 
-                            if (senderType === 'peer' && window.universeAudio && this.isOpen) {
-                                window.universeAudio.playSystemSound(400, 'triangle', 0.1);
+                            if (senderType === 'peer') {
+                                if (window.universeAudio && this.isOpen) window.universeAudio.playSystemSound(400, 'triangle', 0.1);
+                                // ★ チャットを開いている間に受信したら、即座に既読をつける
+                                if(db) updateDoc(doc(db, "nexus_channels", channelId), { [`lastRead.${myPubStr}`]: Date.now() }).catch(()=>{});
                             }
                         }
                     } else if (change.type === "modified") {
@@ -386,12 +419,18 @@ export class NexusChatUI {
                     }
                 });
 
+                // ★ メモリ保護: ローカルの配列も常に最新の50件に制限
+                if (node.messages.length > 50) {
+                    node.messages.sort((a, b) => a.timestamp - b.timestamp);
+                    node.messages = node.messages.slice(-50);
+                }
+
                 if (isNewRendered) { this.app.autoSave(); this.scrollToBottom(); }
             });
         } catch (e) { console.error("ワームホールエラー", e); }
     }
 
-    async renderMessageObj(msg) {
+    async renderMessageObj(msg, peerLastRead = 0) {
         const isMe = msg.sender === 'me';
         
         const wrapper = document.createElement('div');
@@ -421,7 +460,14 @@ export class NexusChatUI {
         timeEl.innerText = timeStr;
         timeEl.style.cssText = `font-size:11px; color:#aaa; font-family:sans-serif;`;
         
-        if (isMe && (Date.now() - msg.timestamp) < 24 * 60 * 60 * 1000) {
+        if (isMe) {
+            // ★ 既読マークの追加
+            const readMark = document.createElement('div');
+            readMark.id = `read-${msg.id}`;
+            readMark.innerText = '👁️';
+            readMark.style.cssText = `font-size:10px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
+            metaContainer.appendChild(readMark);
+
             const delBtn = document.createElement('div');
             delBtn.innerHTML = '🗑️';
             delBtn.title = 'メッセージを完全消去';
@@ -497,7 +543,6 @@ export class NexusChatUI {
             this.mediaRecorder.stop();
             this.micBtn.innerText = '🎙️';
             this.micBtn.style.color = '#00ffcc';
-            this.micBtn.style.textShadow = 'none';
             this.inputField.placeholder = 'Secure Message...';
         } else {
             try {
@@ -526,7 +571,6 @@ export class NexusChatUI {
                 this.mediaRecorder.start();
                 this.micBtn.innerText = '🔴';
                 this.micBtn.style.color = '#ff4444';
-                this.micBtn.style.textShadow = '0 0 10px #ff4444';
                 this.inputField.placeholder = 'Recording... (タップで送信)';
             } catch(e) { alert("マイクのアクセスが許可されていません。"); }
         }
@@ -576,7 +620,8 @@ export class NexusChatUI {
 
         try {
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
-            await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp() }, { merge: true });
+            // ★ 送信時に自分の既読時間を即時更新
+            await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp(), [`lastRead.${myPubStr}`]: Date.now() }, { merge: true });
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
             await addDoc(messagesRef, { cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), isDeleted: false });
         } catch (e) {}
