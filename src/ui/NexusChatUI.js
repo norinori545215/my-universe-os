@@ -7,6 +7,7 @@ export class NexusChatUI {
     constructor(app) {
         this.app = app;
         this.isOpen = false;
+        this.isContactListOpen = false; // ★追加：スマホ用連絡帳の開閉状態
         this.activeNode = null;
         this.unsubscribeNetwork = null;
         this.unsubscribeTyping = null; 
@@ -19,6 +20,9 @@ export class NexusChatUI {
         this.createUI();
         
         setTimeout(() => this.startGlobalInboxListener(), 2000);
+
+        // ★追加：画面サイズ変更時にレイアウトを自動調整
+        window.addEventListener('resize', () => this.handleResize());
     }
 
     getMyIdentity() {
@@ -91,7 +95,6 @@ export class NexusChatUI {
                 }
             });
         }, (err) => {
-            // ★ 修正：圏外モードならエラーを出さずにステルスモードとして扱う
             if (!navigator.onLine || err.code === 'permission-denied') {
                 console.log("🛰️ [Stealth Mode] 圏外のため、着信レーダーを一時停止しています。");
             } else {
@@ -104,6 +107,7 @@ export class NexusChatUI {
         if (!document.getElementById('nexus-chat-styles')) {
             const style = document.createElement('style');
             style.id = 'nexus-chat-styles';
+            // ★ スマホ用（レスポンシブ）のCSSを追加
             style.innerHTML = `
                 .nexus-scroll::-webkit-scrollbar { width: 6px; }
                 .nexus-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -111,6 +115,15 @@ export class NexusChatUI {
                 .nexus-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 0, 255, 0.5); }
                 .nexus-input-scroll::-webkit-scrollbar { width: 4px; }
                 .nexus-input-scroll::-webkit-scrollbar-thumb { background: rgba(0, 255, 204, 0.3); border-radius: 10px; }
+                
+                .nexus-contact-panel { width: 160px; border-right: 1px solid rgba(255,0,255,0.2); transition: 0.3s; z-index: 10; }
+                .nexus-menu-btn { display: none; background: transparent; border: none; color: #ff00ff; font-size: 24px; cursor: pointer; margin-right: 10px; padding: 0 5px; }
+                
+                @media (max-width: 600px) {
+                    .nexus-contact-panel { position: absolute; left: -200px; height: 100%; background: rgba(10,15,20,0.98) !important; box-shadow: 5px 0 20px rgba(0,0,0,0.8); }
+                    .nexus-contact-panel.open { left: 0; }
+                    .nexus-menu-btn { display: block; }
+                }
             `;
             document.head.appendChild(style);
         }
@@ -124,7 +137,7 @@ export class NexusChatUI {
         document.body.appendChild(this.triggerTab);
 
         this.panel = document.createElement('div');
-        this.panel.style.cssText = 'position:fixed; top:0; right:-620px; width:100%; max-width:600px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #ff00ff; z-index:99998; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(255,0,255,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white; overflow:hidden;';
+        this.panel.style.cssText = 'position:fixed; top:0; right:-100%; width:100%; max-width:600px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #ff00ff; z-index:99998; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(255,0,255,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white; overflow:hidden;';
         document.body.appendChild(this.panel);
 
         const header = document.createElement('div');
@@ -138,20 +151,27 @@ export class NexusChatUI {
         this.panel.appendChild(header);
 
         const body = document.createElement('div');
-        body.style.cssText = 'display:flex; flex:1; overflow:hidden;';
+        body.style.cssText = 'display:flex; flex:1; overflow:hidden; position:relative;';
         this.panel.appendChild(body);
 
         this.contactList = document.createElement('div');
-        this.contactList.className = 'nexus-scroll';
-        this.contactList.style.cssText = 'width:160px; border-right:1px solid rgba(255,0,255,0.2); overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; flex-shrink:0;';
+        this.contactList.className = 'nexus-scroll nexus-contact-panel';
+        this.contactList.style.cssText = 'overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; flex-shrink:0;';
         body.appendChild(this.contactList);
 
         this.chatArea = document.createElement('div');
-        this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative;';
+        this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative; width:100%;';
+        
+        // ★ スマホ用：メニュー外をタップして閉じるためのオーバーレイ
+        this.mobileOverlay = document.createElement('div');
+        this.mobileOverlay.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9; display:none; backdrop-filter:blur(2px);';
+        this.mobileOverlay.onclick = () => this.toggleContactList(false);
+        this.chatArea.appendChild(this.mobileOverlay);
+        
         body.appendChild(this.chatArea);
 
         this.chatHeader = document.createElement('div');
-        this.chatHeader.style.cssText = 'padding:12px 20px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:15px; background:rgba(0,0,0,0.4); flex-shrink:0; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:5;';
+        this.chatHeader.style.cssText = 'padding:12px 20px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; background:rgba(0,0,0,0.4); flex-shrink:0; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:5;';
         this.chatArea.appendChild(this.chatHeader);
 
         this.msgContainer = document.createElement('div');
@@ -165,34 +185,35 @@ export class NexusChatUI {
         this.chatArea.appendChild(this.typingIndicator);
 
         const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'padding:15px 20px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:12px; z-index:15;';
+        // スマホで押しやすいように少しパディングを調整
+        inputContainer.style.cssText = 'padding:10px 15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:8px; z-index:15;';
         
         const fileInput = document.createElement('input');
         fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
         fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
         const inputWrapper = document.createElement('div');
-        inputWrapper.style.cssText = 'flex:1; display:flex; align-items:flex-end; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,204,0.3); border-radius:24px; padding:6px 6px 6px 15px; transition:0.3s; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);';
+        inputWrapper.style.cssText = 'flex:1; display:flex; align-items:flex-end; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,204,0.3); border-radius:24px; padding:6px 6px 6px 10px; transition:0.3s; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);';
 
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
-        attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
+        attachBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         attachBtn.onclick = () => fileInput.click();
 
         this.micBtn = document.createElement('button');
         this.micBtn.innerText = '🎙️';
-        this.micBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
+        this.micBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
         this.inputField = document.createElement('textarea');
         this.inputField.className = 'nexus-input-scroll';
         this.inputField.placeholder = 'Secure Message...';
         this.inputField.rows = 1;
-        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:8px 0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:120px; overflow-y:auto; margin-right:10px;';
+        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:6px 0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:100px; overflow-y:auto; margin-right:5px; width:100%;';
         
         this.inputField.addEventListener('input', () => {
             this.inputField.style.height = 'auto';
-            this.inputField.style.height = Math.min(this.inputField.scrollHeight, 120) + 'px';
+            this.inputField.style.height = Math.min(this.inputField.scrollHeight, 100) + 'px';
 
             if(this.activeNode && this.activeNode.channelId && db && this.getMyIdentity()) {
                 if(this.typingTimer) clearTimeout(this.typingTimer);
@@ -213,7 +234,7 @@ export class NexusChatUI {
         
         const sendBtn = document.createElement('button');
         sendBtn.innerHTML = '➤';
-        sendBtn.style.cssText = 'background:linear-gradient(135deg, #00ffcc 0%, #00ccff 100%); color:#000; border:none; width:36px; height:36px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.3s; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 0 10px rgba(0,255,204,0.3); outline:none;';
+        sendBtn.style.cssText = 'background:linear-gradient(135deg, #00ffcc 0%, #00ccff 100%); color:#000; border:none; width:34px; height:34px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.3s; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 0 10px rgba(0,255,204,0.3); outline:none;';
         sendBtn.onmouseover = () => { sendBtn.style.transform = 'scale(1.1)'; sendBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.6)'; };
         sendBtn.onmouseout = () => { sendBtn.style.transform = 'scale(1)'; sendBtn.style.boxShadow = '0 0 10px rgba(0,255,204,0.3)'; };
         sendBtn.onclick = () => this.sendMessage();
@@ -225,12 +246,38 @@ export class NexusChatUI {
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
         this.chatArea.appendChild(inputContainer);
+        
+        this.handleResize();
+    }
+
+    // ★ 画面幅に応じた処理
+    handleResize() {
+        if (window.innerWidth > 600) {
+            this.contactList.classList.remove('open');
+            this.mobileOverlay.style.display = 'none';
+        } else {
+            if (this.isContactListOpen) this.mobileOverlay.style.display = 'block';
+        }
+    }
+
+    // ★ 連絡帳のスライド開閉
+    toggleContactList(forceState = null) {
+        if (window.innerWidth > 600) return; // PCでは何もしない
+        this.isContactListOpen = forceState !== null ? forceState : !this.isContactListOpen;
+        if (this.isContactListOpen) {
+            this.contactList.classList.add('open');
+            this.mobileOverlay.style.display = 'block';
+        } else {
+            this.contactList.classList.remove('open');
+            this.mobileOverlay.style.display = 'none';
+        }
     }
 
     toggle() {
         this.isOpen = !this.isOpen;
-        this.panel.style.right = this.isOpen ? '0px' : '-620px';
-        this.triggerTab.style.right = this.isOpen ? '605px' : '20px'; 
+        // PCなら全幅（max600px）、スマホなら画面100%幅に合わせる
+        this.panel.style.right = this.isOpen ? '0px' : '-100%';
+        this.triggerTab.style.right = this.isOpen ? (window.innerWidth > 600 ? '605px' : 'calc(100% - 30px)') : '20px'; 
         this.triggerTab.style.background = this.isOpen ? 'rgba(255,68,68,0.1)' : 'rgba(0,255,204,0.1)';
         this.triggerTab.style.borderColor = this.isOpen ? '#ff4444' : '#00ffcc';
         this.triggerTab.style.color = this.isOpen ? '#ff4444' : '#00ffcc';
@@ -281,7 +328,11 @@ export class NexusChatUI {
                 btn.appendChild(badge);
             }
 
-            btn.onclick = () => this.openChat(node);
+            // ★ スマホ時はタップしたらメニューを閉じる
+            btn.onclick = () => {
+                this.openChat(node);
+                this.toggleContactList(false);
+            };
             this.contactList.appendChild(btn);
         });
 
@@ -303,17 +354,23 @@ export class NexusChatUI {
         this.refreshContacts();
         
         const shortId = this.getShortId(node.peerPublicKey);
+        
+        // ★ スマホ用の「≡」ハンバーガーメニューボタンを追加
         this.chatHeader.innerHTML = `
-            <div id="nx-header-icon" title="アイコン画像を設定" style="width:44px; height:44px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
+            <button class="nexus-menu-btn" onclick="document.dispatchEvent(new CustomEvent('nexusToggleMenu'))">≡</button>
+            <div id="nx-header-icon" title="アイコン画像を設定" style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
                 ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
             </div>
-            <div style="display:flex; flex-direction:column; gap:2px; flex:1;">
-                <div id="nx-header-name" title="相手の名前を変更" style="font-size:16px; font-weight:bold; color:#fff; letter-spacing:1px; cursor:pointer; display:inline-block; transition:0.2s;">
-                    ${node.name} <span style="font-size:12px; opacity:0.5;">✏️</span>
+            <div style="display:flex; flex-direction:column; gap:2px; flex:1; overflow:hidden;">
+                <div id="nx-header-name" title="相手の名前を変更" style="font-size:15px; font-weight:bold; color:#fff; letter-spacing:1px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:0.2s;">
+                    ${node.name} <span style="font-size:10px; opacity:0.5;">✏️</span>
                 </div>
-                <div style="font-size:11px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE Secured</div>
+                <div style="font-size:10px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE</div>
             </div>
         `;
+
+        // カスタムイベントでメニュー開閉を実行
+        document.addEventListener('nexusToggleMenu', () => this.toggleContactList(), { once: true });
 
         document.getElementById('nx-header-name').onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
         document.getElementById('nx-header-name').onmouseout = (e) => e.currentTarget.style.color = '#fff';
@@ -426,7 +483,6 @@ export class NexusChatUI {
 
                 if (isNewRendered) { this.app.autoSave(); this.scrollToBottom(); }
             }, (err) => {
-                // ★ 修正：圏外モードならエラーを出さずにステルスモードとして扱う
                 if (!navigator.onLine || err.code === 'permission-denied') {
                     console.log("🛰️ [Stealth Mode] 圏外のため、リアルタイム通信網を一時遮断しています。");
                 } else {
@@ -441,7 +497,7 @@ export class NexusChatUI {
         
         const wrapper = document.createElement('div');
         wrapper.id = `msg-${msg.id}`;
-        wrapper.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:10px; position:relative;`;
+        wrapper.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:8px; position:relative;`;
         
         if (msg.isDeleted) {
             wrapper.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
@@ -451,32 +507,32 @@ export class NexusChatUI {
 
         if (!isMe) {
             const peerIcon = document.createElement('div');
-            peerIcon.style.cssText = `width:34px; height:34px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; margin-bottom: 2px;`;
+            peerIcon.style.cssText = `width:28px; height:28px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; margin-bottom: 2px;`;
             if (this.activeNode.iconUrl) peerIcon.innerHTML = `<img src="${this.activeNode.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
             else peerIcon.style.background = 'radial-gradient(circle, #ff00ff 0%, #111 70%)';
             wrapper.appendChild(peerIcon);
         }
 
         const metaContainer = document.createElement('div');
-        metaContainer.style.cssText = `display:flex; align-items:flex-end; gap:6px; opacity:0.6; margin-bottom:2px;`;
+        metaContainer.style.cssText = `display:flex; align-items:flex-end; gap:4px; opacity:0.6; margin-bottom:2px; flex-shrink:0;`;
 
         const timeDate = new Date(msg.timestamp);
         const timeStr = `${timeDate.getHours().toString().padStart(2,'0')}:${timeDate.getMinutes().toString().padStart(2,'0')}`;
         const timeEl = document.createElement('div');
         timeEl.innerText = timeStr;
-        timeEl.style.cssText = `font-size:11px; color:#aaa; font-family:sans-serif;`;
+        timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:sans-serif;`;
         
         if (isMe) {
             const readMark = document.createElement('div');
             readMark.id = `read-${msg.id}`;
             readMark.innerText = '👁️';
-            readMark.style.cssText = `font-size:10px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
+            readMark.style.cssText = `font-size:9px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
             metaContainer.appendChild(readMark);
 
             const delBtn = document.createElement('div');
             delBtn.innerHTML = '🗑️';
             delBtn.title = 'メッセージを完全消去';
-            delBtn.style.cssText = 'font-size:12px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
+            delBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
             delBtn.onmouseover = () => delBtn.style.transform = 'scale(1.2)';
             delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
             delBtn.onclick = async () => {
@@ -492,14 +548,14 @@ export class NexusChatUI {
         metaContainer.appendChild(timeEl);
 
         const bubble = document.createElement('div');
-        bubble.style.cssText = `max-width:75%; padding:12px 18px; font-size:14px; line-height:1.5; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
+        bubble.style.cssText = `max-width:70%; padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
         
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(0,255,204,0.4)'; bubble.style.color = '#ccffff'; bubble.style.borderRadius = '18px 18px 4px 18px';
+            bubble.style.border = '1px solid rgba(0,255,204,0.4)'; bubble.style.color = '#ccffff'; bubble.style.borderRadius = '16px 16px 4px 16px';
         } else {
             bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.15) 0%, rgba(255,102,204,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '18px 18px 18px 4px';
+            bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '16px 16px 16px 4px';
         }
 
         let text = ""; let isImage = false; let isVoice = false;
@@ -512,13 +568,13 @@ export class NexusChatUI {
                 else if (parsed.type === 'voice') { isVoice = true; text = parsed.data; }
                 else if (parsed.type === 'text') { text = parsed.text; }
             } catch(e) { text = decrypted; }
-        } catch(e) { text = "[ 復号エラー: 鍵不一致 ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
+        } catch(e) { text = "[ 復号エラー ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
         
         if (isImage) {
-            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:10px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
-            bubble.style.padding = '8px';
+            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
+            bubble.style.padding = '6px';
         } else if (isVoice) {
-            bubble.innerHTML = `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:35px; max-width:200px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:20px;"></audio>`;
+            bubble.innerHTML = `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
         } else {
             bubble.innerText = text;
         }
