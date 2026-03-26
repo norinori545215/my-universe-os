@@ -8,12 +8,21 @@ export class NexusChatUI {
         this.app = app;
         this.isOpen = false;
         this.activeNode = null;
-        this.unsubscribeNetwork = null; // ★ リアルタイムリスナーの解除用
+        this.unsubscribeNetwork = null;
         this.createUI();
     }
 
+    // ★ 追加：他のUIに依存せず、自分自身でストレージから直接鍵を取得する堅牢なメソッド
+    getMyIdentity() {
+        try {
+            const saved = localStorage.getItem('universe_nexus_identity');
+            return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     createUI() {
-        // ① 引き出しタブ
         this.triggerTab = document.createElement('div');
         this.triggerTab.style.cssText = 'position:fixed; top:50%; right:20px; transform:translateY(-50%); width:30px; height:80px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; border-radius:15px; z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; cursor:pointer; box-shadow:0 0 20px rgba(0,255,204,0.3); backdrop-filter:blur(5px); font-weight:bold; transition:all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); font-size:18px; letter-spacing:2px;';
         this.triggerTab.innerHTML = '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
@@ -23,12 +32,10 @@ export class NexusChatUI {
         this.triggerTab.onclick = () => this.toggle();
         document.body.appendChild(this.triggerTab);
 
-        // ② スライドしてくるメインパネル
         this.panel = document.createElement('div');
         this.panel.style.cssText = 'position:fixed; top:0; right:-400px; width:100%; max-width:400px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #00ffcc; z-index:99998; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(0,255,204,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white; overflow:hidden;';
         document.body.appendChild(this.panel);
 
-        // ヘッダー部分
         const header = document.createElement('div');
         header.style.cssText = 'padding:15px 20px; border-bottom:1px solid rgba(0,255,204,0.3); display:flex; justify-content:space-between; align-items:center; background:rgba(0,255,204,0.05); flex-shrink:0;';
         header.innerHTML = `
@@ -47,32 +54,26 @@ export class NexusChatUI {
         header.appendChild(closeBtn);
         this.panel.appendChild(header);
 
-        // ボディ部分
         const body = document.createElement('div');
         body.style.cssText = 'display:flex; flex:1; overflow:hidden;';
         this.panel.appendChild(body);
 
-        // 左側：コンタクトリスト
         this.contactList = document.createElement('div');
         this.contactList.style.cssText = 'width:120px; border-right:1px solid rgba(0,255,204,0.2); overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; scrollbar-width: none; flex-shrink:0;';
         body.appendChild(this.contactList);
 
-        // 右側：チャットエリア
         this.chatArea = document.createElement('div');
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.5); overflow:hidden;';
         body.appendChild(this.chatArea);
 
-        // チャットヘッダー
         this.chatHeader = document.createElement('div');
         this.chatHeader.style.cssText = 'padding:10px 15px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:12px; background:rgba(255,0,255,0.03); flex-shrink:0;';
         this.chatArea.appendChild(this.chatHeader);
 
-        // メッセージ表示コンテナ
         this.msgContainer = document.createElement('div');
         this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
 
-        // 入力エリア
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0;';
         
@@ -180,7 +181,6 @@ export class NexusChatUI {
     }
 
     async openChat(node) {
-        // 前の通信リスナーがあれば切断
         if (this.unsubscribeNetwork) {
             this.unsubscribeNetwork();
             this.unsubscribeNetwork = null;
@@ -202,18 +202,17 @@ export class NexusChatUI {
         
         this.msgContainer.innerHTML = '';
         
-        // オフライン用にローカル保存された過去ログを描画
         if (!node.messages) node.messages = [];
         for (let msg of node.messages) { await this.renderMessageObj(msg); }
         this.scrollToBottom();
 
-        // ★ Firebaseのリアルタイムワームホールを開通
-        if (node.peerPublicKey && this.app.nexusUI.myKeys && db) {
-            await this.listenToNetwork(node);
+        // ★ 修正：自分自身の鍵情報を直接取得
+        const myId = this.getMyIdentity();
+        if (node.peerPublicKey && myId && db) {
+            await this.listenToNetwork(node, myId);
         }
     }
 
-    // ★ ゼロ知識ベースのチャンネルID生成（お互いの公開鍵をソートして結合）
     async generateChannelId(myPubJwk, peerPubJwk) {
         const myStr = JSON.stringify(myPubJwk);
         const peerStr = JSON.stringify(peerPubJwk);
@@ -223,12 +222,12 @@ export class NexusChatUI {
         return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2,'0')).join('');
     }
 
-    // ★ リアルタイム監視リスナーの起動
-    async listenToNetwork(node) {
+    // ★ 修正：引数として直接鍵情報(myId)を受け取る
+    async listenToNetwork(node, myId) {
         try {
-            const channelId = await this.generateChannelId(this.app.nexusUI.myKeys.publicKey, node.peerPublicKey);
-            node.channelId = channelId; // 送信時にも使うために保存
-            const myPubStr = JSON.stringify(this.app.nexusUI.myKeys.publicKey);
+            const channelId = await this.generateChannelId(myId.publicKey, node.peerPublicKey);
+            node.channelId = channelId;
+            const myPubStr = JSON.stringify(myId.publicKey);
 
             const messagesRef = collection(db, "nexus_channels", channelId, "messages");
             const q = query(messagesRef, orderBy("timestamp", "asc"));
@@ -240,7 +239,6 @@ export class NexusChatUI {
                     if (change.type === "added") {
                         const data = change.doc.data();
                         
-                        // ローカルにまだ無いメッセージだけを描画（重複排除）
                         const isDuplicate = node.messages.some(m => JSON.stringify(m.cipher) === JSON.stringify(data.cipher));
                         if (!isDuplicate) {
                             const senderType = (data.senderPubKey === myPubStr) ? 'me' : 'peer';
@@ -255,7 +253,6 @@ export class NexusChatUI {
                             this.renderMessageObj(msgObj);
                             isNewRendered = true;
 
-                            // 相手から着信した場合は音を鳴らす
                             if (senderType === 'peer' && window.universeAudio && this.isOpen) {
                                 window.universeAudio.playSystemSound(400, 'triangle', 0.1);
                             }
@@ -311,7 +308,6 @@ export class NexusChatUI {
 
         let text = "[Decryption Error]";
         try { 
-            // SecretNexus (ハイブリッド・エスクロー版) の復号呼び出し
             text = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
         } catch(e) {}
         bubble.innerText = text;
@@ -325,10 +321,13 @@ export class NexusChatUI {
         if (!text || !this.activeNode) return;
         this.inputField.value = '';
         
-        // ハイブリッド暗号化（運営用の鍵も含めてカプセル化される）
         const encrypted = await SecretNexus.encryptData(text, this.activeNode.sharedKey);
         
-        const myPubStr = JSON.stringify(this.app.nexusUI.myKeys.publicKey);
+        // ★ 修正：自分自身の鍵情報を直接取得
+        const myId = this.getMyIdentity();
+        if (!myId) return;
+
+        const myPubStr = JSON.stringify(myId.publicKey);
         const msgObj = { 
             sender: 'me', 
             cipher: encrypted.cipher, 
@@ -336,7 +335,6 @@ export class NexusChatUI {
             timestamp: Date.now() 
         };
         
-        // オフラインやチャンネル未生成時はローカルのみに保存
         if (!this.activeNode.channelId || !db) {
             if (!this.activeNode.messages) this.activeNode.messages = [];
             this.activeNode.messages.push(msgObj);
@@ -346,7 +344,6 @@ export class NexusChatUI {
             return;
         }
 
-        // ★ Firebaseへ暗号データを射出
         try {
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
             await addDoc(messagesRef, {
@@ -355,10 +352,8 @@ export class NexusChatUI {
                 senderPubKey: myPubStr,
                 timestamp: serverTimestamp()
             });
-            // ※描画と保存は onSnapshot リスナーが自動で拾って行ってくれます
         } catch (e) {
             console.error("メッセージの送信に失敗しました（オフラインフォールバック）", e);
-            // 送信失敗時はローカルだけで完結させる
             if (!this.activeNode.messages) this.activeNode.messages = [];
             this.activeNode.messages.push(msgObj);
             this.app.autoSave();
