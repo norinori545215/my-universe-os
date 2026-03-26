@@ -11,7 +11,7 @@ export class NexusChatUI {
         this.unsubscribeNetwork = null;
         this.createUI();
         
-        // ★ 追加：起動時に「着信」を常時監視するレーダーを起動
+        // 起動時に「着信」を常時監視するレーダーを起動
         setTimeout(() => this.startGlobalInboxListener(), 2000);
     }
 
@@ -24,7 +24,6 @@ export class NexusChatUI {
         }
     }
 
-    // ★ 追加：自分宛ての通信チャンネルが新設されたら、宇宙に自動で星を生成する機能
     async startGlobalInboxListener() {
         if (!db) return;
         const myId = this.getMyIdentity();
@@ -32,7 +31,6 @@ export class NexusChatUI {
 
         const myPubStr = JSON.stringify(myId.publicKey);
         const channelsRef = collection(db, "nexus_channels");
-        // 自分が参加者に含まれているチャンネルを全件監視
         const q = query(channelsRef, where("participants", "array-contains", myPubStr));
 
         onSnapshot(q, (snapshot) => {
@@ -43,7 +41,6 @@ export class NexusChatUI {
                     const peerPubStr = channelData.participants.find(p => p !== myPubStr);
                     if (!peerPubStr) return;
 
-                    // 既にこの相手の星が自分の宇宙にあるか探す
                     let existingNode = null;
                     const searchUniverse = (nodes) => {
                         nodes.forEach(n => {
@@ -53,10 +50,8 @@ export class NexusChatUI {
                     };
                     searchUniverse(this.app.currentUniverse.nodes);
 
-                    // なければ「追加された相手」として未知の星を自動スポーンさせる
                     if (!existingNode) {
                         const peerPubObj = JSON.parse(peerPubStr);
-                        // 宇宙の中央にピンクの星を出現させる
                         const newNode = this.app.currentUniverse.addNode('着信シグナル', 0, 0, 35, '#ff00ff', 'star');
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
@@ -64,7 +59,7 @@ export class NexusChatUI {
                         newNode.messages = [];
                         
                         this.app.autoSave();
-                        if(window.universeAudio) window.universeAudio.playWarp(); // 着信音
+                        if(window.universeAudio) window.universeAudio.playWarp();
                         if(this.isOpen) this.refreshContacts();
                     }
                 }
@@ -124,13 +119,15 @@ export class NexusChatUI {
         this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
 
+        // ★★★ 入力エリアの大幅拡張 ★★★
         const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:center;';
+        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:flex-end;';
         
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像/データを暗号化送信';
-        attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s;';
+        // 下揃えにして、入力欄が広がってもずれないようにする
+        attachBtn.style.cssText = 'background:transparent; border:none; font-size:24px; cursor:pointer; color:#00ffcc; transition:0.2s; padding-bottom:6px; flex-shrink:0;';
         attachBtn.onmouseover = () => attachBtn.style.textShadow = '0 0 10px #00ffcc';
         attachBtn.onmouseout = () => attachBtn.style.textShadow = 'none';
         
@@ -143,20 +140,36 @@ export class NexusChatUI {
         fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
         const inputWrapper = document.createElement('div');
-        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:25px; padding:5px 5px 5px 15px; transition:0.2s;';
+        // ボーダーの丸みを調整し、上下のパディングを増やして入力しやすくする
+        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:15px; padding:8px 10px 8px 15px; transition:0.2s; align-items:flex-end;';
         
-        this.inputField = document.createElement('input');
-        this.inputField.type = 'text';
-        this.inputField.placeholder = 'Encrypted message...';
-        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:8px 0; outline:none; font-size:13px;';
+        // input ではなく textarea を使用して複数行対応
+        this.inputField = document.createElement('textarea');
+        this.inputField.placeholder = 'Encrypted message...\n(Shift + Enter で改行)';
+        this.inputField.rows = 1;
+        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:150px; overflow-y:auto;';
+        
+        // 入力内容に合わせて高さを自動拡張
+        this.inputField.addEventListener('input', () => {
+            this.inputField.style.height = 'auto';
+            this.inputField.style.height = this.inputField.scrollHeight + 'px';
+        });
+
+        // Enterで送信、Shift+Enterで改行
+        this.inputField.onkeydown = (e) => { 
+            if(e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // デフォルトの改行を防ぐ
+                this.sendMessage();
+            }
+        };
         
         this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
         this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
-        this.inputField.onkeypress = (e) => { if(e.key === 'Enter') this.sendMessage(); };
         
         const sendBtn = document.createElement('button');
         sendBtn.innerText = 'Send';
-        sendBtn.style.cssText = 'background:#00ffcc; color:#000; border:none; padding:0 20px; border-radius:20px; font-weight:bold; cursor:pointer; font-size:12px; transition:0.2s;';
+        // 送信ボタンを下揃えにして高さを固定
+        sendBtn.style.cssText = 'background:#00ffcc; color:#000; border:none; padding:0 20px; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; transition:0.2s; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0;';
         
         sendBtn.onmouseover = () => { sendBtn.style.background = '#00ffff'; sendBtn.style.boxShadow = '0 0 10px #00ffff'; };
         sendBtn.onmouseout = () => { sendBtn.style.background = '#00ffcc'; sendBtn.style.boxShadow = 'none'; };
@@ -258,7 +271,6 @@ export class NexusChatUI {
         if (!node.sharedKey && node.peerPublicKey && myId) {
             try {
                 node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
-                console.log("🔓 暗号鍵を再錬成しました");
             } catch (e) {
                 console.error("鍵の再錬成に失敗しました", e);
             }
@@ -365,7 +377,7 @@ export class NexusChatUI {
         }
         
         const bubble = document.createElement('div');
-        bubble.style.cssText = `max-width:70%; padding:12px 16px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.5);`;
+        bubble.style.cssText = `max-width:70%; padding:12px 16px; font-size:14px; line-height:1.6; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.5); white-space:pre-wrap;`;
         
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
@@ -412,7 +424,10 @@ export class NexusChatUI {
     async sendMessage() {
         const text = this.inputField.value.trim();
         if (!text || !this.activeNode) return;
+        
+        // 入力欄をリセットして高さを戻す
         this.inputField.value = '';
+        this.inputField.style.height = 'auto';
         
         const payload = JSON.stringify({ type: 'text', text: text });
         const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
@@ -457,7 +472,7 @@ export class NexusChatUI {
             console.error("画像送信エラー", e);
             alert("画像の暗号化に失敗しました。");
         } finally {
-            this.inputField.placeholder = 'Encrypted message...';
+            this.inputField.placeholder = 'Encrypted message...\n(Shift + Enter で改行)';
         }
     }
 
@@ -483,7 +498,6 @@ export class NexusChatUI {
         }
 
         try {
-            // ★ 追加：親ドキュメントに「参加者(participants)」を記録し、相手に「着信」を検知させる
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
             await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp() }, { merge: true });
 
