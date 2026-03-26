@@ -27,6 +27,18 @@ export class NexusChatUI {
         } catch (e) { return null; }
     }
 
+    // ★ 追加：相手の公開鍵から「短い固有ID」を生成する関数
+    getShortId(pubKeyObj) {
+        if (!pubKeyObj) return "UNKNOWN";
+        const str = JSON.stringify(pubKeyObj);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return `NX-${Math.abs(hash).toString(16).substring(0, 6).toUpperCase()}`;
+    }
+
     async startGlobalInboxListener() {
         if (!db) return;
         const myId = this.getMyIdentity();
@@ -55,10 +67,12 @@ export class NexusChatUI {
 
                     if (!existingNode) {
                         const peerPubObj = JSON.parse(peerPubStr);
-                        const newNode = this.app.currentUniverse.addNode('Secure Channel', 0, 0, 30, '#ff00ff', 'star');
+                        const shortId = this.getShortId(peerPubObj);
+                        
+                        // ★ 着信時、固有IDをデフォルト名にして星を生成
+                        const newNode = this.app.currentUniverse.addNode(`User ${shortId}`, 0, 0, 30, '#ff00ff', 'star');
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
-                        newNode.name = "Nexus Channel";
                         newNode.messages = [];
                         
                         this.app.autoSave();
@@ -71,7 +85,6 @@ export class NexusChatUI {
     }
 
     createUI() {
-        // ★ カスタムスクロールバーのスタイルを注入
         if (!document.getElementById('nexus-chat-styles')) {
             const style = document.createElement('style');
             style.id = 'nexus-chat-styles';
@@ -121,6 +134,7 @@ export class NexusChatUI {
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative;';
         body.appendChild(this.chatArea);
 
+        // ★ チャットヘッダー（ここで名前の変更などを行う）
         this.chatHeader = document.createElement('div');
         this.chatHeader.style.cssText = 'padding:12px 20px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:15px; background:rgba(0,0,0,0.4); flex-shrink:0; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:5;';
         this.chatArea.appendChild(this.chatHeader);
@@ -130,13 +144,11 @@ export class NexusChatUI {
         this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px 25px; display:flex; flex-direction:column; gap:20px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
 
-        // タイピングインジケーター（スタイリッシュに修正）
         this.typingIndicator = document.createElement('div');
         this.typingIndicator.style.cssText = 'font-size:11px; color:#00ffcc; padding:8px 25px; opacity:0; transition:opacity 0.3s; font-family:monospace; position:absolute; bottom:80px; left:0; width:100%; pointer-events:none; background:linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); text-shadow:0 0 5px #00ffcc; z-index:10;';
         this.typingIndicator.innerText = '🌐 相手が暗号を編集中...';
         this.chatArea.appendChild(this.typingIndicator);
 
-        // ★★★ 入力エリアの大幅改善（LINEのようなスマートなピル型デザイン） ★★★
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = 'padding:15px 20px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:12px; z-index:15;';
         
@@ -147,14 +159,12 @@ export class NexusChatUI {
         const inputWrapper = document.createElement('div');
         inputWrapper.style.cssText = 'flex:1; display:flex; align-items:flex-end; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,204,0.3); border-radius:24px; padding:6px 6px 6px 15px; transition:0.3s; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);';
 
-        // 📎 画像添付ボタン（入力枠の左側に統合）
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像暗号化';
         attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:5px; flex-shrink:0; outline:none;';
         attachBtn.onclick = () => fileInput.click();
 
-        // 🎙️ 音声録音ボタン（入力枠の左側に統合）
         this.micBtn = document.createElement('button');
         this.micBtn.innerText = '🎙️';
         this.micBtn.title = '音声暗号化';
@@ -188,7 +198,6 @@ export class NexusChatUI {
         this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
         this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
         
-        // 送信ボタン
         const sendBtn = document.createElement('button');
         sendBtn.innerHTML = '➤';
         sendBtn.style.cssText = 'background:linear-gradient(135deg, #00ffcc 0%, #00ccff 100%); color:#000; border:none; width:36px; height:36px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.3s; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 0 10px rgba(0,255,204,0.3); outline:none;';
@@ -229,6 +238,7 @@ export class NexusChatUI {
 
         if (nexusNodes.length === 0) {
             this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px; border:1px dashed #444; border-radius:8px;">NO CHANNELS</div>';
+            this.chatHeader.innerHTML = '';
             this.msgContainer.innerHTML = '';
             this.activeNode = null;
             return;
@@ -244,10 +254,10 @@ export class NexusChatUI {
             if (node.iconUrl) iconWrap.innerHTML = `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
             else iconWrap.style.background = isActive ? 'radial-gradient(circle, #ff00ff 0%, #111 70%)' : 'radial-gradient(circle, #444 0%, #111 70%)';
             
+            // 左側のリストにも変更した名前を反映
             const nameEl = document.createElement('div');
-            const displayName = node.name.replace('Nexus Channel', 'Channel').replace('Nexus: ', '');
             nameEl.style.cssText = `font-size:13px; font-weight:${isActive?'bold':'normal'}; color:${isActive?'#fff':'#aaa'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
-            nameEl.innerText = '🌌 ' + displayName;
+            nameEl.innerText = '🌌 ' + node.name;
             
             btn.appendChild(iconWrap); btn.appendChild(nameEl);
             btn.onclick = () => this.openChat(node);
@@ -270,16 +280,44 @@ export class NexusChatUI {
         this.activeNode = node;
         this.refreshContacts();
         
-        const displayName = node.name.replace('Nexus Channel', 'Secure Channel').replace('Nexus: ', '');
+        // ★ IDと名前表示の改修
+        const shortId = this.getShortId(node.peerPublicKey);
+        
         this.chatHeader.innerHTML = `
-            <div style="width:44px; height:44px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3);">
+            <div id="nx-header-icon" title="アイコン画像を設定" style="width:44px; height:44px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
                 ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
             </div>
-            <div style="display:flex; flex-direction:column; gap:2px;">
-                <div style="font-size:16px; font-weight:bold; color:#fff; letter-spacing:1px;">${displayName}</div>
-                <div style="font-size:11px; color:#ff00ff; font-family:monospace;">● End-to-End Encrypted</div>
+            <div style="display:flex; flex-direction:column; gap:2px; flex:1;">
+                <div id="nx-header-name" title="相手の名前を変更" style="font-size:16px; font-weight:bold; color:#fff; letter-spacing:1px; cursor:pointer; display:inline-block; transition:0.2s;">
+                    ${node.name} <span style="font-size:12px; opacity:0.5;">✏️</span>
+                </div>
+                <div style="font-size:11px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE Secured</div>
             </div>
         `;
+
+        // ★ 名前変更（アドレス帳）機能
+        document.getElementById('nx-header-name').onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
+        document.getElementById('nx-header-name').onmouseout = (e) => e.currentTarget.style.color = '#fff';
+        document.getElementById('nx-header-name').onclick = () => {
+            const newName = prompt("この通信相手の名前を入力してください:", node.name);
+            if (newName && newName.trim() !== "") {
+                node.name = newName.trim();
+                this.app.autoSave();
+                this.openChat(node); // 再描画
+            }
+        };
+
+        // ★ アイコン変更機能
+        document.getElementById('nx-header-icon').onmouseover = (e) => e.currentTarget.style.transform = 'scale(1.1)';
+        document.getElementById('nx-header-icon').onmouseout = (e) => e.currentTarget.style.transform = 'scale(1)';
+        document.getElementById('nx-header-icon').onclick = () => {
+            const url = prompt("相手のアイコン画像のURLを入力してください:", node.iconUrl || "");
+            if (url !== null) {
+                node.iconUrl = url.trim();
+                this.app.autoSave();
+                this.openChat(node); // 再描画
+            }
+        };
         
         this.msgContainer.innerHTML = '';
         if (!node.messages) node.messages = [];
@@ -360,7 +398,6 @@ export class NexusChatUI {
         wrapper.id = `msg-${msg.id}`;
         wrapper.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:10px; position:relative;`;
         
-        // ★ 消去済みメッセージのエレガントな表現
         if (msg.isDeleted) {
             wrapper.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
             this.msgContainer.appendChild(wrapper);
@@ -375,7 +412,6 @@ export class NexusChatUI {
             wrapper.appendChild(peerIcon);
         }
 
-        // ★ メタデータ（時間とゴミ箱）の配置を最適化
         const metaContainer = document.createElement('div');
         metaContainer.style.cssText = `display:flex; align-items:flex-end; gap:6px; opacity:0.6; margin-bottom:2px;`;
 
@@ -405,7 +441,6 @@ export class NexusChatUI {
         metaContainer.appendChild(timeEl);
 
         const bubble = document.createElement('div');
-        // ★ 吹き出しのデザインをより柔らかく美しく
         bubble.style.cssText = `max-width:75%; padding:12px 18px; font-size:14px; line-height:1.5; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
         
         if (isMe) {
@@ -437,7 +472,6 @@ export class NexusChatUI {
             bubble.innerText = text;
         }
         
-        // ★ 時間と吹き出しの配置を美しく
         if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubble); }
         else { wrapper.appendChild(bubble); wrapper.appendChild(metaContainer); }
         
