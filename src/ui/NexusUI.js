@@ -30,7 +30,6 @@ export class NexusUI {
             this.cryptoError = true;
         }
 
-        // 確実なCDN URLに修正済み
         this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js');
         this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js');
     }
@@ -235,6 +234,9 @@ export class NexusUI {
         node.color = "#ff00ff"; 
         node.name = "Nexus: " + node.name;
         node.sharedKey = this.sharedKey;
+        // ★ 修正：リアルタイム通信網の生成に使うため、相手の公開鍵情報も星に保存しておく
+        node.peerPublicKey = peerPublicKey; 
+
         this.app.autoSave();
         
         if(window.universeAudio) window.universeAudio.playWarp();
