@@ -124,7 +124,7 @@ export class SecretNexus {
             return new TextDecoder().decode(decryptedText);
         } catch (e) {
             console.error("Nexus Decryption Failed (Hybrid):", e);
-            return "[ 復号エラー: 量子干渉を検知しました ]";
+            throw new Error("復号エラー: 量子干渉を検知しました");
         }
     }
 }

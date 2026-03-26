@@ -119,14 +119,12 @@ export class NexusChatUI {
         this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; scroll-behavior:smooth;';
         this.chatArea.appendChild(this.msgContainer);
 
-        // ★★★ 入力エリアの大幅拡張 ★★★
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:flex-end;';
         
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像/データを暗号化送信';
-        // 下揃えにして、入力欄が広がってもずれないようにする
         attachBtn.style.cssText = 'background:transparent; border:none; font-size:24px; cursor:pointer; color:#00ffcc; transition:0.2s; padding-bottom:6px; flex-shrink:0;';
         attachBtn.onmouseover = () => attachBtn.style.textShadow = '0 0 10px #00ffcc';
         attachBtn.onmouseout = () => attachBtn.style.textShadow = 'none';
@@ -140,25 +138,21 @@ export class NexusChatUI {
         fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
         const inputWrapper = document.createElement('div');
-        // ボーダーの丸みを調整し、上下のパディングを増やして入力しやすくする
         inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:15px; padding:8px 10px 8px 15px; transition:0.2s; align-items:flex-end;';
         
-        // input ではなく textarea を使用して複数行対応
         this.inputField = document.createElement('textarea');
         this.inputField.placeholder = 'Encrypted message...\n(Shift + Enter で改行)';
         this.inputField.rows = 1;
         this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:150px; overflow-y:auto;';
         
-        // 入力内容に合わせて高さを自動拡張
         this.inputField.addEventListener('input', () => {
             this.inputField.style.height = 'auto';
             this.inputField.style.height = this.inputField.scrollHeight + 'px';
         });
 
-        // Enterで送信、Shift+Enterで改行
         this.inputField.onkeydown = (e) => { 
             if(e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // デフォルトの改行を防ぐ
+                e.preventDefault();
                 this.sendMessage();
             }
         };
@@ -168,7 +162,6 @@ export class NexusChatUI {
         
         const sendBtn = document.createElement('button');
         sendBtn.innerText = 'Send';
-        // 送信ボタンを下揃えにして高さを固定
         sendBtn.style.cssText = 'background:#00ffcc; color:#000; border:none; padding:0 20px; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; transition:0.2s; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0;';
         
         sendBtn.onmouseover = () => { sendBtn.style.background = '#00ffff'; sendBtn.style.boxShadow = '0 0 10px #00ffff'; };
@@ -271,6 +264,7 @@ export class NexusChatUI {
         if (!node.sharedKey && node.peerPublicKey && myId) {
             try {
                 node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
+                console.log("🔓 暗号鍵を再錬成しました");
             } catch (e) {
                 console.error("鍵の再錬成に失敗しました", e);
             }
@@ -393,7 +387,7 @@ export class NexusChatUI {
             bubble.style.boxShadow = '0 2px 10px rgba(255,102,204,0.2)';
         }
 
-        let text = "[Decryption Error]";
+        let text = "[ 復号エラー: 鍵不一致 ]";
         let isImage = false;
         
         try { 
@@ -409,7 +403,9 @@ export class NexusChatUI {
             } catch(e) {
                 text = decrypted;
             }
-        } catch(e) {}
+        } catch(e) {
+            console.warn("メッセージの復号に失敗しました");
+        }
         
         if (isImage) {
             bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open('${text}')">`;
@@ -425,7 +421,6 @@ export class NexusChatUI {
         const text = this.inputField.value.trim();
         if (!text || !this.activeNode) return;
         
-        // 入力欄をリセットして高さを戻す
         this.inputField.value = '';
         this.inputField.style.height = 'auto';
         

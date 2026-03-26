@@ -234,7 +234,6 @@ export class NexusUI {
         node.color = "#ff00ff"; 
         node.name = "Nexus: " + node.name;
         node.sharedKey = this.sharedKey;
-        // ★ 修正：リアルタイム通信網の生成に使うため、相手の公開鍵情報も星に保存しておく
         node.peerPublicKey = peerPublicKey; 
 
         this.app.autoSave();
