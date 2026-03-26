@@ -10,15 +10,10 @@ export class EntityNode {
         this.color = color;
         this.url = ""; 
         this.iconUrl = "";
-        
-        // ★ メモ機能：星の中に刻まれるテキストデータ
         this.note = ""; 
-        
-        // ★ セキュリティ機能：星に鍵をかけるための属性
-        this.isLocked = false;       // 鍵がかかっているか
-        this.password = "";          // この星専用のパスワード
-        this.ownerId = "";           // ※ローカル主権のため、FirebaseのID依存を解除
-
+        this.isLocked = false;
+        this.password = "";
+        this.ownerId = "";
         this.parentUniverse = null;
 
         const theme = (category === 'life' || category === 'microbe') ? 'cell' : 'space';
@@ -27,6 +22,7 @@ export class EntityNode {
         this.baseX = x; this.baseY = y;
         this.x = x; this.y = y;
         this.randomOffset = Math.random() * Math.PI * 2; 
+        this.vault = []; // V2拡張：金庫メタデータ用
     }
 }
 
@@ -74,13 +70,49 @@ export class Universe {
     }
 }
 
+// ★ ローカルIndexedDBヘルパー（外部ライブラリ不要）
+const CoreDB = {
+    dbName: 'MyUniverse_Core',
+    storeName: 'UniverseState',
+    async init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.storeName)) {
+                    db.createObjectStore(this.storeName);
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    },
+    async set(key, value) {
+        const db = await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, 'readwrite');
+            tx.objectStore(this.storeName).put(value, key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+    async get(key) {
+        const db = await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, 'readonly');
+            const request = tx.objectStore(this.storeName).get(key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+};
+
 export const DataManager = {
-    // 💾 【完全ローカル保存】
+    // 💾 【完全ローカル保存】 IndexedDBへ無制限保存
     save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
-            url: n.url, iconUrl: n.iconUrl,
-            note: n.note, // ★ 保存対象に追加！
+            url: n.url, iconUrl: n.iconUrl, note: n.note, vault: n.vault, // vaultも保存
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -96,21 +128,14 @@ export const DataManager = {
             blackHole: blackHole.map(serializeNode)
         };
 
-        sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
+        // 5MB制限のsessionStorageを脱却
+        await CoreDB.set('save_data', data);
     },
 
-    // 💾 【完全ローカル読込】
+    // 💾 【完全ローカル読込】 IndexedDBから復元
     load: async () => {
-        const raw = sessionStorage.getItem('my_universe_save_data');
-        if (!raw) return null;
-        
-        let data;
-        try {
-            data = JSON.parse(raw);
-        } catch (e) {
-            console.error("データのパースに失敗しました", e);
-            return null;
-        }
+        const data = await CoreDB.get('save_data');
+        if (!data) return null;
 
         const nodeMap = new Map();
 
@@ -121,7 +146,8 @@ export const DataManager = {
                 node.id = nData.id;
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
-                node.note = nData.note || ""; // ★ 読み込み対象に追加！
+                node.note = nData.note || "";
+                node.vault = nData.vault || []; // 金庫データの復元
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -156,7 +182,8 @@ export const DataManager = {
             node.id = nData.id; 
             node.url = nData.url || ""; 
             node.iconUrl = nData.iconUrl || "";
-            node.note = nData.note || ""; // ★ 亜空間データも対応！
+            node.note = nData.note || "";
+            node.vault = nData.vault || [];
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
