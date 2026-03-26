@@ -1,7 +1,7 @@
 // src/ui/NexusChatUI.js
 import { SecretNexus } from '../security/SecretNexus.js';
 import { db } from '../security/Auth.js';
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, doc, setDoc, addDoc, onSnapshot, query, where, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class NexusChatUI {
     constructor(app) {
@@ -10,6 +10,9 @@ export class NexusChatUI {
         this.activeNode = null;
         this.unsubscribeNetwork = null;
         this.createUI();
+        
+        // ★ 追加：起動時に「着信」を常時監視するレーダーを起動
+        setTimeout(() => this.startGlobalInboxListener(), 2000);
     }
 
     getMyIdentity() {
@@ -19,6 +22,54 @@ export class NexusChatUI {
         } catch (e) {
             return null;
         }
+    }
+
+    // ★ 追加：自分宛ての通信チャンネルが新設されたら、宇宙に自動で星を生成する機能
+    async startGlobalInboxListener() {
+        if (!db) return;
+        const myId = this.getMyIdentity();
+        if (!myId) return;
+
+        const myPubStr = JSON.stringify(myId.publicKey);
+        const channelsRef = collection(db, "nexus_channels");
+        // 自分が参加者に含まれているチャンネルを全件監視
+        const q = query(channelsRef, where("participants", "array-contains", myPubStr));
+
+        onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    const channelData = change.doc.data();
+                    const channelId = change.doc.id;
+                    const peerPubStr = channelData.participants.find(p => p !== myPubStr);
+                    if (!peerPubStr) return;
+
+                    // 既にこの相手の星が自分の宇宙にあるか探す
+                    let existingNode = null;
+                    const searchUniverse = (nodes) => {
+                        nodes.forEach(n => {
+                            if (JSON.stringify(n.peerPublicKey) === peerPubStr) existingNode = n;
+                            if (n.innerUniverse) searchUniverse(n.innerUniverse.nodes);
+                        });
+                    };
+                    searchUniverse(this.app.currentUniverse.nodes);
+
+                    // なければ「追加された相手」として未知の星を自動スポーンさせる
+                    if (!existingNode) {
+                        const peerPubObj = JSON.parse(peerPubStr);
+                        // 宇宙の中央にピンクの星を出現させる
+                        const newNode = this.app.currentUniverse.addNode('着信シグナル', 0, 0, 35, '#ff00ff', 'star');
+                        newNode.peerPublicKey = peerPubObj;
+                        newNode.channelId = channelId;
+                        newNode.name = "Nexus: 未知の相手";
+                        newNode.messages = [];
+                        
+                        this.app.autoSave();
+                        if(window.universeAudio) window.universeAudio.playWarp(); // 着信音
+                        if(this.isOpen) this.refreshContacts();
+                    }
+                }
+            });
+        }, (err) => console.warn("Inbox Listener Wait...", err));
     }
 
     createUI() {
@@ -76,7 +127,6 @@ export class NexusChatUI {
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:center;';
         
-        // ★ 追加：画像添付ボタン
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像/データを暗号化送信';
@@ -143,7 +193,6 @@ export class NexusChatUI {
         
         const findNexus = (nodes) => {
             nodes.forEach(n => {
-                // ★ 修正：sharedKeyが無くても、peerPublicKeyを持っていればチャット相手とみなす（リロード復旧用）
                 if ((n.sharedKey || n.peerPublicKey) && !n.isGhost) nexusNodes.push(n);
                 if (n.innerUniverse) findNexus(n.innerUniverse.nodes);
             });
@@ -206,7 +255,6 @@ export class NexusChatUI {
 
         const myId = this.getMyIdentity();
 
-        // ★ リロードで消えた暗号鍵（SharedKey）を自動で再錬成する
         if (!node.sharedKey && node.peerPublicKey && myId) {
             try {
                 node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
@@ -338,7 +386,6 @@ export class NexusChatUI {
         
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
-            // ★ Json化された高度なペイロード（画像/テキスト）の展開処理
             try {
                 const parsed = JSON.parse(decrypted);
                 if (parsed.type === 'image') {
@@ -348,7 +395,6 @@ export class NexusChatUI {
                     text = parsed.text;
                 }
             } catch(e) {
-                // 過去のプレーンテキストメッセージの互換性維持
                 text = decrypted;
             }
         } catch(e) {}
@@ -368,13 +414,11 @@ export class NexusChatUI {
         if (!text || !this.activeNode) return;
         this.inputField.value = '';
         
-        // ★ JSONとして構造化して暗号化（画像と判別するため）
         const payload = JSON.stringify({ type: 'text', text: text });
         const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
         await this.dispatchToNetwork(encrypted);
     }
 
-    // ★ 追加：画像を限界まで圧縮し、Base64文字列に変換する特異点処理
     async compressImage(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -382,7 +426,7 @@ export class NexusChatUI {
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 800; // Firebaseの1MB制限を避けるため縮小
+                    const MAX_SIZE = 800;
                     let w = img.width; let h = img.height;
                     if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; }
                     else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
@@ -391,7 +435,6 @@ export class NexusChatUI {
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, w, h);
                     
-                    // 限界圧縮のJPGデータを生成
                     resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                 };
                 img.src = e.target.result;
@@ -400,11 +443,9 @@ export class NexusChatUI {
         });
     }
 
-    // ★ 追加：画像を暗号化して送信
     async sendImage(file) {
         if (!file || !this.activeNode) return;
         
-        // ローディング演出
         this.inputField.placeholder = 'Compressing & Encrypting...';
         
         try {
@@ -420,7 +461,6 @@ export class NexusChatUI {
         }
     }
 
-    // ★ 共通の送信処理
     async dispatchToNetwork(encrypted) {
         const myId = this.getMyIdentity();
         if (!myId) return;
@@ -443,6 +483,10 @@ export class NexusChatUI {
         }
 
         try {
+            // ★ 追加：親ドキュメントに「参加者(participants)」を記録し、相手に「着信」を検知させる
+            const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
+            await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp() }, { merge: true });
+
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
             await addDoc(messagesRef, {
                 cipher: encrypted.cipher,

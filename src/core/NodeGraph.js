@@ -17,9 +17,9 @@ export class EntityNode {
         this.password = "";
         this.ownerId = "";
 
-        // ★ 通信相手の記憶（リロード対策）
         this.peerPublicKey = "";
         this.channelId = "";
+        this.messages = []; // ★ 履歴を格納する器を最初から用意
 
         this.parentUniverse = null;
 
@@ -77,15 +77,15 @@ export class Universe {
 }
 
 export const DataManager = {
-    // 💾 【完全ローカル保存】
     save: async (rootUniverse, wormholes, blackHole) => {
         const serializeNode = (n) => ({
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
             note: n.note,
             vault: n.vault || [], 
-            peerPublicKey: n.peerPublicKey || "", // ★ 保存対象に追加
-            channelId: n.channelId || "",         // ★ 保存対象に追加
+            peerPublicKey: n.peerPublicKey || "", 
+            channelId: n.channelId || "",         
+            messages: n.messages || [], // ★ 忘れていたチャット履歴のセーブ対象追加！
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -108,7 +108,6 @@ export const DataManager = {
         }
     },
 
-    // 💾 【完全ローカル読込】
     load: async () => {
         const raw = sessionStorage.getItem('my_universe_save_data');
         if (!raw) return null;
@@ -131,8 +130,9 @@ export const DataManager = {
                 node.iconUrl = nData.iconUrl || "";
                 node.note = nData.note || "";
                 node.vault = nData.vault || [];
-                node.peerPublicKey = nData.peerPublicKey || ""; // ★ 読み込み対象に追加
-                node.channelId = nData.channelId || "";         // ★ 読み込み対象に追加
+                node.peerPublicKey = nData.peerPublicKey || "";
+                node.channelId = nData.channelId || "";
+                node.messages = nData.messages || []; // ★ 読み込み時に履歴を復元！
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -171,6 +171,7 @@ export const DataManager = {
             node.vault = nData.vault || [];
             node.peerPublicKey = nData.peerPublicKey || "";
             node.channelId = nData.channelId || "";
+            node.messages = nData.messages || [];
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
