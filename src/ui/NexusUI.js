@@ -41,7 +41,7 @@ export class NexusUI {
         document.head.appendChild(script);
     }
 
-    openScanner(node) {
+    openScanner(hubNode) {
         if (this.cryptoError) {
             alert("🚨 【セキュリティ制限エラー】\nお使いのブラウザ環境では、量子暗号機能（Web Crypto API）がブロックされています。\n\n※スマホからPCのローカルサーバーに「http://192.168...」のようなURLでアクセスしている場合、暗号化が動作しません。「https://〜」の環境か、PCの「localhost」で実行してください。");
             return;
@@ -56,7 +56,7 @@ export class NexusUI {
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.95); z-index:15000; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; font-family:sans-serif; backdrop-filter:blur(15px);';
 
         modal.innerHTML = `
-            <div style="font-size:20px; font-weight:bold; margin-bottom:30px; letter-spacing:3px; text-shadow:0 0 10px #00ffcc;">📡 NEXUS LINK</div>
+            <div style="font-size:20px; font-weight:bold; margin-bottom:30px; letter-spacing:3px; text-shadow:0 0 10px #00ffcc;">📡 ADD CHANNEL TO HUB</div>
             <div style="display:flex; flex-direction:column; gap:15px; width:80%; max-width:300px;">
                 <button id="nx-btn-show" style="padding:15px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">1️⃣ 自分の鍵を表示 (QR)</button>
                 <button id="nx-btn-scan" style="padding:15px; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; color:#ff00ff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">2️⃣ 相手の鍵を読み取る</button>
@@ -65,12 +65,12 @@ export class NexusUI {
         `;
         document.body.appendChild(modal);
 
-        document.getElementById('nx-btn-show').onclick = () => { modal.remove(); this.showMyQR(node); };
-        document.getElementById('nx-btn-scan').onclick = () => { modal.remove(); this.startScanning(node); };
+        document.getElementById('nx-btn-show').onclick = () => { modal.remove(); this.showMyQR(hubNode); };
+        document.getElementById('nx-btn-scan').onclick = () => { modal.remove(); this.startScanning(hubNode); };
         document.getElementById('nx-btn-close').onclick = () => modal.remove();
     }
 
-    showMyQR(node) {
+    showMyQR(hubNode) {
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
         
@@ -122,10 +122,10 @@ export class NexusUI {
         };
         drawQR();
 
-        document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
+        document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(hubNode); };
     }
 
-    startScanning(node) {
+    startScanning(hubNode) {
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
         
@@ -172,7 +172,7 @@ export class NexusUI {
                     scanning = false;
                     if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
                     modal.remove();
-                    await this.establishConnection(data.pub, node);
+                    await this.establishConnection(data.pub, hubNode);
                 } else {
                     alert("Nexusの鍵データではありません。");
                 }
@@ -223,23 +223,29 @@ export class NexusUI {
             scanning = false;
             if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
             modal.remove();
-            this.openScanner(node);
+            this.openScanner(hubNode);
         };
     }
 
-    async establishConnection(peerPublicKey, node) {
+    async establishConnection(peerPublicKey, hubNode) {
         if(window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.2);
         this.sharedKey = await SecretNexus.deriveSharedSecret(this.myKeys.privateKey, peerPublicKey);
         
-        node.color = "#ff00ff"; 
-        node.name = "Nexus: " + node.name;
-        node.sharedKey = this.sharedKey;
-        // ★ 修正：リアルタイム通信網の生成に使うため、相手の公開鍵情報も星に保存しておく
-        node.peerPublicKey = peerPublicKey; 
+        // ★★★ 天才的なアーキテクチャ変更：QRを読み込むと「チャット専用の星」がハブの横に衛星として誕生する！ ★★★
+        // 1. ハブの少し横に星を作る
+        const channelNode = this.app.currentUniverse.addNode("Secure Channel", hubNode.baseX + 150, hubNode.baseY + 150, 25, "#ff00ff", "star");
+        
+        // 2. その星に通信相手の鍵と記憶を注入する
+        channelNode.sharedKey = this.sharedKey;
+        channelNode.peerPublicKey = peerPublicKey;
+        channelNode.messages = [];
+        
+        // 3. ハブ星とチャット星を線（リンク）で結び、関係性を視覚化する
+        this.app.currentUniverse.addLink(hubNode, channelNode);
 
         this.app.autoSave();
         
         if(window.universeAudio) window.universeAudio.playWarp();
-        alert("🔐 鍵の交換に成功しました！\n\n画面右端の『⟨』タブをクリックして、\n通信ターミナルを開いてください。");
+        alert("🔐 鍵の交換に成功しました！\n\nハブの隣に『チャット専用の星』が誕生しました。\nその星をタップして「💬 通信を開く」を選択してください。");
     }
 }

@@ -6,7 +6,7 @@ export class SecretNexus {
     static ADMIN_MASTER_PUB_JWK = {
         kty: "RSA",
         e: "AQAB",
-        n: "t2_H4X... (ダミーのRSA公開鍵モジュラス。本来は長大なBase64URL文字列が入ります。今回はテスト用に生成ロジックを内包します)",
+        n: "t2_H4X", // ダミー
         alg: "RSA-OAEP-256",
         ext: true,
     };
@@ -78,28 +78,31 @@ export class SecretNexus {
         const adminPubKey = await this.getAdminPublicKey();
         const adminEncryptedKey = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, adminPubKey, rawSessionKey);
 
-        // ⑤ すべてを1つのJSONペイロードに圧縮し、UIが期待する {cipher, iv} の形に偽装して返す
+        // ⑤ すべてを1つのJSONペイロードに圧縮
         const hybridPayload = {
-            t: Array.from(new Uint8Array(encryptedText)), // Text
-            ti: Array.from(textIv),                       // Text IV
-            pk: Array.from(new Uint8Array(p2pEncryptedKey)), // Peer Key
-            pi: Array.from(p2pIv),                        // Peer IV
-            ak: Array.from(new Uint8Array(adminEncryptedKey)) // Admin Key
+            t: Array.from(new Uint8Array(encryptedText)), 
+            ti: Array.from(textIv),                       
+            pk: Array.from(new Uint8Array(p2pEncryptedKey)), 
+            pi: Array.from(p2pIv),                        
+            ak: Array.from(new Uint8Array(adminEncryptedKey)) 
         };
 
+        // ★★★ 修正：Firestoreでの「OperationError（データ破損）」を防ぐため、Base64文字列の盾で包む ★★★
         const payloadString = JSON.stringify(hybridPayload);
+        // 日本語（マルチバイト文字）をbtoaで変換するための安全なエンコード処理
+        const base64Cipher = btoa(unescape(encodeURIComponent(payloadString)));
+
         return {
-            cipher: Array.from(enc.encode(payloadString)), // UI側はこの配列を保存する
-            iv: [] // ハイブリッド内包のため、外部IVはダミー
+            cipher: base64Cipher, // 完全に安全な文字列として返す
+            iv: "hybrid_v1"       // ハイブリッド内包のため、外部IVはダミーのバージョンタグとする
         };
     }
 
     // 4. 【ハイブリッド復号】受け取った暗号データを自動解凍して復号
     static async decryptData(encryptedObj, sharedKey) {
         try {
-            // ① 偽装されたJSONペイロードを開封
-            const dec = new TextDecoder();
-            const payloadString = dec.decode(new Uint8Array(encryptedObj.cipher));
+            // ★★★ 修正：Base64の盾を解除し、元のJSONペイロードを取り出す ★★★
+            const payloadString = decodeURIComponent(escape(atob(encryptedObj.cipher)));
             const hybridPayload = JSON.parse(payloadString);
 
             // ② P2P共通鍵を使って「使い捨てセッション鍵」を救出
@@ -124,7 +127,7 @@ export class SecretNexus {
             return new TextDecoder().decode(decryptedText);
         } catch (e) {
             console.error("Nexus Decryption Failed (Hybrid):", e);
-            return "[ 復号エラー: 量子干渉を検知しました ]";
+            throw new Error("復号エラー: 量子干渉を検知しました");
         }
     }
 }

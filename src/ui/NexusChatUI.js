@@ -24,6 +24,7 @@ export class NexusChatUI {
         }
     }
 
+    // ★ 未知の相手から通信が来た場合、宇宙の中心に「着信シグナル星」を誕生させる
     async startGlobalInboxListener() {
         if (!db) return;
         const myId = this.getMyIdentity();
@@ -50,17 +51,17 @@ export class NexusChatUI {
                     };
                     searchUniverse(this.app.currentUniverse.nodes);
 
+                    // 自分の宇宙に存在しない相手なら、新たな星としてスポーンさせる
                     if (!existingNode) {
                         const peerPubObj = JSON.parse(peerPubStr);
                         const newNode = this.app.currentUniverse.addNode('着信シグナル', 0, 0, 35, '#ff00ff', 'star');
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
-                        newNode.name = "Nexus: 未知の相手";
+                        newNode.name = "Secure Channel";
                         newNode.messages = [];
                         
                         this.app.autoSave();
                         if(window.universeAudio) window.universeAudio.playWarp();
-                        if(this.isOpen) this.refreshContacts();
                     }
                 }
             });
@@ -68,111 +69,71 @@ export class NexusChatUI {
     }
 
     createUI() {
-        this.triggerTab = document.createElement('div');
-        this.triggerTab.style.cssText = 'position:fixed; top:50%; right:20px; transform:translateY(-50%); width:30px; height:80px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; border-radius:15px; z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; cursor:pointer; box-shadow:0 0 20px rgba(0,255,204,0.3); backdrop-filter:blur(5px); font-weight:bold; transition:all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); font-size:18px; letter-spacing:2px;';
-        this.triggerTab.innerHTML = '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
-        
-        this.triggerTab.onmouseover = () => { if(!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.3)'; };
-        this.triggerTab.onmouseout = () => { if(!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.1)'; };
-        this.triggerTab.onclick = () => this.toggle();
-        document.body.appendChild(this.triggerTab);
-
+        // ★ 画面端のタブと連絡先リストを完全廃止。星をクリックした時だけ開く大画面パネル。
         this.panel = document.createElement('div');
-        this.panel.style.cssText = 'position:fixed; top:0; right:-400px; width:100%; max-width:400px; height:100%; background:rgba(10,15,20,0.95); border-left:1px solid #00ffcc; z-index:99998; display:flex; flex-direction:column; transition:right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow:-10px 0 30px rgba(0,255,204,0.1); backdrop-filter:blur(15px); pointer-events:auto; font-family:sans-serif; color:white; overflow:hidden;';
+        this.panel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%) scale(0.9); width:95%; max-width:700px; height:85vh; background:rgba(10,15,20,0.98); border:1px solid #ff00ff; border-radius:16px; z-index:99998; display:none; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8); backdrop-filter:blur(20px); pointer-events:auto; font-family:sans-serif; color:white; overflow:hidden; opacity:0; transition:0.3s cubic-bezier(0.2, 0.8, 0.2, 1);';
         document.body.appendChild(this.panel);
 
         const header = document.createElement('div');
-        header.style.cssText = 'padding:15px 20px; border-bottom:1px solid rgba(0,255,204,0.3); display:flex; justify-content:space-between; align-items:center; background:rgba(0,255,204,0.05); flex-shrink:0;';
-        header.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:18px; color:#00ffcc;">📡</span>
-                <div style="font-size:16px; font-weight:bold; letter-spacing:2px; color:#00ffcc; text-shadow:0 0 5px #00ffcc;">NEXUS HUB</div>
-            </div>
-        `;
+        header.style.cssText = 'padding:15px 20px; border-bottom:1px solid rgba(255,0,255,0.3); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(90deg, rgba(255,0,255,0.1) 0%, transparent 100%); flex-shrink:0;';
         
+        this.chatHeaderTitle = document.createElement('div');
+        this.chatHeaderTitle.style.cssText = 'display:flex; align-items:center; gap:15px;';
+        header.appendChild(this.chatHeaderTitle);
+
         const closeBtn = document.createElement('button');
         closeBtn.innerText = '×';
-        closeBtn.style.cssText = 'background:transparent; border:none; color:#ff4444; font-size:26px; cursor:pointer; padding:0 10px; line-height:1; transition:0.2s;';
+        closeBtn.style.cssText = 'background:transparent; border:none; color:#ff4444; font-size:28px; cursor:pointer; padding:0 10px; line-height:1; transition:0.2s;';
         closeBtn.onmouseover = () => closeBtn.style.color = '#ff8888';
         closeBtn.onmouseout = () => closeBtn.style.color = '#ff4444';
-        closeBtn.onclick = () => this.toggle();
+        closeBtn.onclick = () => this.closeChat();
         header.appendChild(closeBtn);
         this.panel.appendChild(header);
 
-        const body = document.createElement('div');
-        body.style.cssText = 'display:flex; flex:1; overflow:hidden;';
-        this.panel.appendChild(body);
-
-        this.contactList = document.createElement('div');
-        this.contactList.style.cssText = 'width:120px; border-right:1px solid rgba(0,255,204,0.2); overflow-y:auto; background:rgba(0,0,0,0.3); padding:10px; display:flex; flex-direction:column; gap:8px; scrollbar-width: none; flex-shrink:0;';
-        body.appendChild(this.contactList);
-
-        this.chatArea = document.createElement('div');
-        this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.5); overflow:hidden;';
-        body.appendChild(this.chatArea);
-
-        this.chatHeader = document.createElement('div');
-        this.chatHeader.style.cssText = 'padding:10px 15px; border-bottom:1px solid rgba(255,0,255,0.2); display:flex; align-items:center; gap:12px; background:rgba(255,0,255,0.03); flex-shrink:0;';
-        this.chatArea.appendChild(this.chatHeader);
-
         this.msgContainer = document.createElement('div');
-        this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:15px; scroll-behavior:smooth;';
-        this.chatArea.appendChild(this.msgContainer);
+        this.msgContainer.style.cssText = 'flex:1; overflow-y:auto; padding:25px; display:flex; flex-direction:column; gap:20px; scroll-behavior:smooth;';
+        this.panel.appendChild(this.msgContainer);
 
-        // ★★★ 入力エリアの大幅拡張 ★★★
         const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:flex-end;';
+        inputContainer.style.cssText = 'padding:20px; border-top:1px solid rgba(255,0,255,0.2); background:rgba(0,0,0,0.5); flex-shrink:0; display:flex; gap:12px; align-items:flex-end;';
         
         const attachBtn = document.createElement('button');
         attachBtn.innerText = '📎';
         attachBtn.title = '画像/データを暗号化送信';
-        // 下揃えにして、入力欄が広がってもずれないようにする
-        attachBtn.style.cssText = 'background:transparent; border:none; font-size:24px; cursor:pointer; color:#00ffcc; transition:0.2s; padding-bottom:6px; flex-shrink:0;';
-        attachBtn.onmouseover = () => attachBtn.style.textShadow = '0 0 10px #00ffcc';
+        attachBtn.style.cssText = 'background:transparent; border:none; font-size:26px; cursor:pointer; color:#ff00ff; transition:0.2s; padding-bottom:8px; flex-shrink:0;';
+        attachBtn.onmouseover = () => attachBtn.style.textShadow = '0 0 10px #ff00ff';
         attachBtn.onmouseout = () => attachBtn.style.textShadow = 'none';
         
         const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.style.display = 'none';
-        
+        fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
         attachBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
         const inputWrapper = document.createElement('div');
-        // ボーダーの丸みを調整し、上下のパディングを増やして入力しやすくする
-        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:15px; padding:8px 10px 8px 15px; transition:0.2s; align-items:flex-end;';
+        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(255,0,255,0.05); border:1px solid rgba(255,0,255,0.3); border-radius:20px; padding:10px 10px 10px 20px; transition:0.2s; align-items:flex-end;';
         
-        // input ではなく textarea を使用して複数行対応
         this.inputField = document.createElement('textarea');
-        this.inputField.placeholder = 'Encrypted message...\n(Shift + Enter で改行)';
+        this.inputField.placeholder = 'Secure Message... (Shift+Enterで改行)';
         this.inputField.rows = 1;
-        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:150px; overflow-y:auto;';
+        this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:0; outline:none; font-size:15px; line-height:1.5; font-family:sans-serif; resize:none; max-height:200px; overflow-y:auto; margin-bottom:2px;';
         
-        // 入力内容に合わせて高さを自動拡張
         this.inputField.addEventListener('input', () => {
             this.inputField.style.height = 'auto';
             this.inputField.style.height = this.inputField.scrollHeight + 'px';
         });
 
-        // Enterで送信、Shift+Enterで改行
         this.inputField.onkeydown = (e) => { 
-            if(e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // デフォルトの改行を防ぐ
-                this.sendMessage();
-            }
+            if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
         };
         
-        this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
-        this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
+        this.inputField.onfocus = () => inputWrapper.style.borderColor = '#ff00ff';
+        this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(255,0,255,0.3)';
         
         const sendBtn = document.createElement('button');
-        sendBtn.innerText = 'Send';
-        // 送信ボタンを下揃えにして高さを固定
-        sendBtn.style.cssText = 'background:#00ffcc; color:#000; border:none; padding:0 20px; border-radius:12px; font-weight:bold; cursor:pointer; font-size:13px; transition:0.2s; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0;';
-        
-        sendBtn.onmouseover = () => { sendBtn.style.background = '#00ffff'; sendBtn.style.boxShadow = '0 0 10px #00ffff'; };
-        sendBtn.onmouseout = () => { sendBtn.style.background = '#00ffcc'; sendBtn.style.boxShadow = 'none'; };
+        sendBtn.innerText = '➤';
+        sendBtn.style.cssText = 'background:#ff00ff; color:#000; border:none; width:40px; height:40px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:18px; transition:0.2s; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom: -2px;';
+        sendBtn.onmouseover = () => { sendBtn.style.background = '#ff66ff'; sendBtn.style.boxShadow = '0 0 10px #ff66ff'; };
+        sendBtn.onmouseout = () => { sendBtn.style.background = '#ff00ff'; sendBtn.style.boxShadow = 'none'; };
         sendBtn.onclick = () => this.sendMessage();
 
         inputContainer.appendChild(attachBtn);
@@ -180,132 +141,57 @@ export class NexusChatUI {
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
-        this.chatArea.appendChild(inputContainer);
+        this.panel.appendChild(inputContainer);
     }
 
-    toggle() {
-        this.isOpen = !this.isOpen;
-        this.panel.style.right = this.isOpen ? '0px' : '-400px';
-        
-        this.triggerTab.style.right = this.isOpen ? '385px' : '20px'; 
-        this.triggerTab.style.background = this.isOpen ? 'rgba(255,68,68,0.1)' : 'rgba(0,255,204,0.1)';
-        this.triggerTab.style.borderColor = this.isOpen ? '#ff4444' : '#00ffcc';
-        this.triggerTab.style.color = this.isOpen ? '#ff4444' : '#00ffcc';
-        this.triggerTab.style.boxShadow = this.isOpen ? '0 0 20px rgba(255,68,68,0.3)' : '0 0 20px rgba(0,255,204,0.3)';
-        this.triggerTab.innerHTML = this.isOpen ? '<div style="font-size:24px;">×</div>' : '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
-        
-        if (this.isOpen) {
-            this.refreshContacts();
-            if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
-        }
-    }
-
-    refreshContacts() {
-        this.contactList.innerHTML = '';
-        let nexusNodes = [];
-        
-        const findNexus = (nodes) => {
-            nodes.forEach(n => {
-                if ((n.sharedKey || n.peerPublicKey) && !n.isGhost) nexusNodes.push(n);
-                if (n.innerUniverse) findNexus(n.innerUniverse.nodes);
-            });
-        };
-        findNexus(this.app.currentUniverse.nodes);
-
-        if (nexusNodes.length === 0) {
-            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px; border:1px dashed #444; border-radius:8px;">NO LINKS</div>';
-            this.chatHeader.innerHTML = '';
-            this.msgContainer.innerHTML = '<div style="margin:auto; color:#444; font-size:12px; text-align:center; line-height:1.6;">星のメニューから<br><span style="color:#00ffcc;">[📡 QRセキュア通信]</span>を実行し、<br>鍵を交換してください。</div>';
-            this.activeNode = null;
-            return;
-        }
-
-        nexusNodes.forEach(node => {
-            const btn = document.createElement('div');
-            const isActive = this.activeNode === node;
-            
-            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; border:1px solid transparent; cursor:pointer; transition:0.2s; overflow:hidden;`;
-            
-            const iconWrap = document.createElement('div');
-            iconWrap.style.cssText = `width:36px; height:36px; border-radius:50%; overflow:hidden; border:2px solid ${isActive?'#00ffcc':'#444'}; flex-shrink:0; display:flex; justify-content:center; align-items:center; background:#111;`;
-            
-            if (node.iconUrl) {
-                iconWrap.innerHTML = `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-            } else {
-                iconWrap.style.background = isActive ? 'radial-gradient(circle, #00ffcc 0%, #111 70%)' : 'radial-gradient(circle, #444 0%, #111 70%)';
-            }
-            
-            const nameEl = document.createElement('div');
-            const displayName = node.name.replace('Nexus: ', '');
-            nameEl.style.cssText = `font-size:13px; color:${isActive?'#fff':'#aaa'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
-            nameEl.innerText = '🌌 ' + displayName;
-            
-            btn.appendChild(iconWrap);
-            btn.appendChild(nameEl);
-            
-            if (isActive) {
-                btn.style.background = 'rgba(0,255,204,0.1)';
-                btn.style.borderColor = 'rgba(0,255,204,0.3)';
-            } else {
-                btn.onmouseover = () => { btn.style.background = 'rgba(255,255,255,0.03)'; btn.style.borderColor = 'rgba(255,255,255,0.1)'; };
-                btn.onmouseout = () => { btn.style.background = 'transparent'; btn.style.borderColor = 'transparent'; };
-            }
-            
-            btn.onclick = () => this.openChat(node);
-            this.contactList.appendChild(btn);
-        });
-
-        if (!this.activeNode || !nexusNodes.includes(this.activeNode)) {
-            this.openChat(nexusNodes[0]);
-        }
-    }
-
-    async openChat(node) {
+    closeChat() {
+        this.isOpen = false;
+        this.panel.style.opacity = '0';
+        this.panel.style.transform = 'translate(-50%, -50%) scale(0.9)';
+        setTimeout(() => this.panel.style.display = 'none', 300);
         if (this.unsubscribeNetwork) {
             this.unsubscribeNetwork();
             this.unsubscribeNetwork = null;
         }
+    }
+
+    async openChat(node) {
+        if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
 
         const myId = this.getMyIdentity();
-
         if (!node.sharedKey && node.peerPublicKey && myId) {
-            try {
-                node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
-            } catch (e) {
-                console.error("鍵の再錬成に失敗しました", e);
-            }
+            try { node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey); } catch (e) {}
         }
 
         this.activeNode = node;
-        this.refreshContacts();
+        this.isOpen = true;
+        this.panel.style.display = 'flex';
+        setTimeout(() => {
+            this.panel.style.opacity = '1';
+            this.panel.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 10);
         
-        const displayName = node.name.replace('Nexus: ', '');
-        this.chatHeader.innerHTML = `
-            <div style="width:32px; height:32px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;">
+        const displayName = node.name.replace('Nexus Channel', 'Secure Channel').replace('Nexus: ', '');
+        this.chatHeaderTitle.innerHTML = `
+            <div style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;">
                 ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
             </div>
-            <div style="display:flex; flex-direction:column; gap:2px;">
-                <div style="font-size:14px; font-weight:bold; color:#fff;">${displayName}</div>
-                <div style="font-size:10px; color:#aaa; display:flex; align-items:center; gap:4px;">🔐 Hybrid E2EE Secured</div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="font-size:18px; font-weight:bold; color:#fff; letter-spacing:1px;">${displayName}</div>
+                <div style="font-size:11px; color:#ff00ff; text-shadow:0 0 5px #ff00ff;">🔐 Hybrid E2EE Secured</div>
             </div>
         `;
         
         this.msgContainer.innerHTML = '';
-        
         if (!node.messages) node.messages = [];
         for (let msg of node.messages) { await this.renderMessageObj(msg); }
         this.scrollToBottom();
 
-        if (node.peerPublicKey && myId && db) {
-            await this.listenToNetwork(node, myId);
-        }
+        if (node.peerPublicKey && myId && db) await this.listenToNetwork(node, myId);
     }
 
     async generateChannelId(myPubJwk, peerPubJwk) {
-        const myStr = JSON.stringify(myPubJwk);
-        const peerStr = JSON.stringify(peerPubJwk);
-        const combined = [myStr, peerStr].sort().join('|');
-        
+        const combined = [JSON.stringify(myPubJwk), JSON.stringify(peerPubJwk)].sort().join('|');
         const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined));
         return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2,'0')).join('');
     }
@@ -321,20 +207,13 @@ export class NexusChatUI {
 
             this.unsubscribeNetwork = onSnapshot(q, async (snapshot) => {
                 let isNewRendered = false;
-
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
                         const data = change.doc.data();
-                        
                         const isDuplicate = node.messages.some(m => JSON.stringify(m.cipher) === JSON.stringify(data.cipher));
                         if (!isDuplicate) {
                             const senderType = (data.senderPubKey === myPubStr) ? 'me' : 'peer';
-                            const msgObj = {
-                                sender: senderType,
-                                cipher: data.cipher,
-                                iv: data.iv,
-                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now()
-                            };
+                            const msgObj = { sender: senderType, cipher: data.cipher, iv: data.iv, timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now() };
                             
                             node.messages.push(msgObj);
                             this.renderMessageObj(msgObj);
@@ -346,76 +225,51 @@ export class NexusChatUI {
                         }
                     }
                 });
-
-                if (isNewRendered) {
-                    this.app.autoSave();
-                    this.scrollToBottom();
-                }
-            }, (error) => {
-                console.warn("📡 リアルタイム通信が一時的に切断されました:", error);
+                if (isNewRendered) { this.app.autoSave(); this.scrollToBottom(); }
             });
-        } catch (e) {
-            console.error("ワームホールの開通に失敗しました:", e);
-        }
+        } catch (e) { console.error("ワームホールの開通に失敗:", e); }
     }
 
     async renderMessageObj(msg) {
         const isMe = msg.sender === 'me';
-        
         const msgRow = document.createElement('div');
-        msgRow.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:10px;`;
+        msgRow.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:12px;`;
         
         if (!isMe) {
             const peerIcon = document.createElement('div');
-            peerIcon.style.cssText = `width:28px; height:28px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;`;
-            if (this.activeNode.iconUrl) {
-                peerIcon.innerHTML = `<img src="${this.activeNode.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-            } else {
-                peerIcon.style.background = 'radial-gradient(circle, #ff00ff 0%, #111 70%)';
-            }
+            peerIcon.style.cssText = `width:32px; height:32px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center;`;
+            if (this.activeNode.iconUrl) peerIcon.innerHTML = `<img src="${this.activeNode.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
+            else peerIcon.style.background = 'radial-gradient(circle, #ff00ff 0%, #111 70%)';
             msgRow.appendChild(peerIcon);
         }
         
         const bubble = document.createElement('div');
-        bubble.style.cssText = `max-width:70%; padding:12px 16px; font-size:14px; line-height:1.6; word-break:break-all; box-shadow:0 4px 15px rgba(0,0,0,0.5); white-space:pre-wrap;`;
+        bubble.style.cssText = `max-width:75%; padding:14px 18px; font-size:15px; line-height:1.6; word-break:break-all; box-shadow:0 5px 20px rgba(0,0,0,0.5); white-space:pre-wrap; letter-spacing:0.5px;`;
         
         if (isMe) {
-            bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(0,255,204,0.3)';
-            bubble.style.color = '#ccffff';
-            bubble.style.borderRadius = '16px 16px 4px 16px';
-            bubble.style.boxShadow = '0 2px 10px rgba(0,255,204,0.2)';
+            bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.15) 0%, rgba(255,102,204,0.05) 100%)';
+            bubble.style.border = '1px solid rgba(255,0,255,0.3)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '20px 20px 4px 20px';
         } else {
             bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.1) 0%, rgba(255,102,204,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(255,102,204,0.3)';
-            bubble.style.color = '#ffccff';
-            bubble.style.borderRadius = '16px 16px 16px 4px';
-            bubble.style.boxShadow = '0 2px 10px rgba(255,102,204,0.2)';
+            bubble.style.border = '1px solid rgba(255,102,204,0.3)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '20px 20px 20px 4px';
         }
 
-        let text = "[Decryption Error]";
+        let text = "[ 復号エラー: 旧形式のデータ、または量子干渉 ]"; 
         let isImage = false;
         
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
             try {
                 const parsed = JSON.parse(decrypted);
-                if (parsed.type === 'image') {
-                    isImage = true;
-                    text = parsed.data;
-                } else if (parsed.type === 'text') {
-                    text = parsed.text;
-                }
-            } catch(e) {
-                text = decrypted;
-            }
-        } catch(e) {}
-        
-        if (isImage) {
-            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open('${text}')">`;
-        } else {
-            bubble.innerText = text;
+                if (parsed.type === 'image') { isImage = true; text = parsed.data; } else if (parsed.type === 'text') { text = parsed.text; }
+            } catch(e) { text = decrypted; }
+        } catch(e) {
+            // OperationError 等の復号失敗時は安全にエラーメッセージだけを表示する
+            console.warn("メッセージの復号に失敗しました（無視して続行します）");
         }
+        
+        if (isImage) bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:12px; cursor:pointer;" onclick="window.open('${text}')">`;
+        else bubble.innerText = text;
         
         msgRow.appendChild(bubble);
         this.msgContainer.appendChild(msgRow);
@@ -425,7 +279,6 @@ export class NexusChatUI {
         const text = this.inputField.value.trim();
         if (!text || !this.activeNode) return;
         
-        // 入力欄をリセットして高さを戻す
         this.inputField.value = '';
         this.inputField.style.height = 'auto';
         
@@ -440,16 +293,11 @@ export class NexusChatUI {
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 800;
+                    const canvas = document.createElement('canvas'); const MAX_SIZE = 800;
                     let w = img.width; let h = img.height;
-                    if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; }
-                    else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
-                    
+                    if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; } else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
                     canvas.width = w; canvas.height = h;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, w, h);
-                    
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                     resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                 };
                 img.src = e.target.result;
@@ -460,41 +308,25 @@ export class NexusChatUI {
 
     async sendImage(file) {
         if (!file || !this.activeNode) return;
-        
         this.inputField.placeholder = 'Compressing & Encrypting...';
-        
         try {
             const base64Data = await this.compressImage(file);
             const payload = JSON.stringify({ type: 'image', data: base64Data });
             const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
             await this.dispatchToNetwork(encrypted);
-        } catch(e) {
-            console.error("画像送信エラー", e);
-            alert("画像の暗号化に失敗しました。");
-        } finally {
-            this.inputField.placeholder = 'Encrypted message...\n(Shift + Enter で改行)';
-        }
+        } catch(e) { alert("画像の暗号化に失敗しました。"); } 
+        finally { this.inputField.placeholder = 'Secure Message... (Shift+Enterで改行)'; }
     }
 
     async dispatchToNetwork(encrypted) {
-        const myId = this.getMyIdentity();
-        if (!myId) return;
-
+        const myId = this.getMyIdentity(); if (!myId) return;
         const myPubStr = JSON.stringify(myId.publicKey);
-        const msgObj = { 
-            sender: 'me', 
-            cipher: encrypted.cipher, 
-            iv: encrypted.iv, 
-            timestamp: Date.now() 
-        };
+        const msgObj = { sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now() };
         
         if (!this.activeNode.channelId || !db) {
             if (!this.activeNode.messages) this.activeNode.messages = [];
-            this.activeNode.messages.push(msgObj);
-            this.app.autoSave();
-            await this.renderMessageObj(msgObj);
-            this.scrollToBottom();
-            return;
+            this.activeNode.messages.push(msgObj); this.app.autoSave();
+            await this.renderMessageObj(msgObj); this.scrollToBottom(); return;
         }
 
         try {
@@ -502,19 +334,11 @@ export class NexusChatUI {
             await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp() }, { merge: true });
 
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
-            await addDoc(messagesRef, {
-                cipher: encrypted.cipher,
-                iv: encrypted.iv,
-                senderPubKey: myPubStr,
-                timestamp: serverTimestamp()
-            });
+            await addDoc(messagesRef, { cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp() });
         } catch (e) {
-            console.error("送信失敗", e);
             if (!this.activeNode.messages) this.activeNode.messages = [];
-            this.activeNode.messages.push(msgObj);
-            this.app.autoSave();
-            await this.renderMessageObj(msgObj);
-            this.scrollToBottom();
+            this.activeNode.messages.push(msgObj); this.app.autoSave();
+            await this.renderMessageObj(msgObj); this.scrollToBottom();
         }
     }
 
