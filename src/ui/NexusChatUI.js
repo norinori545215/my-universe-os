@@ -12,7 +12,6 @@ export class NexusChatUI {
         this.createUI();
     }
 
-    // ★ 追加：他のUIに依存せず、自分自身でストレージから直接鍵を取得する堅牢なメソッド
     getMyIdentity() {
         try {
             const saved = localStorage.getItem('universe_nexus_identity');
@@ -75,14 +74,30 @@ export class NexusChatUI {
         this.chatArea.appendChild(this.msgContainer);
 
         const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0;';
+        inputContainer.style.cssText = 'padding:15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(0,0,0,0.8); flex-shrink:0; display:flex; gap:10px; align-items:center;';
         
+        // ★ 追加：画像添付ボタン
+        const attachBtn = document.createElement('button');
+        attachBtn.innerText = '📎';
+        attachBtn.title = '画像/データを暗号化送信';
+        attachBtn.style.cssText = 'background:transparent; border:none; font-size:20px; cursor:pointer; color:#00ffcc; transition:0.2s;';
+        attachBtn.onmouseover = () => attachBtn.style.textShadow = '0 0 10px #00ffcc';
+        attachBtn.onmouseout = () => attachBtn.style.textShadow = 'none';
+        
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        
+        attachBtn.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
+
         const inputWrapper = document.createElement('div');
-        inputWrapper.style.cssText = 'display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:25px; padding:5px 5px 5px 15px; transition:0.2s;';
+        inputWrapper.style.cssText = 'flex:1; display:flex; gap:10px; background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.3); border-radius:25px; padding:5px 5px 5px 15px; transition:0.2s;';
         
         this.inputField = document.createElement('input');
         this.inputField.type = 'text';
-        this.inputField.placeholder = 'Type an encrypted message...';
+        this.inputField.placeholder = 'Encrypted message...';
         this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:8px 0; outline:none; font-size:13px;';
         
         this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
@@ -97,6 +112,8 @@ export class NexusChatUI {
         sendBtn.onmouseout = () => { sendBtn.style.background = '#00ffcc'; sendBtn.style.boxShadow = 'none'; };
         sendBtn.onclick = () => this.sendMessage();
 
+        inputContainer.appendChild(attachBtn);
+        inputContainer.appendChild(fileInput);
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
@@ -126,7 +143,8 @@ export class NexusChatUI {
         
         const findNexus = (nodes) => {
             nodes.forEach(n => {
-                if (n.sharedKey && !n.isGhost) nexusNodes.push(n);
+                // ★ 修正：sharedKeyが無くても、peerPublicKeyを持っていればチャット相手とみなす（リロード復旧用）
+                if ((n.sharedKey || n.peerPublicKey) && !n.isGhost) nexusNodes.push(n);
                 if (n.innerUniverse) findNexus(n.innerUniverse.nodes);
             });
         };
@@ -186,6 +204,18 @@ export class NexusChatUI {
             this.unsubscribeNetwork = null;
         }
 
+        const myId = this.getMyIdentity();
+
+        // ★ リロードで消えた暗号鍵（SharedKey）を自動で再錬成する
+        if (!node.sharedKey && node.peerPublicKey && myId) {
+            try {
+                node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
+                console.log("🔓 暗号鍵を再錬成しました");
+            } catch (e) {
+                console.error("鍵の再錬成に失敗しました", e);
+            }
+        }
+
         this.activeNode = node;
         this.refreshContacts();
         
@@ -206,8 +236,6 @@ export class NexusChatUI {
         for (let msg of node.messages) { await this.renderMessageObj(msg); }
         this.scrollToBottom();
 
-        // ★ 修正：自分自身の鍵情報を直接取得
-        const myId = this.getMyIdentity();
         if (node.peerPublicKey && myId && db) {
             await this.listenToNetwork(node, myId);
         }
@@ -222,7 +250,6 @@ export class NexusChatUI {
         return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2,'0')).join('');
     }
 
-    // ★ 修正：引数として直接鍵情報(myId)を受け取る
     async listenToNetwork(node, myId) {
         try {
             const channelId = await this.generateChannelId(myId.publicKey, node.peerPublicKey);
@@ -307,10 +334,30 @@ export class NexusChatUI {
         }
 
         let text = "[Decryption Error]";
+        let isImage = false;
+        
         try { 
-            text = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
+            const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
+            // ★ Json化された高度なペイロード（画像/テキスト）の展開処理
+            try {
+                const parsed = JSON.parse(decrypted);
+                if (parsed.type === 'image') {
+                    isImage = true;
+                    text = parsed.data;
+                } else if (parsed.type === 'text') {
+                    text = parsed.text;
+                }
+            } catch(e) {
+                // 過去のプレーンテキストメッセージの互換性維持
+                text = decrypted;
+            }
         } catch(e) {}
-        bubble.innerText = text;
+        
+        if (isImage) {
+            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open('${text}')">`;
+        } else {
+            bubble.innerText = text;
+        }
         
         msgRow.appendChild(bubble);
         this.msgContainer.appendChild(msgRow);
@@ -321,9 +368,60 @@ export class NexusChatUI {
         if (!text || !this.activeNode) return;
         this.inputField.value = '';
         
-        const encrypted = await SecretNexus.encryptData(text, this.activeNode.sharedKey);
+        // ★ JSONとして構造化して暗号化（画像と判別するため）
+        const payload = JSON.stringify({ type: 'text', text: text });
+        const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
+        await this.dispatchToNetwork(encrypted);
+    }
+
+    // ★ 追加：画像を限界まで圧縮し、Base64文字列に変換する特異点処理
+    async compressImage(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_SIZE = 800; // Firebaseの1MB制限を避けるため縮小
+                    let w = img.width; let h = img.height;
+                    if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; }
+                    else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
+                    
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    
+                    // 限界圧縮のJPGデータを生成
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // ★ 追加：画像を暗号化して送信
+    async sendImage(file) {
+        if (!file || !this.activeNode) return;
         
-        // ★ 修正：自分自身の鍵情報を直接取得
+        // ローディング演出
+        this.inputField.placeholder = 'Compressing & Encrypting...';
+        
+        try {
+            const base64Data = await this.compressImage(file);
+            const payload = JSON.stringify({ type: 'image', data: base64Data });
+            const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
+            await this.dispatchToNetwork(encrypted);
+        } catch(e) {
+            console.error("画像送信エラー", e);
+            alert("画像の暗号化に失敗しました。");
+        } finally {
+            this.inputField.placeholder = 'Encrypted message...';
+        }
+    }
+
+    // ★ 共通の送信処理
+    async dispatchToNetwork(encrypted) {
         const myId = this.getMyIdentity();
         if (!myId) return;
 
@@ -353,7 +451,7 @@ export class NexusChatUI {
                 timestamp: serverTimestamp()
             });
         } catch (e) {
-            console.error("メッセージの送信に失敗しました（オフラインフォールバック）", e);
+            console.error("送信失敗", e);
             if (!this.activeNode.messages) this.activeNode.messages = [];
             this.activeNode.messages.push(msgObj);
             this.app.autoSave();

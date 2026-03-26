@@ -1,5 +1,4 @@
 // src/core/NodeGraph.js
-// ★ Firebaseのインポートを完全に削除しました！（絶対主権の確立）
 
 export class EntityNode {
     constructor(name, x, y, size, color, category = 'star') {
@@ -11,14 +10,16 @@ export class EntityNode {
         this.url = ""; 
         this.iconUrl = "";
         
-        // ★ メモ機能：星の中に刻まれるテキストデータ
         this.note = ""; 
-        this.vault = []; // ★ 金庫（VaultMedia）のメタデータ用
+        this.vault = []; 
         
-        // ★ セキュリティ機能：星に鍵をかけるための属性
-        this.isLocked = false;       // 鍵がかかっているか
-        this.password = "";          // この星専用のパスワード
-        this.ownerId = "";           // ※ローカル主権のため、FirebaseのID依存を解除
+        this.isLocked = false;
+        this.password = "";
+        this.ownerId = "";
+
+        // ★ 通信相手の記憶（リロード対策）
+        this.peerPublicKey = "";
+        this.channelId = "";
 
         this.parentUniverse = null;
 
@@ -82,7 +83,9 @@ export const DataManager = {
             id: n.id, name: n.name, category: n.category, size: n.size, color: n.color, 
             url: n.url, iconUrl: n.iconUrl,
             note: n.note,
-            vault: n.vault || [], // ★ 保存対象に追加！
+            vault: n.vault || [], 
+            peerPublicKey: n.peerPublicKey || "", // ★ 保存対象に追加
+            channelId: n.channelId || "",         // ★ 保存対象に追加
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -114,7 +117,6 @@ export const DataManager = {
         try {
             data = JSON.parse(raw);
         } catch (e) {
-            console.error("データのパースに失敗しました", e);
             return null;
         }
 
@@ -128,7 +130,9 @@ export const DataManager = {
                 node.url = nData.url || "";
                 node.iconUrl = nData.iconUrl || "";
                 node.note = nData.note || "";
-                node.vault = nData.vault || []; // ★ 読み込み対象に追加！
+                node.vault = nData.vault || [];
+                node.peerPublicKey = nData.peerPublicKey || ""; // ★ 読み込み対象に追加
+                node.channelId = nData.channelId || "";         // ★ 読み込み対象に追加
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -164,7 +168,9 @@ export const DataManager = {
             node.url = nData.url || ""; 
             node.iconUrl = nData.iconUrl || "";
             node.note = nData.note || "";
-            node.vault = nData.vault || []; // ★ 亜空間データも対応！
+            node.vault = nData.vault || [];
+            node.peerPublicKey = nData.peerPublicKey || "";
+            node.channelId = nData.channelId || "";
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
