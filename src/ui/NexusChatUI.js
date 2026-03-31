@@ -869,37 +869,48 @@ export class NexusChatUI {
     }
 
     async sendMessage() {
-        const text = this.inputField.value.trim();
-        if (!text || !this.activeNode) return;
-        
-        // ★ 追加：鍵がない時のエラー防壁
-        if (!this.activeNode.sharedKey) {
-            alert("🚨 相手との量子暗号キーが確立されていません。\n先に「📡 QRセキュア通信」で鍵を交換してください。");
-            return;
-        }
-        
-        this.inputField.value = '';
-        this.inputField.style.height = 'auto'; 
-        
-        const payloadObj = { type: 'text', text: text };
-        if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
+        try {
+            const text = this.inputField.value.trim();
+            if (!text || !this.activeNode) return;
 
-        const payload = JSON.stringify(payloadObj);
-        const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
-        
-        if (this.editingMsgId) {
-            const msgId = this.editingMsgId;
-            this.cancelAction();
-            if (this.activeNode.channelId && db) {
-                try {
+            // ★ 防壁1：自分のID（秘密鍵）が消えていないかチェック
+            const myId = this.getMyIdentity();
+            if (!myId) {
+                alert("🚨 自分のID（秘密鍵）が見つかりません。再ログインするかIDを復元してください。");
+                return;
+            }
+            
+            // ★ 防壁2：相手との共有鍵が存在するかチェック
+            if (!this.activeNode.sharedKey) {
+                alert("🚨 相手との量子暗号キーが確立されていません。\n先に「📡 QRセキュア通信」で鍵を交換してください。");
+                return;
+            }
+            
+            this.inputField.value = '';
+            this.inputField.style.height = 'auto'; 
+            
+            const payloadObj = { type: 'text', text: text };
+            if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
+
+            const payload = JSON.stringify(payloadObj);
+            const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
+            
+            if (this.editingMsgId) {
+                const msgId = this.editingMsgId;
+                this.cancelAction();
+                if (this.activeNode.channelId && db) {
                     await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msgId), {
                         cipher: encrypted.cipher, iv: encrypted.iv, isEdited: true, updatedAt: serverTimestamp()
                     });
-                } catch(e) {}
+                }
+            } else {
+                this.cancelAction();
+                await this.dispatchToNetwork(encrypted);
             }
-        } else {
-            this.cancelAction();
-            await this.dispatchToNetwork(encrypted);
+        } catch (e) {
+            // ★ 防壁3：謎のエラーが起きても絶対に無反応にさせずアラートを出す
+            console.error("Send Error:", e);
+            alert("送信中にシステムエラーが発生しました: " + e.message);
         }
     }
     
