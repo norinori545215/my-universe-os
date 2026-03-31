@@ -34,6 +34,30 @@ export async function deriveKey(masterPassword, saltHex = 'my-universe-os-salt-1
     );
 }
 
+// ★ 追加：巨大なバイナリデータをスタックオーバーフローなしでBase64化する安全な関数
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    const chunkSize = 8192; // 8KBごとに分割処理（限界突破の回避）
+    
+    for (let i = 0; i < len; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
+// ★ 追加：Base64からメモリを爆発させずにUint8Arrayに戻す安全な関数
+function base64ToArrayBuffer(base64) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
 // 2. 宇宙のデータを「暗号カプセル」に閉じ込める
 export async function encryptUniverseData(dataObject, cryptoKey) {
     const enc = new TextEncoder();
@@ -48,10 +72,9 @@ export async function encryptUniverseData(dataObject, cryptoKey) {
         encodedData
     );
 
-    // ★ 修正: FirebaseのFirestoreが受け取れるようにBase64文字列に変換して返す
-    const encryptedArray = Array.from(new Uint8Array(encryptedBuffer));
-    const encryptedBase64 = btoa(String.fromCharCode.apply(null, encryptedArray));
-    const ivBase64 = btoa(String.fromCharCode.apply(null, Array.from(iv)));
+    // ★ 修正: チャンク分割による安全な変換を適用（音声や画像に対応）
+    const encryptedBase64 = arrayBufferToBase64(encryptedBuffer);
+    const ivBase64 = arrayBufferToBase64(iv);
 
     return {
         cipher: encryptedBase64,
@@ -62,9 +85,9 @@ export async function encryptUniverseData(dataObject, cryptoKey) {
 // 3. 別の端末で「暗号カプセル」を解読し、宇宙を復元する
 export async function decryptUniverseData(encryptedObj, cryptoKey) {
     try {
-        // ★ 修正: Firebaseから降りてきたBase64文字列を解読する
-        const encryptedArray = new Uint8Array(atob(encryptedObj.cipher).split('').map(c => c.charCodeAt(0)));
-        const ivArray = new Uint8Array(atob(encryptedObj.iv).split('').map(c => c.charCodeAt(0)));
+        // ★ 修正: メモリセーフな解読変換を適用
+        const encryptedArray = base64ToArrayBuffer(encryptedObj.cipher);
+        const ivArray = base64ToArrayBuffer(encryptedObj.iv);
 
         const decryptedBuffer = await window.crypto.subtle.decrypt(
             { name: "AES-GCM", iv: ivArray },
