@@ -1,7 +1,6 @@
 // src/ui/NexusChatUI.js
 import { SecretNexus } from '../security/SecretNexus.js';
 import { db } from '../security/Auth.js';
-// ★ deleteDoc を追加インポート
 import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, limit, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class NexusChatUI {
@@ -17,6 +16,10 @@ export class NexusChatUI {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.unreadChannels = new Set(); 
+
+        // ★ Phase 2: 編集・返信用のステータス管理
+        this.editingMsgId = null;
+        this.replyToMsg = null;
 
         this.createUI();
         
@@ -202,6 +205,13 @@ export class NexusChatUI {
         this.micBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
+        // ★ Phase 2: 編集・返信のキャンセルボタン
+        this.actionCancelBtn = document.createElement('button');
+        this.actionCancelBtn.innerHTML = '✖';
+        this.actionCancelBtn.title = 'キャンセル';
+        this.actionCancelBtn.style.cssText = 'display:none; background:transparent; border:none; color:#ff4444; font-size:16px; cursor:pointer; margin-right:5px; padding:4px;';
+        this.actionCancelBtn.onclick = () => this.cancelAction();
+
         this.inputField = document.createElement('textarea');
         this.inputField.className = 'nexus-input-scroll';
         this.inputField.placeholder = 'Secure Message...';
@@ -239,6 +249,7 @@ export class NexusChatUI {
         inputContainer.appendChild(fileInput);
         inputWrapper.appendChild(attachBtn);
         inputWrapper.appendChild(this.micBtn);
+        inputWrapper.appendChild(this.actionCancelBtn); // ★追加
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
@@ -336,6 +347,8 @@ export class NexusChatUI {
         if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
         if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
 
+        this.cancelAction(); // ★ 初期化
+
         const myId = this.getMyIdentity();
         if (!node.sharedKey && node.peerPublicKey && myId) {
             try { node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey); } 
@@ -348,7 +361,6 @@ export class NexusChatUI {
         
         const shortId = this.getShortId(node.peerPublicKey);
         
-        // ★ ヘッダーの右端に「🔥 焼却」ボタンを追加
         this.chatHeader.innerHTML = `
             <button class="nexus-menu-btn" onclick="document.dispatchEvent(new CustomEvent('nexusToggleMenu'))">≡</button>
             <div id="nx-header-icon" title="アイコン画像を設定" style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
@@ -383,7 +395,6 @@ export class NexusChatUI {
             }
         };
 
-        // ★ 物理的完全消去（True Wipe）プロトコル
         const wipeBtn = document.getElementById('nx-header-wipe');
         wipeBtn.onmouseover = () => { wipeBtn.style.background = 'rgba(255,68,68,0.2)'; wipeBtn.style.boxShadow = '0 0 10px rgba(255,68,68,0.5)'; };
         wipeBtn.onmouseout = () => { wipeBtn.style.background = 'transparent'; wipeBtn.style.boxShadow = 'none'; };
@@ -394,7 +405,6 @@ export class NexusChatUI {
                 let count = 0;
                 wipeBtn.innerText = '処理中...';
                 
-                // サーバー上のドキュメントを「削除フラグ」ではなく「物理削除(deleteDoc)」する
                 for(let msg of msgs) {
                     if(msg.id) {
                         try {
@@ -404,7 +414,6 @@ export class NexusChatUI {
                     }
                 }
                 
-                // バグで残っていたローカルの幽霊メッセージも配列から強制消去
                 this.activeNode.messages = [];
                 this.msgContainer.innerHTML = '';
                 this.app.autoSave();
@@ -433,6 +442,35 @@ export class NexusChatUI {
                 if (readEl) readEl.style.opacity = '1';
             }
         });
+    }
+
+    // ★ Phase 2: 返信・編集の発動処理
+    startReply(msgId, textStr) {
+        if (!textStr) textStr = "Media";
+        this.replyToMsg = { id: msgId, text: textStr };
+        this.editingMsgId = null;
+        this.actionCancelBtn.style.display = 'block';
+        this.inputField.placeholder = `↩️ 返信: ${textStr.substring(0, 15)}...`;
+        this.inputField.focus();
+    }
+
+    startEdit(msgId, textStr) {
+        this.editingMsgId = msgId;
+        this.replyToMsg = null;
+        this.actionCancelBtn.style.display = 'block';
+        this.inputField.value = textStr;
+        this.inputField.placeholder = `✏️ メッセージを編集...`;
+        this.inputField.focus();
+    }
+
+    cancelAction() {
+        this.editingMsgId = null;
+        this.replyToMsg = null;
+        if(this.actionCancelBtn) this.actionCancelBtn.style.display = 'none';
+        if(this.inputField) {
+            this.inputField.value = '';
+            this.inputField.placeholder = 'Secure Message...';
+        }
     }
 
     async listenToNetwork(node, myId) {
@@ -471,7 +509,7 @@ export class NexusChatUI {
                 let isNewRendered = false;
                 const changes = snapshot.docChanges().reverse();
 
-                changes.forEach((change) => {
+                for (let change of changes) {
                     const data = change.doc.data();
                     const docId = change.doc.id;
 
@@ -481,11 +519,13 @@ export class NexusChatUI {
                             const senderType = (data.senderPubKey === myPubStr) ? 'me' : 'peer';
                             const msgObj = { 
                                 id: docId, sender: senderType, cipher: data.cipher, iv: data.iv, 
-                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), isDeleted: data.isDeleted || false 
+                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), 
+                                isDeleted: data.isDeleted || false,
+                                isEdited: data.isEdited || false // ★ 編集フラグの読み取り
                             };
                             
                             node.messages.push(msgObj);
-                            this.renderMessageObj(msgObj, peerLastRead);
+                            await this.renderMessageObj(msgObj, peerLastRead);
                             isNewRendered = true;
 
                             if (senderType === 'peer') {
@@ -494,16 +534,21 @@ export class NexusChatUI {
                             }
                         }
                     } else if (change.type === "modified") {
-                        if (data.isDeleted) {
-                            const targetMsg = node.messages.find(m => m.id === docId);
-                            if (targetMsg && !targetMsg.isDeleted) {
+                        const targetMsg = node.messages.find(m => m.id === docId);
+                        if (targetMsg) {
+                            if (data.isDeleted && !targetMsg.isDeleted) {
                                 targetMsg.isDeleted = true; targetMsg.cipher = "";
                                 const domEl = document.getElementById(`msg-${docId}`);
                                 if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
+                            } else if (!data.isDeleted && data.isEdited) {
+                                // ★ 事後編集の検知（上書き再描画）
+                                targetMsg.cipher = data.cipher;
+                                targetMsg.iv = data.iv;
+                                targetMsg.isEdited = true;
+                                await this.renderMessageObj(targetMsg, peerLastRead);
                             }
                         }
                     } else if (change.type === "removed") {
-                        // ★ 完全消去の検知とDOMからの物理的抹消
                         const targetIndex = node.messages.findIndex(m => m.id === docId);
                         if (targetIndex !== -1) {
                             node.messages.splice(targetIndex, 1);
@@ -512,7 +557,7 @@ export class NexusChatUI {
                             this.app.autoSave();
                         }
                     }
-                });
+                }
 
                 if (node.messages.length > 50) {
                     node.messages.sort((a, b) => a.timestamp - b.timestamp);
@@ -558,39 +603,7 @@ export class NexusChatUI {
         const timeStr = `${timeDate.getHours().toString().padStart(2,'0')}:${timeDate.getMinutes().toString().padStart(2,'0')}`;
         const timeEl = document.createElement('div');
         timeEl.innerText = timeStr;
-        timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:sans-serif;`;
-        
-        if (isMe) {
-            const readMark = document.createElement('div');
-            readMark.id = `read-${msg.id}`;
-            readMark.innerText = '👁️';
-            readMark.style.cssText = `font-size:9px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
-            metaContainer.appendChild(readMark);
-
-            const delBtn = document.createElement('div');
-            delBtn.innerHTML = '🗑️';
-            delBtn.title = 'メッセージを完全消去';
-            delBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
-            delBtn.onmouseover = () => delBtn.style.transform = 'scale(1.2)';
-            delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
-            delBtn.onclick = async () => {
-                if(confirm('空間からこの通信記録を完全に消去しますか？')) {
-                    // ★ 物理削除(deleteDoc)にアップグレードし、幽霊メッセージの削除にも対応
-                    if(!msg.id) {
-                        const targetIndex = this.activeNode.messages.findIndex(m => m === msg);
-                        if (targetIndex !== -1) this.activeNode.messages.splice(targetIndex, 1);
-                        this.app.autoSave();
-                        wrapper.remove(); 
-                        return;
-                    }
-                    try {
-                        await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
-                    } catch(e) {}
-                }
-            };
-            metaContainer.appendChild(delBtn);
-        }
-        metaContainer.appendChild(timeEl);
+        timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:sans-serif; margin-left:2px;`;
 
         const bubble = document.createElement('div');
         bubble.style.cssText = `max-width:70%; padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
@@ -604,11 +617,16 @@ export class NexusChatUI {
         }
 
         let text = ""; let isImage = false; let isVoice = false;
+        let replyHtml = ""; // ★ 引用返信のプレビュー格納用
         
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
             try {
                 const parsed = JSON.parse(decrypted);
+                // ★ 引用返信データがあれば展開する
+                if (parsed.replyTo) {
+                    replyHtml = `<div style="background:rgba(0,0,0,0.3); border-left:3px solid ${isMe?'#00ffcc':'#ff00ff'}; padding:6px 10px; margin-bottom:8px; font-size:11px; color:#aaa; border-radius:0 6px 6px 0; cursor:pointer;" onclick="document.getElementById('msg-${parsed.replyTo.id}')?.scrollIntoView({behavior:'smooth'})">↪ ${parsed.replyTo.text.substring(0,30)}${parsed.replyTo.text.length>30?'...':''}</div>`;
+                }
                 if (parsed.type === 'image') { isImage = true; text = parsed.data; } 
                 else if (parsed.type === 'voice') { isVoice = true; text = parsed.data; }
                 else if (parsed.type === 'text') { text = parsed.text; }
@@ -616,18 +634,84 @@ export class NexusChatUI {
         } catch(e) { text = "[ 復号エラー ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
         
         if (isImage) {
-            bubble.innerHTML = `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
+            bubble.innerHTML = replyHtml + `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
             bubble.style.padding = '6px';
         } else if (isVoice) {
-            bubble.innerHTML = `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
+            bubble.innerHTML = replyHtml + `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
         } else {
-            bubble.innerText = text;
+            bubble.innerHTML = replyHtml + text.replace(/\n/g, '<br>');
         }
+
+        // ★ 各種アクションボタン（返信、編集、削除）
+        const replyBtn = document.createElement('div');
+        replyBtn.innerHTML = '↩️';
+        replyBtn.title = '引用返信';
+        replyBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+        replyBtn.onmouseover = () => replyBtn.style.opacity = '1';
+        replyBtn.onmouseout = () => replyBtn.style.opacity = '0.7';
+        replyBtn.onclick = () => this.startReply(msg.id, text);
+
+        if (isMe) {
+            if (msg.isEdited) {
+                const editMark = document.createElement('span');
+                editMark.innerText = '(編)';
+                editMark.style.cssText = 'font-size:9px; color:#888; margin-right:4px;';
+                metaContainer.appendChild(editMark);
+            }
+            const readMark = document.createElement('div');
+            readMark.id = `read-${msg.id}`;
+            readMark.innerText = '👁️';
+            readMark.style.cssText = `font-size:9px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
+            metaContainer.appendChild(readMark);
+
+            metaContainer.appendChild(replyBtn); // 返信ボタン
+
+            if (!isImage && !isVoice && msg.id) {
+                const editBtn = document.createElement('div');
+                editBtn.innerHTML = '✏️';
+                editBtn.title = 'メッセージ編集';
+                editBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+                editBtn.onmouseover = () => editBtn.style.opacity = '1';
+                editBtn.onmouseout = () => editBtn.style.opacity = '0.7';
+                editBtn.onclick = () => this.startEdit(msg.id, text);
+                metaContainer.appendChild(editBtn); // 編集ボタン
+            }
+
+            const delBtn = document.createElement('div');
+            delBtn.innerHTML = '🗑️';
+            delBtn.title = 'メッセージを完全消去';
+            delBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
+            delBtn.onmouseover = () => delBtn.style.transform = 'scale(1.2)';
+            delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
+            delBtn.onclick = async () => {
+                if(confirm('空間からこの通信記録を完全に消去しますか？')) {
+                    if(!msg.id) {
+                        const targetIndex = this.activeNode.messages.findIndex(m => m === msg);
+                        if (targetIndex !== -1) this.activeNode.messages.splice(targetIndex, 1);
+                        this.app.autoSave();
+                        wrapper.remove(); 
+                        return;
+                    }
+                    try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e) {}
+                }
+            };
+            metaContainer.appendChild(delBtn); // 削除ボタン
+        } else {
+            metaContainer.appendChild(replyBtn);
+        }
+        
+        metaContainer.appendChild(timeEl); // 最後に時間
         
         if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubble); }
         else { wrapper.appendChild(bubble); wrapper.appendChild(metaContainer); }
         
-        this.msgContainer.appendChild(wrapper);
+        // ★ DOMの上書きロジック（編集の即時反映用）
+        const existingEl = document.getElementById(`msg-${msg.id}`);
+        if (existingEl && existingEl.parentNode === this.msgContainer) {
+            this.msgContainer.replaceChild(wrapper, existingEl);
+        } else {
+            this.msgContainer.appendChild(wrapper);
+        }
     }
 
     async sendMessage() {
@@ -637,9 +721,27 @@ export class NexusChatUI {
         this.inputField.value = '';
         this.inputField.style.height = 'auto'; 
         
-        const payload = JSON.stringify({ type: 'text', text: text });
+        const payloadObj = { type: 'text', text: text };
+        if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg; // ★ 引用データ付与
+
+        const payload = JSON.stringify(payloadObj);
         const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
-        await this.dispatchToNetwork(encrypted);
+        
+        // ★ 編集か、新規送信かの分岐
+        if (this.editingMsgId) {
+            const msgId = this.editingMsgId;
+            this.cancelAction();
+            if (this.activeNode.channelId && db) {
+                try {
+                    await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msgId), {
+                        cipher: encrypted.cipher, iv: encrypted.iv, isEdited: true, updatedAt: serverTimestamp()
+                    });
+                } catch(e) {}
+            }
+        } else {
+            this.cancelAction();
+            await this.dispatchToNetwork(encrypted);
+        }
     }
 
     async toggleVoiceRecord() {
@@ -665,8 +767,10 @@ export class NexusChatUI {
                         const base64Audio = reader.result;
                         this.inputField.placeholder = 'Encrypting Voice...';
                         try {
-                            const payload = JSON.stringify({ type: 'voice', data: base64Audio });
-                            const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
+                            const payloadObj = { type: 'voice', data: base64Audio };
+                            if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
+                            const encrypted = await SecretNexus.encryptData(JSON.stringify(payloadObj), this.activeNode.sharedKey);
+                            this.cancelAction();
                             await this.dispatchToNetwork(encrypted);
                         } catch(e) { alert("音声の暗号化に失敗"); }
                         finally { this.inputField.placeholder = 'Secure Message...'; }
@@ -708,8 +812,10 @@ export class NexusChatUI {
         this.inputField.placeholder = 'Compressing & Encrypting...';
         try {
             const base64Data = await this.compressImage(file);
-            const payload = JSON.stringify({ type: 'image', data: base64Data });
-            const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
+            const payloadObj = { type: 'image', data: base64Data };
+            if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
+            const encrypted = await SecretNexus.encryptData(JSON.stringify(payloadObj), this.activeNode.sharedKey);
+            this.cancelAction();
             await this.dispatchToNetwork(encrypted);
         } catch(e) { alert("画像の暗号化に失敗しました。"); } 
         finally { this.inputField.placeholder = 'Secure Message...'; }
