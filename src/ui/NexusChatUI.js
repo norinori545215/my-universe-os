@@ -872,6 +872,12 @@ export class NexusChatUI {
         const text = this.inputField.value.trim();
         if (!text || !this.activeNode) return;
         
+        // ★ 追加：鍵がない時のエラー防壁
+        if (!this.activeNode.sharedKey) {
+            alert("🚨 相手との量子暗号キーが確立されていません。\n先に「📡 QRセキュア通信」で鍵を交換してください。");
+            return;
+        }
+        
         this.inputField.value = '';
         this.inputField.style.height = 'auto'; 
         
@@ -896,9 +902,12 @@ export class NexusChatUI {
             await this.dispatchToNetwork(encrypted);
         }
     }
-
+    
     async toggleVoiceRecord() {
         if (!this.activeNode) return;
+        
+        // ★ 追加：鍵がない時のエラー防壁
+        if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
 
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
             this.mediaRecorder.stop();
@@ -962,6 +971,10 @@ export class NexusChatUI {
 
     async sendImage(file) {
         if (!file || !this.activeNode) return;
+        
+        // ★ 追加：鍵がない時のエラー防壁
+        if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
+        
         this.inputField.placeholder = 'Compressing & Encrypting...';
         try {
             const base64Data = await this.compressImage(file);
