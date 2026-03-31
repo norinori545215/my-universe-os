@@ -355,7 +355,7 @@ async openChat(node) {
         
         const shortId = this.getShortId(node.peerPublicKey);
         
-        // ★ スマホ用の「≡」ハンバーガーメニューボタンを追加
+        // ★ ヘッダーの右端に「🔥 焼却」ボタンを追加
         this.chatHeader.innerHTML = `
             <button class="nexus-menu-btn" onclick="document.dispatchEvent(new CustomEvent('nexusToggleMenu'))">≡</button>
             <div id="nx-header-icon" title="アイコン画像を設定" style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
@@ -367,9 +367,9 @@ async openChat(node) {
                 </div>
                 <div style="font-size:10px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE</div>
             </div>
+            <button id="nx-header-wipe" title="全通信記録を完全消去" style="background:transparent; border:1px solid #ff4444; color:#ff4444; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; margin-left:10px; font-weight:bold; transition:0.2s; white-space:nowrap;">🔥 焼却</button>
         `;
 
-        // カスタムイベントでメニュー開閉を実行
         document.addEventListener('nexusToggleMenu', () => this.toggleContactList(), { once: true });
 
         document.getElementById('nx-header-name').onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
@@ -389,16 +389,37 @@ async openChat(node) {
                 node.iconUrl = url.trim(); this.app.autoSave(); this.openChat(node);
             }
         };
+
+        // ★ 全消去（Wipe）プロトコルの実行処理
+        const wipeBtn = document.getElementById('nx-header-wipe');
+        wipeBtn.onmouseover = () => { wipeBtn.style.background = 'rgba(255,68,68,0.2)'; wipeBtn.style.boxShadow = '0 0 10px rgba(255,68,68,0.5)'; };
+        wipeBtn.onmouseout = () => { wipeBtn.style.background = 'transparent'; wipeBtn.style.boxShadow = 'none'; };
+        wipeBtn.onclick = async () => {
+            if(confirm('【警告】このチャンネルの全通信記録を完全に焼却(Wipe)しますか？\n※自分と相手の画面からすべてのデータが消滅します。')) {
+                if(!this.activeNode || !this.activeNode.messages) return;
+                const msgs = [...this.activeNode.messages];
+                let count = 0;
+                wipeBtn.innerText = '処理中...';
+                for(let msg of msgs) {
+                    if(msg.id && !msg.isDeleted) {
+                        try {
+                            await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id), { isDeleted: true, cipher: "", iv: "" });
+                            count++;
+                        } catch(e) {}
+                    }
+                }
+                wipeBtn.innerText = '🔥 焼却';
+                if(count > 0) alert(`${count}件の通信記録を灰にしました。`);
+            }
+        };
         
         this.msgContainer.innerHTML = '';
         if (!node.messages) node.messages = [];
         
-        // ★ここから追加（過去の履歴を画面に描画して一番下までスクロール）
         for (let msg of node.messages) {
             await this.renderMessageObj(msg);
         }
         this.scrollToBottom();
-        // ★ここまで追加
         
         if (node.peerPublicKey && myId && db) await this.listenToNetwork(node, myId);
     }
