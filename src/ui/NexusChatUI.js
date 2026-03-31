@@ -1,13 +1,14 @@
 // src/ui/NexusChatUI.js
 import { SecretNexus } from '../security/SecretNexus.js';
 import { db } from '../security/Auth.js';
-import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// ★ deleteDoc を追加インポート
+import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, limit, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class NexusChatUI {
     constructor(app) {
         this.app = app;
         this.isOpen = false;
-        this.isContactListOpen = false; // ★追加：スマホ用連絡帳の開閉状態
+        this.isContactListOpen = false;
         this.activeNode = null;
         this.unsubscribeNetwork = null;
         this.unsubscribeTyping = null; 
@@ -21,7 +22,6 @@ export class NexusChatUI {
         
         setTimeout(() => this.startGlobalInboxListener(), 2000);
 
-        // ★追加：画面サイズ変更時にレイアウトを自動調整
         window.addEventListener('resize', () => this.handleResize());
     }
 
@@ -107,7 +107,6 @@ export class NexusChatUI {
         if (!document.getElementById('nexus-chat-styles')) {
             const style = document.createElement('style');
             style.id = 'nexus-chat-styles';
-            // ★ スマホ用（レスポンシブ）のCSSを追加
             style.innerHTML = `
                 .nexus-scroll::-webkit-scrollbar { width: 6px; }
                 .nexus-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -162,7 +161,6 @@ export class NexusChatUI {
         this.chatArea = document.createElement('div');
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative; width:100%;';
         
-        // ★ スマホ用：メニュー外をタップして閉じるためのオーバーレイ
         this.mobileOverlay = document.createElement('div');
         this.mobileOverlay.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9; display:none; backdrop-filter:blur(2px);';
         this.mobileOverlay.onclick = () => this.toggleContactList(false);
@@ -185,7 +183,6 @@ export class NexusChatUI {
         this.chatArea.appendChild(this.typingIndicator);
 
         const inputContainer = document.createElement('div');
-        // スマホで押しやすいように少しパディングを調整
         inputContainer.style.cssText = 'padding:10px 15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:8px; z-index:15;';
         
         const fileInput = document.createElement('input');
@@ -250,7 +247,6 @@ export class NexusChatUI {
         this.handleResize();
     }
 
-    // ★ 画面幅に応じた処理
     handleResize() {
         if (window.innerWidth > 600) {
             this.contactList.classList.remove('open');
@@ -260,9 +256,8 @@ export class NexusChatUI {
         }
     }
 
-    // ★ 連絡帳のスライド開閉
     toggleContactList(forceState = null) {
-        if (window.innerWidth > 600) return; // PCでは何もしない
+        if (window.innerWidth > 600) return; 
         this.isContactListOpen = forceState !== null ? forceState : !this.isContactListOpen;
         if (this.isContactListOpen) {
             this.contactList.classList.add('open');
@@ -275,7 +270,6 @@ export class NexusChatUI {
 
     toggle() {
         this.isOpen = !this.isOpen;
-        // PCなら全幅（max600px）、スマホなら画面100%幅に合わせる
         this.panel.style.right = this.isOpen ? '0px' : '-100%';
         this.triggerTab.style.right = this.isOpen ? (window.innerWidth > 600 ? '605px' : 'calc(100% - 30px)') : '20px'; 
         this.triggerTab.style.background = this.isOpen ? 'rgba(255,68,68,0.1)' : 'rgba(0,255,204,0.1)';
@@ -318,7 +312,7 @@ export class NexusChatUI {
             
             const nameEl = document.createElement('div');
             nameEl.style.cssText = `font-size:13px; font-weight:${(isActive || isUnread)?'bold':'normal'}; color:${isActive?'#fff':(isUnread?'#ff00ff':'#aaa')}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
-            nameEl.innerText = '🌌 ' + node.name;
+            nameEl.innerText = node.name;
             
             btn.appendChild(iconWrap); btn.appendChild(nameEl);
 
@@ -328,7 +322,6 @@ export class NexusChatUI {
                 btn.appendChild(badge);
             }
 
-            // ★ スマホ時はタップしたらメニューを閉じる
             btn.onclick = () => {
                 this.openChat(node);
                 this.toggleContactList(false);
@@ -339,7 +332,7 @@ export class NexusChatUI {
         if (!this.activeNode || !nexusNodes.includes(this.activeNode)) this.openChat(nexusNodes[0]);
     }
 
-async openChat(node) {
+    async openChat(node) {
         if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
         if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
 
@@ -390,26 +383,34 @@ async openChat(node) {
             }
         };
 
-        // ★ 全消去（Wipe）プロトコルの実行処理
+        // ★ 物理的完全消去（True Wipe）プロトコル
         const wipeBtn = document.getElementById('nx-header-wipe');
         wipeBtn.onmouseover = () => { wipeBtn.style.background = 'rgba(255,68,68,0.2)'; wipeBtn.style.boxShadow = '0 0 10px rgba(255,68,68,0.5)'; };
         wipeBtn.onmouseout = () => { wipeBtn.style.background = 'transparent'; wipeBtn.style.boxShadow = 'none'; };
         wipeBtn.onclick = async () => {
-            if(confirm('【警告】このチャンネルの全通信記録を完全に焼却(Wipe)しますか？\n※自分と相手の画面からすべてのデータが消滅します。')) {
+            if(confirm('【警告】表示されている通信記録を完全に焼却(Wipe)しますか？\n※自分と相手の画面から物理的にデータが消滅します。')) {
                 if(!this.activeNode || !this.activeNode.messages) return;
                 const msgs = [...this.activeNode.messages];
                 let count = 0;
                 wipeBtn.innerText = '処理中...';
+                
+                // サーバー上のドキュメントを「削除フラグ」ではなく「物理削除(deleteDoc)」する
                 for(let msg of msgs) {
-                    if(msg.id && !msg.isDeleted) {
+                    if(msg.id) {
                         try {
-                            await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id), { isDeleted: true, cipher: "", iv: "" });
+                            await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
                             count++;
                         } catch(e) {}
                     }
                 }
+                
+                // バグで残っていたローカルの幽霊メッセージも配列から強制消去
+                this.activeNode.messages = [];
+                this.msgContainer.innerHTML = '';
+                this.app.autoSave();
+                
                 wipeBtn.innerText = '🔥 焼却';
-                if(count > 0) alert(`${count}件の通信記録を灰にしました。`);
+                if(count > 0 || msgs.length > 0) alert(`通信記録を跡形もなく灰にしました。`);
             }
         };
         
@@ -501,6 +502,15 @@ async openChat(node) {
                                 if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
                             }
                         }
+                    } else if (change.type === "removed") {
+                        // ★ 完全消去の検知とDOMからの物理的抹消
+                        const targetIndex = node.messages.findIndex(m => m.id === docId);
+                        if (targetIndex !== -1) {
+                            node.messages.splice(targetIndex, 1);
+                            const domEl = document.getElementById(`msg-${docId}`);
+                            if (domEl) domEl.remove();
+                            this.app.autoSave();
+                        }
                     }
                 });
 
@@ -565,9 +575,16 @@ async openChat(node) {
             delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
             delBtn.onclick = async () => {
                 if(confirm('空間からこの通信記録を完全に消去しますか？')) {
-                    if(!msg.id) return alert("同期中です。数秒後にやり直してください。");
+                    // ★ 物理削除(deleteDoc)にアップグレードし、幽霊メッセージの削除にも対応
+                    if(!msg.id) {
+                        const targetIndex = this.activeNode.messages.findIndex(m => m === msg);
+                        if (targetIndex !== -1) this.activeNode.messages.splice(targetIndex, 1);
+                        this.app.autoSave();
+                        wrapper.remove(); 
+                        return;
+                    }
                     try {
-                        await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id), { isDeleted: true, cipher: "", iv: "" });
+                        await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
                     } catch(e) {}
                 }
             };
