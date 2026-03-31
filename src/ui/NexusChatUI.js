@@ -339,7 +339,7 @@ export class NexusChatUI {
         if (!this.activeNode || !nexusNodes.includes(this.activeNode)) this.openChat(nexusNodes[0]);
     }
 
-    async openChat(node) {
+async openChat(node) {
         if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
         if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
 
@@ -392,6 +392,13 @@ export class NexusChatUI {
         
         this.msgContainer.innerHTML = '';
         if (!node.messages) node.messages = [];
+        
+        // ★ここから追加（過去の履歴を画面に描画して一番下までスクロール）
+        for (let msg of node.messages) {
+            await this.renderMessageObj(msg);
+        }
+        this.scrollToBottom();
+        // ★ここまで追加
         
         if (node.peerPublicKey && myId && db) await this.listenToNetwork(node, myId);
     }
