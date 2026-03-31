@@ -17,9 +17,9 @@ export class NexusChatUI {
         this.audioChunks = [];
         this.unreadChannels = new Set(); 
 
-        // ★ Phase 2: 編集・返信用のステータス管理
         this.editingMsgId = null;
         this.replyToMsg = null;
+        this.isPhantomMode = false; // ★ 追加：ファントムモード状態
 
         this.createUI();
         
@@ -121,6 +121,9 @@ export class NexusChatUI {
                 .nexus-contact-panel { width: 160px; border-right: 1px solid rgba(255,0,255,0.2); transition: 0.3s; z-index: 10; }
                 .nexus-menu-btn { display: none; background: transparent; border: none; color: #ff00ff; font-size: 24px; cursor: pointer; margin-right: 10px; padding: 0 5px; }
                 
+                /* ★ ファントムモード時の紫色の脈動アニメーション */
+                @keyframes phantom-pulse { 0% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } 50% { box-shadow: 0 0 18px #ff00ff; } 100% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } }
+
                 @media (max-width: 600px) {
                     .nexus-contact-panel { position: absolute; left: -200px; height: 100%; background: rgba(10,15,20,0.98) !important; box-shadow: 5px 0 20px rgba(0,0,0,0.8); }
                     .nexus-contact-panel.open { left: 0; }
@@ -205,7 +208,26 @@ export class NexusChatUI {
         this.micBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
-        // ★ Phase 2: 編集・返信のキャンセルボタン
+        // ★ Phase 2: ファントムモード・トグルボタン
+        this.phantomBtn = document.createElement('button');
+        this.phantomBtn.innerText = '👻';
+        this.phantomBtn.title = '自己消滅モード (Phantom Protocol)';
+        this.phantomBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#888; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none; filter:grayscale(1);';
+        this.phantomBtn.onclick = () => {
+            this.isPhantomMode = !this.isPhantomMode;
+            if (this.isPhantomMode) {
+                this.phantomBtn.style.color = '#ff00ff';
+                this.phantomBtn.style.filter = 'drop-shadow(0 0 5px #ff00ff)';
+                this.inputField.placeholder = '👻 Phantom Message (10秒で消滅)...';
+                inputWrapper.style.borderColor = '#ff00ff';
+            } else {
+                this.phantomBtn.style.color = '#888';
+                this.phantomBtn.style.filter = 'grayscale(1)';
+                this.inputField.placeholder = 'Secure Message...';
+                inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
+            }
+        };
+
         this.actionCancelBtn = document.createElement('button');
         this.actionCancelBtn.innerHTML = '✖';
         this.actionCancelBtn.title = 'キャンセル';
@@ -236,8 +258,8 @@ export class NexusChatUI {
             if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
         };
         
-        this.inputField.onfocus = () => inputWrapper.style.borderColor = '#00ffcc';
-        this.inputField.onblur = () => inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
+        this.inputField.onfocus = () => { if(!this.isPhantomMode) inputWrapper.style.borderColor = '#00ffcc'; };
+        this.inputField.onblur = () => { if(!this.isPhantomMode) inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)'; };
         
         const sendBtn = document.createElement('button');
         sendBtn.innerHTML = '➤';
@@ -249,7 +271,8 @@ export class NexusChatUI {
         inputContainer.appendChild(fileInput);
         inputWrapper.appendChild(attachBtn);
         inputWrapper.appendChild(this.micBtn);
-        inputWrapper.appendChild(this.actionCancelBtn); // ★追加
+        inputWrapper.appendChild(this.phantomBtn); // ★追加
+        inputWrapper.appendChild(this.actionCancelBtn); 
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
@@ -347,7 +370,7 @@ export class NexusChatUI {
         if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
         if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
 
-        this.cancelAction(); // ★ 初期化
+        this.cancelAction();
 
         const myId = this.getMyIdentity();
         if (!node.sharedKey && node.peerPublicKey && myId) {
@@ -440,11 +463,28 @@ export class NexusChatUI {
             if (msg.sender === 'me' && !msg.isDeleted && msg.timestamp <= peerLastRead) {
                 const readEl = document.getElementById(`read-${msg.id}`);
                 if (readEl) readEl.style.opacity = '1';
+
+                // ★ 送信者側のファントム溶解カウントダウン
+                if (msg.phantom && !msg.phantomTimerStarted) {
+                    msg.phantomTimerStarted = true;
+                    const timerEl = document.getElementById(`phantom-timer-${msg.id}`);
+                    if (timerEl) {
+                        let timeLeft = 10;
+                        const countdown = setInterval(async () => {
+                            timeLeft--;
+                            if (timeLeft > 0) timerEl.innerText = `👻 溶解まで: ${timeLeft}秒`;
+                            else {
+                                clearInterval(countdown);
+                                timerEl.innerText = '💥 消滅済';
+                                try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+                            }
+                        }, 1000);
+                    }
+                }
             }
         });
     }
 
-    // ★ Phase 2: 返信・編集の発動処理
     startReply(msgId, textStr) {
         if (!textStr) textStr = "Media";
         this.replyToMsg = { id: msgId, text: textStr };
@@ -469,8 +509,53 @@ export class NexusChatUI {
         if(this.actionCancelBtn) this.actionCancelBtn.style.display = 'none';
         if(this.inputField) {
             this.inputField.value = '';
-            this.inputField.placeholder = 'Secure Message...';
+            this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...';
         }
+    }
+
+    // ★ リアクションの表示メニュー
+    showReactionMenu(msgId, x, y) {
+        const existing = document.getElementById('nx-react-menu');
+        if(existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'nx-react-menu';
+        menu.style.cssText = `position:fixed; left:${Math.min(x, window.innerWidth-180)}px; top:${Math.max(0, y-50)}px; background:rgba(10,15,20,0.95); border:1px solid #00ffcc; border-radius:20px; padding:8px 12px; display:flex; gap:10px; z-index:10000; box-shadow:0 5px 15px rgba(0,0,0,0.5); backdrop-filter:blur(10px);`;
+
+        const emojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+        emojis.forEach(em => {
+            const b = document.createElement('div');
+            b.innerText = em;
+            b.style.cssText = 'font-size:20px; cursor:pointer; transition:0.2s;';
+            b.onmouseover = () => b.style.transform = 'scale(1.3)';
+            b.onmouseout = () => b.style.transform = 'scale(1)';
+            b.onclick = () => { this.toggleReaction(msgId, em); document.getElementById('nx-react-overlay')?.remove(); menu.remove(); };
+            menu.appendChild(b);
+        });
+
+        const overlay = document.createElement('div');
+        overlay.id = 'nx-react-overlay';
+        overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999;';
+        overlay.onclick = () => { menu.remove(); overlay.remove(); };
+        document.body.appendChild(overlay);
+        document.body.appendChild(menu);
+    }
+
+    // ★ リアクションの書き込み（トグル）
+    async toggleReaction(msgId, emoji) {
+        if (!this.activeNode || !this.activeNode.channelId) return;
+        const myShortId = this.getShortId(this.getMyIdentity().publicKey);
+        const localMsg = this.activeNode.messages.find(m => m.id === msgId);
+        if(!localMsg) return;
+        
+        const currentReaction = localMsg.reactions ? localMsg.reactions[myShortId] : null;
+        let newReaction = (currentReaction === emoji) ? null : emoji;
+        
+        try {
+            await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msgId), {
+                [`reactions.${myShortId}`]: newReaction
+            });
+        } catch(e) {}
     }
 
     async listenToNetwork(node, myId) {
@@ -521,7 +606,9 @@ export class NexusChatUI {
                                 id: docId, sender: senderType, cipher: data.cipher, iv: data.iv, 
                                 timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), 
                                 isDeleted: data.isDeleted || false,
-                                isEdited: data.isEdited || false // ★ 編集フラグの読み取り
+                                isEdited: data.isEdited || false,
+                                phantom: data.phantom || false, // ★ ファントムフラグ読込
+                                reactions: data.reactions || {} // ★ リアクション読込
                             };
                             
                             node.messages.push(msgObj);
@@ -540,11 +627,12 @@ export class NexusChatUI {
                                 targetMsg.isDeleted = true; targetMsg.cipher = "";
                                 const domEl = document.getElementById(`msg-${docId}`);
                                 if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
-                            } else if (!data.isDeleted && data.isEdited) {
-                                // ★ 事後編集の検知（上書き再描画）
+                            } else {
+                                // 編集またはリアクションの更新
                                 targetMsg.cipher = data.cipher;
                                 targetMsg.iv = data.iv;
-                                targetMsg.isEdited = true;
+                                targetMsg.isEdited = data.isEdited || targetMsg.isEdited;
+                                targetMsg.reactions = data.reactions || {};
                                 await this.renderMessageObj(targetMsg, peerLastRead);
                             }
                         }
@@ -584,7 +672,10 @@ export class NexusChatUI {
         
         if (msg.isDeleted) {
             wrapper.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
-            this.msgContainer.appendChild(wrapper);
+            
+            const existingEl = document.getElementById(`msg-${msg.id}`);
+            if (existingEl && existingEl.parentNode === this.msgContainer) this.msgContainer.replaceChild(wrapper, existingEl);
+            else this.msgContainer.appendChild(wrapper);
             return;
         }
 
@@ -605,8 +696,11 @@ export class NexusChatUI {
         timeEl.innerText = timeStr;
         timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:sans-serif; margin-left:2px;`;
 
+        const bubbleWrapper = document.createElement('div');
+        bubbleWrapper.style.cssText = `max-width:70%; display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};`;
+
         const bubble = document.createElement('div');
-        bubble.style.cssText = `max-width:70%; padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
+        bubble.style.cssText = `padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
         
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
@@ -616,14 +710,44 @@ export class NexusChatUI {
             bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '16px 16px 16px 4px';
         }
 
+        // ★ ファントムモードのUI
+        if (msg.phantom) {
+            bubble.style.animation = 'phantom-pulse 1.5s infinite';
+            const phantomTimer = document.createElement('div');
+            phantomTimer.id = `phantom-timer-${msg.id}`;
+            phantomTimer.style.cssText = `font-size:10px; color:#ff00ff; font-weight:bold; margin-top:5px; text-align:${isMe ? 'right' : 'left'};`;
+            phantomTimer.innerText = isMe ? '👻 Phantom (未読)' : '👻 溶解まで: 10秒';
+            
+            // 受信者側のカウントダウン
+            if (!isMe && !msg.phantomTimerStarted) {
+                msg.phantomTimerStarted = true;
+                let timeLeft = 10;
+                const countdown = setInterval(async () => {
+                    timeLeft--;
+                    const tEl = document.getElementById(`phantom-timer-${msg.id}`);
+                    if (tEl) {
+                        if (timeLeft > 0) tEl.innerText = `👻 溶解まで: ${timeLeft}秒`;
+                        else {
+                            clearInterval(countdown);
+                            tEl.innerText = '💥 溶解...';
+                            try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+                        }
+                    } else if (timeLeft <= 0) {
+                        clearInterval(countdown);
+                        try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+                    }
+                }, 1000);
+            }
+            bubble.appendChild(phantomTimer);
+        }
+
         let text = ""; let isImage = false; let isVoice = false;
-        let replyHtml = ""; // ★ 引用返信のプレビュー格納用
+        let replyHtml = ""; 
         
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
             try {
                 const parsed = JSON.parse(decrypted);
-                // ★ 引用返信データがあれば展開する
                 if (parsed.replyTo) {
                     replyHtml = `<div style="background:rgba(0,0,0,0.3); border-left:3px solid ${isMe?'#00ffcc':'#ff00ff'}; padding:6px 10px; margin-bottom:8px; font-size:11px; color:#aaa; border-radius:0 6px 6px 0; cursor:pointer;" onclick="document.getElementById('msg-${parsed.replyTo.id}')?.scrollIntoView({behavior:'smooth'})">↪ ${parsed.replyTo.text.substring(0,30)}${parsed.replyTo.text.length>30?'...':''}</div>`;
                 }
@@ -633,16 +757,45 @@ export class NexusChatUI {
             } catch(e) { text = decrypted; }
         } catch(e) { text = "[ 復号エラー ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
         
+        const contentDiv = document.createElement('div');
         if (isImage) {
-            bubble.innerHTML = replyHtml + `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
+            contentDiv.innerHTML = replyHtml + `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
             bubble.style.padding = '6px';
         } else if (isVoice) {
-            bubble.innerHTML = replyHtml + `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
+            contentDiv.innerHTML = replyHtml + `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
         } else {
-            bubble.innerHTML = replyHtml + text.replace(/\n/g, '<br>');
+            contentDiv.innerHTML = replyHtml + text.replace(/\n/g, '<br>');
+        }
+        bubble.prepend(contentDiv);
+        bubbleWrapper.appendChild(bubble);
+
+        // ★ リアクションの表示トレイ
+        if (msg.reactions && Object.keys(msg.reactions).length > 0) {
+            const reactTray = document.createElement('div');
+            reactTray.style.cssText = `display:flex; gap:3px; margin-top:2px; flex-wrap:wrap; justify-content:${isMe ? 'flex-end' : 'flex-start'};`;
+            
+            const counts = {};
+            Object.values(msg.reactions).forEach(r => counts[r] = (counts[r]||0)+1);
+            
+            for (let [emoji, count] of Object.entries(counts)) {
+                const rBadge = document.createElement('div');
+                rBadge.style.cssText = 'background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:10px; padding:2px 6px; font-size:11px; display:flex; align-items:center; gap:3px; cursor:pointer;';
+                rBadge.innerText = `${emoji} ${count > 1 ? count : ''}`;
+                rBadge.onclick = () => this.toggleReaction(msg.id, emoji);
+                reactTray.appendChild(rBadge);
+            }
+            bubbleWrapper.appendChild(reactTray);
         }
 
-        // ★ 各種アクションボタン（返信、編集、削除）
+        // ★ リアクション追加ボタン
+        const reactBtn = document.createElement('div');
+        reactBtn.innerHTML = '😀';
+        reactBtn.title = 'リアクション';
+        reactBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+        reactBtn.onmouseover = () => reactBtn.style.opacity = '1';
+        reactBtn.onmouseout = () => reactBtn.style.opacity = '0.7';
+        reactBtn.onclick = (e) => this.showReactionMenu(msg.id, e.clientX, e.clientY);
+
         const replyBtn = document.createElement('div');
         replyBtn.innerHTML = '↩️';
         replyBtn.title = '引用返信';
@@ -664,7 +817,8 @@ export class NexusChatUI {
             readMark.style.cssText = `font-size:9px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
             metaContainer.appendChild(readMark);
 
-            metaContainer.appendChild(replyBtn); // 返信ボタン
+            metaContainer.appendChild(reactBtn);
+            metaContainer.appendChild(replyBtn);
 
             if (!isImage && !isVoice && msg.id) {
                 const editBtn = document.createElement('div');
@@ -674,7 +828,7 @@ export class NexusChatUI {
                 editBtn.onmouseover = () => editBtn.style.opacity = '1';
                 editBtn.onmouseout = () => editBtn.style.opacity = '0.7';
                 editBtn.onclick = () => this.startEdit(msg.id, text);
-                metaContainer.appendChild(editBtn); // 編集ボタン
+                metaContainer.appendChild(editBtn);
             }
 
             const delBtn = document.createElement('div');
@@ -695,17 +849,17 @@ export class NexusChatUI {
                     try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e) {}
                 }
             };
-            metaContainer.appendChild(delBtn); // 削除ボタン
+            metaContainer.appendChild(delBtn);
         } else {
+            metaContainer.appendChild(reactBtn);
             metaContainer.appendChild(replyBtn);
         }
         
-        metaContainer.appendChild(timeEl); // 最後に時間
+        metaContainer.appendChild(timeEl);
         
-        if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubble); }
-        else { wrapper.appendChild(bubble); wrapper.appendChild(metaContainer); }
+        if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubbleWrapper); }
+        else { wrapper.appendChild(bubbleWrapper); wrapper.appendChild(metaContainer); }
         
-        // ★ DOMの上書きロジック（編集の即時反映用）
         const existingEl = document.getElementById(`msg-${msg.id}`);
         if (existingEl && existingEl.parentNode === this.msgContainer) {
             this.msgContainer.replaceChild(wrapper, existingEl);
@@ -722,12 +876,11 @@ export class NexusChatUI {
         this.inputField.style.height = 'auto'; 
         
         const payloadObj = { type: 'text', text: text };
-        if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg; // ★ 引用データ付与
+        if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
 
         const payload = JSON.stringify(payloadObj);
         const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
         
-        // ★ 編集か、新規送信かの分岐
         if (this.editingMsgId) {
             const msgId = this.editingMsgId;
             this.cancelAction();
@@ -752,7 +905,7 @@ export class NexusChatUI {
             this.micBtn.innerText = '🎙️';
             this.micBtn.style.color = '#00ffcc';
             this.micBtn.style.textShadow = 'none';
-            this.inputField.placeholder = 'Secure Message...';
+            this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...';
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -773,7 +926,7 @@ export class NexusChatUI {
                             this.cancelAction();
                             await this.dispatchToNetwork(encrypted);
                         } catch(e) { alert("音声の暗号化に失敗"); }
-                        finally { this.inputField.placeholder = 'Secure Message...'; }
+                        finally { this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...'; }
                     };
                     reader.readAsDataURL(audioBlob);
                     stream.getTracks().forEach(t => t.stop()); 
@@ -818,7 +971,7 @@ export class NexusChatUI {
             this.cancelAction();
             await this.dispatchToNetwork(encrypted);
         } catch(e) { alert("画像の暗号化に失敗しました。"); } 
-        finally { this.inputField.placeholder = 'Secure Message...'; }
+        finally { this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...'; }
     }
 
     async dispatchToNetwork(encrypted) {
@@ -826,8 +979,18 @@ export class NexusChatUI {
         const myPubStr = JSON.stringify(myId.publicKey);
         const myShortId = this.getShortId(myId.publicKey); 
         
+        // ★ Phantom状態を一旦保存して、リセットする
+        const isPhantom = this.isPhantomMode;
+        if (this.isPhantomMode) {
+            this.isPhantomMode = false;
+            this.phantomBtn.style.color = '#888';
+            this.phantomBtn.style.filter = 'grayscale(1)';
+            this.inputField.placeholder = 'Secure Message...';
+            this.inputField.parentElement.style.borderColor = 'rgba(0,255,204,0.3)';
+        }
+
         if (!this.activeNode.channelId || !db) {
-            const msgObj = { id: "", sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now() };
+            const msgObj = { id: "", sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now(), phantom: isPhantom };
             if (!this.activeNode.messages) this.activeNode.messages = [];
             this.activeNode.messages.push(msgObj); this.app.autoSave();
             await this.renderMessageObj(msgObj); this.scrollToBottom(); return;
@@ -837,7 +1000,10 @@ export class NexusChatUI {
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
             await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp(), [`lastRead.${myShortId}`]: Date.now() }, { merge: true });
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
-            await addDoc(messagesRef, { cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), isDeleted: false });
+            await addDoc(messagesRef, { 
+                cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), 
+                isDeleted: false, phantom: isPhantom, reactions: {} 
+            });
         } catch (e) {}
     }
 
