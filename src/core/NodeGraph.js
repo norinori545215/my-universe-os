@@ -99,16 +99,26 @@ export const DataManager = {
             links: u.links.map(l => ({ source: l.source.id, target: l.target.id }))
         });
 
-        const data = {
+        const dataObj = {
             root: serializeUniverse(rootUniverse),
             wormholes: wormholes.map(w => ({ source: w.source.id, target: w.target.id })),
             blackHole: blackHole.map(serializeNode)
         };
 
+        // ★ ここから変更：ローカル保存に加えて、クラウドへ暗号化して保存する処理を追加
         try {
-            sessionStorage.setItem('my_universe_save_data', JSON.stringify(data));
+            // ローカル（一時）保存
+            const jsonString = JSON.stringify(dataObj);
+            sessionStorage.setItem('my_universe_save_data', jsonString);
+
+            // クラウド（Firebase）へ暗号化して同期
+            // ※ CloudSync.js が正しく実装されていれば、これで中身は見えなくなります！
+            const { saveEncryptedUniverse } = await import('../db/CloudSync.js');
+            await saveEncryptedUniverse(dataObj); 
+            // console.log("☁️ データを暗号化してクラウドに同期しました");
+
         } catch (e) {
-            console.warn("ローカルストレージの上限に達しました。");
+            console.warn("セーブ中にエラーが発生しました:", e);
         }
     },
 

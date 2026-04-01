@@ -607,17 +607,26 @@ export class CanvasBuilder {
 
             this.ctx.globalAlpha = globalAlpha;
 
+            // ★ 未読の星を強調するエフェクト（パルス）を追加
+            let unreadPulse = 0;
+            if (!node.isObserved) {
+                unreadPulse = Math.sin(this.time * 5) * 5; // 未読の星は激しく明滅
+            }
+
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
-            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; drawSize += pulse * 2.0; 
+            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; 
+            drawSize += pulse * 2.0 + unreadPulse; // 未読ならパルスを追加
             
-            // ★ 既読（観測済み）の星は、モヤ（shadowBlur）を少し落ち着かせて「すでに見た」感を出す
+            // ★ 既読（観測済み）の星はモヤを落ち着かせ、未読の星は白く強く光らせる
             if (node.isObserved) {
                 this.ctx.shadowBlur = isGrabbed ? 15 : 5 + (pulse * 5); 
+                this.ctx.shadowColor = node.color; // 既読は本来の色
             } else {
-                this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); 
+                this.ctx.shadowBlur = isGrabbed ? 40 : 25 + (pulse * 20); 
+                this.ctx.shadowColor = '#ffffff'; // 未読は白く輝くオーラを纏わせる
             }
-            this.ctx.shadowColor = node.color;
+            
 
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
