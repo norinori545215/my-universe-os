@@ -183,6 +183,8 @@ export class CanvasBuilder {
                 animateToPast(node, pastNode.x, pastNode.y);
                 node.size = pastNode.size;
                 node.color = pastNode.color;
+                // ★ 時間旅行時にも既読ステータスを復元する場合はここに追加できます
+                node.isObserved = pastNode.isObserved; 
             }
         });
         
@@ -303,7 +305,6 @@ export class CanvasBuilder {
     }
 
     getNodeAt(x, y) {
-        // ★ 追加：カメラの現在位置（画面の中央）
         const screenCenterX = -this.camera.x;
         const screenCenterY = -this.camera.y;
 
@@ -311,11 +312,10 @@ export class CanvasBuilder {
         for(let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i];
 
-            // ★ 追加：幽霊星の場合、カメラが十分に近づいていなければタップ判定から除外する
             if (node.isGhost) {
                 const distToCenter = Math.hypot(node.x - screenCenterX, node.y - screenCenterY);
                 if (distToCenter > (300 / this.camera.scale)) {
-                    continue; // 遠い場合は見えないのでタップ不可
+                    continue; 
                 }
             }
 
@@ -372,6 +372,10 @@ export class CanvasBuilder {
                         if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
                         this.spawnRipple(target.x, target.y, '#ff00ff', true); 
 
+                        // ★ ダブルクリックでも「既読（観測済み）」にする
+                        target.isObserved = true;
+                        this.autoSave();
+
                         if (worldX < target.x) this.executeDiveToNode(target);
                         else this.moveToNextNode(target);
 
@@ -391,6 +395,10 @@ export class CanvasBuilder {
                         const executeSingleClickAction = () => {
                             this.spawnRipple(target.x, target.y, target.color); 
                             
+                            // ★ シングルクリック（詳細を開く・リンクへ飛ぶ等）で「既読（観測済み）」にする
+                            target.isObserved = true;
+                            this.autoSave();
+
                             if (target.url) {
                                 const a = document.createElement('a');
                                 a.href = target.url;
@@ -472,7 +480,6 @@ export class CanvasBuilder {
             this.ctx.fill();
         });
 
-        // ★ 追加：現在のカメラの座標を取得（幽霊星の可視判定用）
         const screenCenterX = -this.camera.x;
         const screenCenterY = -this.camera.y;
 
@@ -552,7 +559,6 @@ export class CanvasBuilder {
             const realSource = findRealNode(link.source);
             const realTarget = findRealNode(link.target);
             if (realSource && realTarget) {
-                // ★ 追加：親か子が幽霊星で、かつカメラから遠い場合はリンクの線も描画しない
                 if (realSource.isGhost) {
                     if (Math.hypot(realSource.x - screenCenterX, realSource.y - screenCenterY) > (300 / this.camera.scale)) return;
                 }
@@ -565,6 +571,7 @@ export class CanvasBuilder {
                 let radius = Math.hypot(dx, dy);
                 if (radius < 20) radius = 80;
                 
+                // ★ 既読の星をつなぐリンクは少し色を変えるなどの演出も可能です（今回はそのまま）
                 this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
                 this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.arc(realSource.x, realSource.y, radius, 0, Math.PI * 2); this.ctx.stroke();
                 this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
@@ -590,16 +597,11 @@ export class CanvasBuilder {
         }
 
         this.currentUniverse.nodes.forEach(node => {
-            // ★ 追加：幽霊星の処理。カメラとの距離に応じて描画をスキップするか、透明度を変えて描画する
             let globalAlpha = 1.0;
             if (node.isGhost) {
                 const distToCenter = Math.hypot(node.x - screenCenterX, node.y - screenCenterY);
                 const visibleRadius = 300 / this.camera.scale;
-                
-                // カメラから遠ければ一切描画しない（完全ステルス）
                 if (distToCenter > visibleRadius) return;
-                
-                // 近づくにつれてフワッと浮かび上がる演出（透明度の計算）
                 globalAlpha = 1.0 - (distToCenter / visibleRadius);
             }
 
@@ -608,7 +610,14 @@ export class CanvasBuilder {
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
             drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; drawSize += pulse * 2.0; 
-            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); this.ctx.shadowColor = node.color;
+            
+            // ★ 既読（観測済み）の星は、モヤ（shadowBlur）を少し落ち着かせて「すでに見た」感を出す
+            if (node.isObserved) {
+                this.ctx.shadowBlur = isGrabbed ? 15 : 5 + (pulse * 5); 
+            } else {
+                this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); 
+            }
+            this.ctx.shadowColor = node.color;
 
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
@@ -628,10 +637,17 @@ export class CanvasBuilder {
                 this.ctx.textAlign = "center"; 
                 this.ctx.fillText(node.isTempUnlocked ? "🔓" : "🔒", node.x, node.y - drawSize - 10); 
             }
-            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
-            const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
             
-            // 描画後は透明度を元に戻す
+            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
+            let displayName = node.url ? `🔗 ${node.name}` : node.name;
+            
+            // ★ 既読（観測済み）の星の名前の前に「✨」マークを追加する
+            if (node.isObserved) {
+                displayName = `✨ ${displayName}`;
+            }
+            
+            this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
+            
             this.ctx.globalAlpha = 1.0;
         });
 
