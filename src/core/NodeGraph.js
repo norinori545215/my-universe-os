@@ -21,6 +21,9 @@ export class EntityNode {
         this.channelId = "";
         this.messages = []; // ★ 履歴を格納する器を最初から用意
 
+        // ★ 新規追加：「既読（観測済み）」かどうかを判定するフラグ
+        this.isObserved = false; 
+
         this.parentUniverse = null;
 
         const theme = (category === 'life' || category === 'microbe') ? 'cell' : 'space';
@@ -85,7 +88,8 @@ export const DataManager = {
             vault: n.vault || [], 
             peerPublicKey: n.peerPublicKey || "", 
             channelId: n.channelId || "",         
-            messages: n.messages || [], // ★ 忘れていたチャット履歴のセーブ対象追加！
+            messages: n.messages || [], 
+            isObserved: n.isObserved || false, // ★ 既読状態を保存！
             isLocked: n.isLocked, password: n.password, ownerId: n.ownerId,
             baseX: n.baseX, baseY: n.baseY, innerUniverse: serializeUniverse(n.innerUniverse)
         });
@@ -132,7 +136,8 @@ export const DataManager = {
                 node.vault = nData.vault || [];
                 node.peerPublicKey = nData.peerPublicKey || "";
                 node.channelId = nData.channelId || "";
-                node.messages = nData.messages || []; // ★ 読み込み時に履歴を復元！
+                node.messages = nData.messages || []; 
+                node.isObserved = nData.isObserved || false; // ★ 既読状態を読み込み（復元）！
                 
                 node.isLocked = nData.isLocked || false;
                 node.password = nData.password || "";
@@ -172,6 +177,7 @@ export const DataManager = {
             node.peerPublicKey = nData.peerPublicKey || "";
             node.channelId = nData.channelId || "";
             node.messages = nData.messages || [];
+            node.isObserved = nData.isObserved || false; // ★ ブラックホールの星も一応既読状態を復元
             node.isLocked = nData.isLocked || false; 
             node.password = nData.password || "";   
             node.innerUniverse = parseUniverse(nData.innerUniverse);
