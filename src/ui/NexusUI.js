@@ -155,18 +155,18 @@ export class NexusUI {
         document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
 
-    startScanning(node, mode = 'connect') {
+startScanning(node, mode = 'connect') {
         const modal = document.createElement('div');
         const color = mode === 'clone' ? '#ffcc00' : '#ff00ff';
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
         
-        // ★ 修正：videoタグの style にあった transform:scaleX(-1); を削除し、自然なカメラの動きに直しました
+        // ★ 修正：親divに flex と center を追加。videoの width/height 属性を削除し、style側で 100% と center 指定。さらにスマホで止まらないよう autoplay muted を追加。
         modal.innerHTML = `
             <div style="margin-bottom:20px; font-size:14px; color:${color}; font-weight:bold; letter-spacing:2px;">${mode === 'clone' ? 'SCAN BACKUP QR' : "SCAN PARTNER'S KEY"}</div>
             
-            <div style="position:relative; width:250px; height:250px; overflow:hidden; border-radius:12px; background:#111; border:2px solid rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5); box-shadow:0 0 40px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.2);">
-                <video id="nexus-video" width="250" height="250" style="object-fit:cover;" playsinline></video>
-                <div id="nexus-scan-line" style="position:absolute; top:0; left:0; width:100%; height:2px; background:${color}; box-shadow:0 0 15px 5px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5);"></div>
+            <div style="position:relative; width:250px; height:250px; overflow:hidden; border-radius:12px; background:#111; border:2px solid rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5); box-shadow:0 0 40px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.2); display:flex; justify-content:center; align-items:center;">
+                <video id="nexus-video" style="width:100%; height:100%; object-fit:cover; object-position:center; display:block;" playsinline autoplay muted></video>
+                <div id="nexus-scan-line" style="position:absolute; top:0; left:0; width:100%; height:2px; background:${color}; box-shadow:0 0 15px 5px rgba(${mode === 'clone' ? '255,204,0' : '255,0,255'},0.5); z-index:2;"></div>
             </div>
             <canvas id="nexus-scan-canvas" style="display:none;"></canvas>
 
@@ -186,18 +186,17 @@ export class NexusUI {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
                 video.srcObject = stream;
-                video.setAttribute("playsinline", true);
                 video.play();
                 requestAnimationFrame(tick);
             }).catch(err => {
                 console.warn("カメラが使用できません:", err);
+                alert("カメラの起動に失敗しました。ブラウザのカメラ権限を確認してください。");
             });
         }
 
         let linePos = 0; let lineDir = 2;
         const scanLine = document.getElementById('nexus-scan-line');
 
-        // ★ 修正：処理の最初に必ずカメラをストップさせることで、エラー時もカメラがオフになるように直しました
         const processQRData = async (dataStr) => {
             scanning = false;
             if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
