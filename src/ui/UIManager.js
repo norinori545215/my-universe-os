@@ -661,7 +661,7 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
-    showMenu(node, screenX, screenY) {
+showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
@@ -681,6 +681,19 @@ export class UIManager {
         }
 
         this.hideQuickNote();
+
+        // ★ 追加：もし星が「未読（観測前）」なら、メニューを出さずにいきなりノートを開く
+        // ※ただし、自分が作ったばかりの「新規データ」星は最初からメニューを出したいので、
+        //   「名前が『新規データ』以外」かつ「未読」の場合に発動するようにします。
+        if (!node.isObserved && node.name !== '新規データ') {
+            node.isObserved = true;
+            this.app.autoSave();
+
+            if (this.notePad) {
+                this.notePad.open(node);
+            }
+            return; // ここで処理を終了し、メニュー画面は出さない
+        }
         
         this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
         this.actionMenu.style.top = `${Math.min(screenY, Math.max(0, window.innerHeight - 480))}px`;
@@ -738,24 +751,6 @@ export class UIManager {
         };
 
         document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
-
-        if (vaultUpload) {
-            vaultUpload.onchange = async (e) => {
-                const files = e.target.files;
-                if (!files || files.length === 0) return;
-                this.hideMenu();
-                
-                let successCount = 0;
-                for (let i = 0; i < files.length; i++) {
-                    await VaultMedia.storeMedia(files[i], node);
-                    successCount++;
-                }
-                
-                this.app.autoSave(); 
-                if (window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.2);
-                alert(`${successCount}件のファイルを暗号化して地下金庫に封印しました。`);
-            };
-        }
 
         if (vaultUpload) {
             vaultUpload.onchange = async (e) => {
