@@ -74,13 +74,14 @@ export class Hyper3D {
         this.scene.add(this.starfield);
     }
 
-    initUniverse() {
+initUniverse() {
         if (!this.currentUniverse || !this.currentUniverse.nodes) return;
 
         const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
         this.currentUniverse.nodes.forEach(node => {
-            const isGhost = node.isGhost;
+            // ★ 修正：!! をつけることで、undefined を強制的に false に変換します
+            const isGhost = !!node.isGhost; 
             const colorHex = parseInt((node.color || '#00ffcc').replace('#', '0x'), 16);
 
             const material = new THREE.MeshPhysicalMaterial({
@@ -91,19 +92,15 @@ export class Hyper3D {
                 roughness: 0.1,
                 transparent: true,
                 opacity: isGhost ? 0.3 : 0.9,
-                wireframe: isGhost
+                wireframe: isGhost // これで必ず true か false になるのでエラーが消えます！
             });
 
-            const mesh = new THREE.Mesh(sphereGeo, material);
-            
-            // ★★★ 平面の打破：圧倒的な「奥行き（Z軸）」を与える ★★★
             // 一度決めたZ座標はnodeに保存し、2Dに戻っても消えないようにする
             if (node.z === undefined) {
-                node.z = (Math.random() - 0.5) * 1500; // 前後に1500の超・奥行きをランダム生成！
+                node.z = (Math.random() - 0.5) * 1500; // 前後に1500の超・奥行きをランダム生成
             }
 
             const posX = node.x || 0;
-            // 2DのY軸（下プラス）と3DのY軸（上プラス）を合わせるため反転
             const posY = -(node.y || 0); 
             const posZ = node.z;
 
