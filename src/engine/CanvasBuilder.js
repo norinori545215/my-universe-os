@@ -183,7 +183,6 @@ export class CanvasBuilder {
                 animateToPast(node, pastNode.x, pastNode.y);
                 node.size = pastNode.size;
                 node.color = pastNode.color;
-                node.isObserved = pastNode.isObserved; 
             }
         });
         
@@ -356,11 +355,6 @@ export class CanvasBuilder {
                 let posX = clientX + 15; let posY = clientY + 15;
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
-                
-                // ★ 編集/スマホモードでも既読をつける
-                target.isObserved = true;
-                this.autoSave();
-                
                 this.ui.showMenu(target, posX, posY);
                 this.spawnRipple(target.x, target.y, '#ffcc00'); 
                 return;
@@ -375,10 +369,6 @@ export class CanvasBuilder {
                         if (this.singleClickTimeout) clearTimeout(this.singleClickTimeout);
                         if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
                         this.spawnRipple(target.x, target.y, '#ff00ff', true); 
-
-                        // ★ ダブルクリックで既読にする
-                        target.isObserved = true;
-                        this.autoSave();
 
                         if (worldX < target.x) this.executeDiveToNode(target);
                         else this.moveToNextNode(target);
@@ -399,10 +389,6 @@ export class CanvasBuilder {
                         const executeSingleClickAction = () => {
                             this.spawnRipple(target.x, target.y, target.color); 
                             
-                            // ★ シングルクリックで既読にする
-                            target.isObserved = true;
-                            this.autoSave();
-
                             if (target.url) {
                                 const a = document.createElement('a');
                                 a.href = target.url;
@@ -612,13 +598,9 @@ export class CanvasBuilder {
 
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
-            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; 
-            drawSize += pulse * 2.0; 
-            
-            // ★ 元の自然な光り方に完全に戻しました
-            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); 
-            this.ctx.shadowColor = node.color; 
-            
+            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; drawSize += pulse * 2.0; 
+            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); this.ctx.shadowColor = node.color;
+
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
                 const img = this.imageCache[node.iconUrl];
@@ -637,21 +619,10 @@ export class CanvasBuilder {
                 this.ctx.textAlign = "center"; 
                 this.ctx.fillText(node.isTempUnlocked ? "🔓" : "🔒", node.x, node.y - drawSize - 10); 
             }
+            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
+            const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
             
-            // ★ 名前の変更も完全撤回し、代わりに小さく「✓ 既読」と出すだけにしました
-            this.ctx.fillStyle = '#ffffff'; 
-            this.ctx.font = '12px sans-serif'; 
-            this.ctx.textAlign = 'center';
-            const displayName = node.url ? `🔗 ${node.name}` : node.name;
-            this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
-            
-            // 【控えめな既読表示】
-            if (node.isObserved) {
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; // 少し暗めの色で控えめに
-                this.ctx.font = '10px sans-serif';
-                this.ctx.fillText("✓ 既読", node.x, node.y + drawSize + 35);
-            }
-            
+            // 描画後は透明度を元に戻す
             this.ctx.globalAlpha = 1.0;
         });
 
