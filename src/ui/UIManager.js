@@ -10,7 +10,7 @@ import { ChaosGen } from '../ai/ChaosGen.js';
 import { Pathways } from '../core/Pathways.js'; 
 import { LockUI } from './LockUI.js';
 import { StardustCapsule } from '../security/StardustCapsule.js';
-import { VaultMedia } from '../db/VaultMedia.js'; // ★ 追加：特異点メディア金庫
+import { VaultMedia } from '../db/VaultMedia.js'; 
 import { MediaViewUI } from './MediaViewUI.js';
 import { NexusUI } from './NexusUI.js';
 import { NexusChatUI } from './NexusChatUI.js';
@@ -19,7 +19,6 @@ export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
-        // ★ 修正：LockUIに自爆プログラム（triggerPanic）を渡す
         this.lockUI = new LockUI(app, () => this.triggerPanic());
         this.mediaView = new MediaViewUI(app);
         this.nexusUI = new NexusUI(app);
@@ -39,10 +38,12 @@ export class UIManager {
         this.app.isMobileMode = this.state.isMobileMode;
         
         window.universeAudio = new AudioCore();
-        this.createUI();
+        
+        // ★ 追加: 3Dエンジン管理用の変数
+        this.is3DMode = false;
+        this.hyper3DInstance = null;
 
-        // ★ 新規追加: 3D切り替えトグルの初期化
-        this.createDimensionToggle();
+        this.createUI();
         
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
@@ -52,63 +53,49 @@ export class UIManager {
         }, 500);
     }
 
-    // ★ 新規追加: 3Dモードへの切り替えボタンとロジックをここにカプセル化
-    createDimensionToggle() {
-        this.is3DMode = false;
-        this.hyper3DInstance = null;
+    // ★ 新規追加: 3Dエンジンの起動・破棄を行う関数
+    async toggle3DMode() {
+        if (!this.is3DMode) {
+            // 2D -> 3D にシフト
+            this.is3DMode = true;
+            
+            // 2Dキャンバスをフェードアウト
+            this.app.canvas.style.transition = 'opacity 0.3s';
+            this.app.canvas.style.opacity = '0'; 
+            setTimeout(() => this.app.canvas.style.display = 'none', 300);
 
-        const dimBtn = document.createElement('button');
-        dimBtn.id = 'ui-dim-toggle';
-        dimBtn.innerHTML = '🌌 3D MODE';
-        dimBtn.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:15000; padding:12px 30px; background:rgba(0,20,30,0.8); border:1px solid #00ffcc; color:#00ffcc; border-radius:30px; font-weight:bold; cursor:pointer; letter-spacing:2px; box-shadow:0 0 15px rgba(0,255,204,0.3); backdrop-filter:blur(10px); transition:all 0.3s;';
-        document.body.appendChild(dimBtn);
+            if(window.universeAudio) window.universeAudio.playWarp();
 
-        dimBtn.onclick = async () => {
-            if (!this.is3DMode) {
-                // 【2D -> 3D にシフト】
-                this.is3DMode = true;
-                dimBtn.innerHTML = '🪐 2D MODE';
-                dimBtn.style.borderColor = '#ff00ff';
-                dimBtn.style.color = '#ff00ff';
-                dimBtn.style.boxShadow = '0 0 15px rgba(255,0,255,0.3)';
-                
-                // 2Dキャンバスをフェードアウト
-                this.app.canvas.style.transition = 'opacity 0.3s';
-                this.app.canvas.style.opacity = '0'; 
-                setTimeout(() => this.app.canvas.style.display = 'none', 300);
-
-                if(window.universeAudio) window.universeAudio.playWarp();
-
-                // UIManagerから見てHyper3Dは ../engine/Hyper3D.js にある
-                try {
-                    const { Hyper3D } = await import('../engine/Hyper3D.js');
-                    // this.app (CanvasBuilder) を渡して起動
-                    this.hyper3DInstance = new Hyper3D(this.app);
-                } catch (e) {
-                    console.error("Hyper3D.jsのロードに失敗:", e);
-                    alert("3Dエンジンの起動に失敗しました。");
-                }
-            } else {
-                // 【3D -> 2D に戻る】
+            try {
+                const { Hyper3D } = await import('../engine/Hyper3D.js');
+                this.hyper3DInstance = new Hyper3D(this.app);
+            } catch (e) {
+                console.error("Hyper3D.jsのロードに失敗:", e);
+                alert("3Dエンジンの起動に失敗しました。");
                 this.is3DMode = false;
-                dimBtn.innerHTML = '🌌 3D MODE';
-                dimBtn.style.borderColor = '#00ffcc';
-                dimBtn.style.color = '#00ffcc';
-                dimBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.3)';
                 
-                // 2Dキャンバスをフェードイン
+                // エラー時は2Dに戻す
                 this.app.canvas.style.display = 'block';
                 setTimeout(() => this.app.canvas.style.opacity = '1', 50);
-
-                if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
-
-                // 3D空間を破棄
-                if (this.hyper3DInstance) {
-                    this.hyper3DInstance.destroy();
-                    this.hyper3DInstance = null;
-                }
             }
-        };
+        } else {
+            // 3D -> 2D に戻る
+            this.is3DMode = false;
+            
+            // 2Dキャンバスをフェードイン
+            this.app.canvas.style.display = 'block';
+            setTimeout(() => this.app.canvas.style.opacity = '1', 50);
+
+            if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
+
+            // 3D空間を破棄
+            if (this.hyper3DInstance) {
+                this.hyper3DInstance.destroy();
+                this.hyper3DInstance = null;
+            }
+        }
+        // カプセルのアイコン状態を更新
+        this.updateUIState();
     }
 
     makeDraggable(el, dragHandleId = null) {
@@ -284,13 +271,11 @@ export class UIManager {
         }
     }
 
-    // ★ 自爆・擬態アクション
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
         this.controlPanel.style.display = 'none';
 
-        // 1. 画面を赤くフラッシュさせて警告音
         const flash = document.createElement('div');
         flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#ff0000;z-index:99999;pointer-events:none;transition:opacity 0.8s ease-out;';
         document.body.appendChild(flash);
@@ -298,22 +283,18 @@ export class UIManager {
         setTimeout(() => flash.remove(), 1000);
         if (window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.5, 800);
 
-        // 2. 現在の宇宙のすべてのデータを破壊し、無害なダミーデータにすり替える
         this.app.currentUniverse.name = "System Local Domain";
         this.app.currentUniverse.nodes = [];
         this.app.currentUniverse.links = [];
         
-        // ダミーの星を生成
         this.app.currentUniverse.addNode('Public Docs', -150, -50, 30, '#888888', 'galaxy');
         this.app.currentUniverse.addNode('Recycle Bin', 100, -100, 20, '#555555', 'star');
 
-        // 3. 履歴（パンくず）や亜空間ポケットの隠しデータも全消去
         this.app.universeHistory = [];
         this.app.blackHole = [];
         this.app.wormholes = [];
         this.app.camera.reset();
         
-        // 4. この「空っぽのダミー状態」をセーブデータに上書き保存し、完全証拠隠滅
         this.app.autoSave();
         this.updateBreadcrumbs();
     }
@@ -385,6 +366,12 @@ export class UIManager {
                         <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
                     </label>
                     <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
+
+                    <!-- ★ 追加: 3Dエンジン(Hyper3D)のトグル -->
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-3d" ${localStorage.getItem('universe_ext_3d')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジンをスロットに追加</span>
+                    </label>
 
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
@@ -497,6 +484,10 @@ export class UIManager {
             this.renderCP(); 
         };
 
+        // ★ 追加: 3Dエンジン切り替えスロットの設定保存
+        const ext3D = document.getElementById('cp-ext-3d');
+        if(ext3D) ext3D.onchange = (e) => { localStorage.setItem('universe_ext_3d', e.target.checked); this.updateUIState(); };
+
         const extSearch = document.getElementById('cp-ext-search');
         if(extSearch) extSearch.onchange = (e) => { localStorage.setItem('universe_ext_search', e.target.checked); this.updateUIState(); };
 
@@ -595,11 +586,24 @@ export class UIManager {
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
+        // ★ 拡張状態の取得
+        const is3D = localStorage.getItem('universe_ext_3d') === 'true';
         const isSearch = localStorage.getItem('universe_ext_search') === 'true';
         const isTime = localStorage.getItem('universe_ext_time') === 'true';
         const isAutoPilot = localStorage.getItem('universe_ext_autopilot') === 'true';
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
+
+        // ★ 追加: 3Dエンジンモードのカプセルスロット
+        if (is3D) {
+            const btn = document.createElement('div');
+            btn.innerText = this.is3DMode ? '🌌' : '🪐';
+            btn.title = this.is3DMode ? "Return to 2D" : "Enter 3D Space";
+            const color = this.is3DMode ? '0,255,204' : '255,0,255';
+            btn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(${color},0.15); border:1px solid rgba(${color},0.5); color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(${color},0.2); font-size:14px;`;
+            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) this.toggle3DMode(); };
+            this.capsuleSlots.appendChild(btn);
+        }
 
         if (isSearch) {
             const btn = document.createElement('div');
@@ -766,7 +770,6 @@ export class UIManager {
         const contentStyle = "padding:8px; display:flex; flex-direction:column; gap:4px; background:rgba(0,0,0,0.2);";
         const innerBtnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:10px; cursor:pointer; text-align:left; border-radius:6px; font-size:12px; width:100%; transition:background 0.2s;';
 
-        // ★ 追加：親の宇宙が存在する時だけ「外へ出す」ボタンを作成
         const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
 
         this.actionMenu.innerHTML = `
@@ -800,7 +803,6 @@ export class UIManager {
                     <button id="m-dive" style="${innerBtnStyle}">➡ 内部へ潜る</button>
                     <button id="m-connect" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
                     
-                    <!-- ★ ここに移動用のボタンを追加 -->
                     ${canMoveOut ? `<button id="m-move-out" style="${innerBtnStyle} color:#ffaa00; border:1px dashed #ffaa00;">⤴️ 外の空間へ出す</button>` : ''}
                     <button id="m-move-node" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">📦 別の星の中へ移動</button>
 
@@ -838,7 +840,6 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
-        // ★ 追加：メニューから「別の星へ移動」する処理
         const moveNodeBtn = document.getElementById('m-move-node');
         if (moveNodeBtn) {
             moveNodeBtn.onclick = () => {
@@ -850,7 +851,6 @@ export class UIManager {
             };
         }
 
-        // ★ 追加：親の宇宙へ「外に出す」処理
         const moveOutBtnEl = document.getElementById('m-move-out');
         if (moveOutBtnEl) {
             moveOutBtnEl.onclick = () => {
@@ -1024,7 +1024,6 @@ export class UIManager {
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
         html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;
         
-        // ★ 追加：すでにURLが設定されている場合のみ「解除ボタン」を表示
         if (node.url) {
             html += `<button id="remove-url-btn" style="width:100%; padding:12px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:8px; margin-bottom:10px;">🔗 リンクを解除して元に戻す</button>`;
         }
@@ -1038,12 +1037,11 @@ export class UIManager {
             if(url) { node.url = url; if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){ try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; } } this.app.autoSave(); }
         };
 
-        // ★ 追加：リンク解除ボタンが押された時の処理
         if (node.url) {
             document.getElementById('remove-url-btn').onclick = () => {
                 if (confirm("リンクを解除して普通の星に戻しますか？")) {
                     node.url = "";
-                    node.iconUrl = ""; // アイコン画像も消して元の丸い星に戻す
+                    node.iconUrl = ""; 
                     this.app.autoSave();
                     this.appLibraryModal.style.display = 'none';
                 }
