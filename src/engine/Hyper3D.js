@@ -8,35 +8,35 @@ export class Hyper3D {
         this.currentUniverse = app.currentUniverse;
         this.isActive = true;
 
-        // 1. 3D専用キャンバスの動的生成（2Dキャンバスの上に重ねる）
         this.canvas = document.createElement('canvas');
         this.canvas.id = 'hyper3d-canvas';
         this.canvas.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; z-index:5; pointer-events:auto;';
         document.body.appendChild(this.canvas);
 
-        // 2. シーン、カメラ、レンダラーの構築
+        // 1. より深い宇宙の霧（フォグ）
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x05050a, 0.002);
+        this.scene.fog = new THREE.FogExp2(0x020205, 0.0015); 
 
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
-        this.camera.position.set(0, 150, 400);
+        // 2. カメラを空間の「中」に配置
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        this.camera.position.set(0, 0, 400); // 少し引いた位置からスタート
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.setClearColor(0x05050a, 1);
+        this.renderer.setClearColor(0x020205, 1); // 背景をより深淵な黒に
 
-        // 3. 空間コントロール
+        // 3. コントロール（パン＝平行移動を許可して、宇宙を自由に移動できるようにする）
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
-        this.controls.autoRotate = true;
-        this.controls.autoRotateSpeed = 0.5;
+        this.controls.enablePan = true; // 右クリックで宇宙空間を移動できる
+        this.controls.autoRotate = true; 
+        this.controls.autoRotateSpeed = 0.2; // 漂うようにゆっくり回る
 
-        // 4. 光源
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(ambientLight);
-        const mainLight = new THREE.PointLight(0x00ffcc, 2, 1000);
+        const mainLight = new THREE.PointLight(0x00ffcc, 2, 2000);
         mainLight.position.set(0, 0, 0);
         this.scene.add(mainLight);
 
@@ -44,11 +44,34 @@ export class Hyper3D {
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
 
+        // ★ 新規：360度全天球の星屑（スターフィールド）を生成
+        this.createStarfield();
+
         this.resizeHandler = () => this.resize();
         window.addEventListener('resize', this.resizeHandler);
 
         this.initUniverse();
         this.animate();
+    }
+
+    // ★ 圧倒的な空間の広がりを作るスターフィールド（背景の星々）
+    createStarfield() {
+        const starGeometry = new THREE.BufferGeometry();
+        const starCount = 3000; // 3000個の星屑
+        const starVertices = [];
+        
+        for (let i = 0; i < starCount; i++) {
+            // 360度、全方向に数千の距離でランダムに星を散りばめる
+            const x = (Math.random() - 0.5) * 4000;
+            const y = (Math.random() - 0.5) * 4000;
+            const z = (Math.random() - 0.5) * 4000;
+            starVertices.push(x, y, z);
+        }
+        
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.6 });
+        this.starfield = new THREE.Points(starGeometry, starMaterial);
+        this.scene.add(this.starfield);
     }
 
     initUniverse() {
@@ -63,9 +86,9 @@ export class Hyper3D {
             const material = new THREE.MeshPhysicalMaterial({
                 color: colorHex,
                 emissive: colorHex,
-                emissiveIntensity: 0.5,
-                metalness: 0.8,
-                roughness: 0.2,
+                emissiveIntensity: 0.6,
+                metalness: 0.9,
+                roughness: 0.1,
                 transparent: true,
                 opacity: isGhost ? 0.3 : 0.9,
                 wireframe: isGhost
@@ -73,9 +96,16 @@ export class Hyper3D {
 
             const mesh = new THREE.Mesh(sphereGeo, material);
             
-            const posX = node.x || (Math.random() - 0.5) * 200;
-            const posZ = node.y || (Math.random() - 0.5) * 200;
-            const posY = (Math.random() - 0.5) * 100;
+            // ★★★ 平面の打破：圧倒的な「奥行き（Z軸）」を与える ★★★
+            // 一度決めたZ座標はnodeに保存し、2Dに戻っても消えないようにする
+            if (node.z === undefined) {
+                node.z = (Math.random() - 0.5) * 1500; // 前後に1500の超・奥行きをランダム生成！
+            }
+
+            const posX = node.x || 0;
+            // 2DのY軸（下プラス）と3DのY軸（上プラス）を合わせるため反転
+            const posY = -(node.y || 0); 
+            const posZ = node.z;
 
             mesh.position.set(posX, posY, posZ);
             
@@ -86,7 +116,7 @@ export class Hyper3D {
             this.meshMap.set(node, mesh);
         });
 
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.3 });
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2 });
         this.currentUniverse.links.forEach(link => {
             const sourceNode = this.currentUniverse.nodes.find(n => n === link.source || (n.id && n.id === link.source.id));
             const targetNode = this.currentUniverse.nodes.find(n => n === link.target || (n.id && n.id === link.target.id));
@@ -121,8 +151,13 @@ export class Hyper3D {
 
         this.meshMap.forEach((mesh) => {
             mesh.rotation.y += 0.005;
-            mesh.material.emissiveIntensity = 0.2 + (pulse * 0.8);
+            mesh.material.emissiveIntensity = 0.3 + (pulse * 0.7);
         });
+
+        // スターフィールドもゆっくり回転させて広がりを出す
+        if (this.starfield) {
+            this.starfield.rotation.y += 0.0005;
+        }
 
         this.controls.update();
         this.renderer.render(this.scene, this.camera);
