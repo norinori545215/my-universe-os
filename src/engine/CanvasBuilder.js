@@ -485,7 +485,7 @@ handleNodeClick(worldX, worldY, event) {
         if (window.universeAudio) window.universeAudio.playSystemSound(400, 'triangle', 0.2, 200);
     }
 
-    animate() {
+animate() {
         this.time += 0.02;
 
         const bpm = 153;
@@ -504,7 +504,8 @@ handleNodeClick(worldX, worldY, event) {
             this.ui.updateBreadcrumbs(); 
         }
 
-        const bgColor = '#0a0a1a'; 
+        // 背景を少し深くしてネオンを際立たせる
+        const bgColor = '#05050a'; 
         this.ctx.fillStyle = bgColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -564,10 +565,12 @@ handleNodeClick(worldX, worldY, event) {
                     const dx = node.baseX - parent.baseX;
                     const dy = node.baseY - parent.baseY;
                     let radius = Math.hypot(dx, dy);
-                    if (radius < 20) radius = 80; 
+                    // ★ 星が重ならないよう、最小半径を少し広げました
+                    if (radius < 40) radius = 80; 
 
                     const baseAngle = Math.atan2(dy, dx);
-                    const speed = 25 / radius; 
+                    // ★ 遠くの星ほどゆっくり回るように調整
+                    const speed = 25 / Math.max(radius, 50); 
                     const currentAngle = baseAngle + (this.time * speed);
 
                     node.x = parent.x + Math.cos(currentAngle) * radius;
@@ -595,26 +598,54 @@ handleNodeClick(worldX, worldY, event) {
             }
         });
 
+        // ★★★ 衛星軌道（ホログラムリングとエネルギーライン）の描画 ★★★
         this.currentUniverse.links.forEach(link => {
             const realSource = findRealNode(link.source);
             const realTarget = findRealNode(link.target);
             if (realSource && realTarget) {
-                if (realSource.isGhost) {
-                    if (Math.hypot(realSource.x - screenCenterX, realSource.y - screenCenterY) > (300 / this.camera.scale)) return;
-                }
-                if (realTarget.isGhost) {
-                    if (Math.hypot(realTarget.x - screenCenterX, realTarget.y - screenCenterY) > (300 / this.camera.scale)) return;
-                }
+                if (realSource.isGhost && Math.hypot(realSource.x - screenCenterX, realSource.y - screenCenterY) > (300 / this.camera.scale)) return;
+                if (realTarget.isGhost && Math.hypot(realTarget.x - screenCenterX, realTarget.y - screenCenterY) > (300 / this.camera.scale)) return;
 
                 const dx = realTarget.baseX - realSource.baseX;
                 const dy = realTarget.baseY - realSource.baseY;
                 let radius = Math.hypot(dx, dy);
-                if (radius < 20) radius = 80;
+                if (radius < 40) radius = 80;
+
+                // 1. サイバーパンクな軌道リング（HUDレーダー風）
+                this.ctx.save();
+                this.ctx.translate(realSource.x, realSource.y);
+                this.ctx.rotate(this.time * 0.1); // リング自体もゆっくり回転
                 
-                this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
-                this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.arc(realSource.x, realSource.y, radius, 0, Math.PI * 2); this.ctx.stroke();
-                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-                this.ctx.beginPath(); this.ctx.moveTo(realSource.x, realSource.y); this.ctx.lineTo(realTarget.x, realTarget.y); this.ctx.stroke();
+                // 外側の破線レーダー
+                this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.15 + (pulse * 0.2)})`;
+                this.ctx.lineWidth = 1.5;
+                this.ctx.setLineDash([4, 12, 2, 8]); // 不規則なサイバーダッシュ
+                this.ctx.beginPath(); 
+                this.ctx.arc(0, 0, radius, 0, Math.PI * 2); 
+                this.ctx.stroke();
+                
+                // 内側の薄い発光ライン
+                this.ctx.setLineDash([]);
+                this.ctx.strokeStyle = `rgba(255, 0, 255, ${0.05 + (pulse * 0.1)})`;
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath(); 
+                this.ctx.arc(0, 0, radius - 2, 0, Math.PI * 2); 
+                this.ctx.stroke();
+                this.ctx.restore();
+
+                // 2. エネルギーライン（親星から衛星へ供給される光）
+                const grad = this.ctx.createLinearGradient(realSource.x, realSource.y, realTarget.x, realTarget.y);
+                grad.addColorStop(0, `rgba(0, 255, 204, ${0.5 + pulse})`);
+                grad.addColorStop(1, `rgba(0, 255, 204, 0)`); // 衛星に向かって消えていく
+
+                this.ctx.strokeStyle = grad;
+                this.ctx.lineWidth = 1;
+                this.ctx.setLineDash([2, 4]);
+                this.ctx.beginPath(); 
+                this.ctx.moveTo(realSource.x, realSource.y); 
+                this.ctx.lineTo(realTarget.x, realTarget.y); 
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
             }
         });
 
@@ -672,7 +703,6 @@ handleNodeClick(worldX, worldY, event) {
             this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
             const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
             
-            // 描画後は透明度を元に戻す
             this.ctx.globalAlpha = 1.0;
         });
 
