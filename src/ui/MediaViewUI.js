@@ -36,7 +36,10 @@ export class MediaViewUI {
     }
 
     open(node) {
-        if (!node.vault || node.vault.length === 0) return;
+        if (!node.vault || node.vault.length === 0) {
+            alert("この星の地下金庫には何も格納されていません。");
+            return;
+        }
         this.currentNode = node;
         this.listContainer.innerHTML = '';
         this.previewArea.style.display = 'none';
@@ -57,6 +60,7 @@ export class MediaViewUI {
             const sizeMb = item.size ? (item.size / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown Size';
             const fileName = item.name || `Encrypted_Data_${index}`;
 
+            // ★ 修正: DECRYPTボタンの横にゴミ箱ボタンを追加
             el.innerHTML = `
                 <div style="display:flex; align-items:center; gap:12px; overflow:hidden;">
                     <span style="font-size:20px;">${icon}</span>
@@ -65,13 +69,16 @@ export class MediaViewUI {
                         <span style="color:#aaa; font-size:10px;">${sizeMb} | AES-256-GCM</span>
                     </div>
                 </div>
-                <button style="background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:6px 12px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; flex-shrink:0;">DECRYPT</button>
+                <div style="display:flex; gap:8px;">
+                    <button class="mv-btn-dec" style="background:#003333; color:#00ffcc; border:1px solid #00ffcc; padding:6px 12px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; flex-shrink:0;">DECRYPT</button>
+                    <button class="mv-btn-del" style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:6px 12px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; flex-shrink:0;">🗑️</button>
+                </div>
             `;
 
             // DECRYPT（復号）ボタンの処理
-            el.querySelector('button').onclick = async (e) => {
+            el.querySelector('.mv-btn-dec').onclick = async (e) => {
                 e.stopPropagation();
-                const btn = el.querySelector('button');
+                const btn = el.querySelector('.mv-btn-dec');
                 btn.innerText = 'WAIT...';
                 btn.style.color = '#ffcc00';
 
@@ -97,6 +104,22 @@ export class MediaViewUI {
                     this.previewArea.querySelector('#mv-dl-img').onclick = () => this.triggerDownload(decrypted.url, decrypted.name);
                 } else {
                     this.triggerDownload(decrypted.url, decrypted.name);
+                }
+            };
+
+            // ★ 追加: 完全消去（パージ）の処理
+            el.querySelector('.mv-btn-del').onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`⚠️ 警告\n\n「${fileName}」を完全に物理消去しますか？\nこの操作は取り消せません。`)) {
+                    node.vault.splice(index, 1);
+                    this.app.autoSave();
+                    if(window.universeAudio) window.universeAudio.playDelete();
+                    
+                    if (node.vault.length === 0) {
+                        this.close();
+                    } else {
+                        this.open(node); // リストを再描画
+                    }
                 }
             };
 
