@@ -271,7 +271,7 @@ export class NexusChatUI {
         inputContainer.appendChild(fileInput);
         inputWrapper.appendChild(attachBtn);
         inputWrapper.appendChild(this.micBtn);
-        inputWrapper.appendChild(this.phantomBtn); // ★追加
+        inputWrapper.appendChild(this.phantomBtn); 
         inputWrapper.appendChild(this.actionCancelBtn); 
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
@@ -811,10 +811,12 @@ export class NexusChatUI {
                 editMark.style.cssText = 'font-size:9px; color:#888; margin-right:4px;';
                 metaContainer.appendChild(editMark);
             }
+            
+            // ★★★ 修正箇所：既読マークを「👁️」から「既読」テキストに変更 ★★★
             const readMark = document.createElement('div');
             readMark.id = `read-${msg.id}`;
-            readMark.innerText = '👁️';
-            readMark.style.cssText = `font-size:9px; color:#00ffcc; transition:0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:3px;`;
+            readMark.innerText = '既読';
+            readMark.style.cssText = `font-size:10px; color:#00ffcc; font-weight:bold; transition:opacity 0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:4px; margin-bottom:1px; letter-spacing:1px;`;
             metaContainer.appendChild(readMark);
 
             metaContainer.appendChild(reactBtn);
