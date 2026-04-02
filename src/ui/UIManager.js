@@ -661,205 +661,210 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
-showMenu(node, screenX, screenY) {
-        if (this.state.isRapidDeleteMode) {
-            this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
-            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
-            this.app.blackHole.push(node);
-            this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playDelete();
-            return;
-        }
-
-        if (node.isLocked && !node.isTempUnlocked) {
-            this.hideQuickNote();
-            this.hideMenu();
-            this.lockUI.openForUnlock(node, () => {
-                this.showMenu(node, screenX, screenY);
-            });
-            return;
-        }
-
-        this.hideQuickNote();
-
-        // ★ 追加：もし星が「未読（観測前）」なら、メニューを出さずにいきなりノートを開く
-        // ※ただし、自分が作ったばかりの「新規データ」星は最初からメニューを出したいので、
-        //   「名前が『新規データ』以外」かつ「未読」の場合に発動するようにします。
-        if (!node.isObserved && node.name !== '新規データ') {
-            node.isObserved = true;
-            this.app.autoSave();
-
-            if (this.notePad) {
-                this.notePad.open(node);
-            }
-            return; // ここで処理を終了し、メニュー画面は出さない
-        }
-        
-        this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
-        this.actionMenu.style.top = `${Math.min(screenY, Math.max(0, window.innerHeight - 480))}px`;
-        this.actionMenu.style.display = 'flex';
-        
-        const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
-        
-        const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
-
-        const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
-        const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
-        
-        const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
-        const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
-
-        // ★ 追加：VaultMedia用のテキストとカラー
-        const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
-        const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
-        this.actionMenu.innerHTML = `
-            <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
-            ${openUrlBtn}
-            
-            <button id="m-vault" style="${btnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
-            <button id="m-nexus" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold; margin-top:10px;">📡 QRセキュア通信</button>
-            <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
-
-            <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
-            <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
-            <button id="m-note" style="${btnStyle} color:#aaffff;">📝 記憶を編集</button>
-            <div style="display:flex; gap:4px; margin-bottom:4px;">
-                <button id="m-up" style="${btnStyle} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
-                <button id="m-down" style="${btnStyle} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
-            </div>
-            <button id="m-ren" style="${btnStyle} color:#ccff66;">✏ 名前変更</button>
-            <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
-            <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
-            <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
-            <button id="m-ghost" style="${btnStyle} color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
-            <button id="m-lock" style="${btnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
-            <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
-            <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
-
-        const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
-
-        // ★ 追加：VaultMediaのイベント処理
-        const vaultUpload = document.getElementById('m-vault-upload');
-        document.getElementById('m-vault').onclick = async () => {
-            if (checkDrag()) return;
-            if (node.vault && node.vault.length > 0) {
-                this.hideMenu();
-                this.mediaView.open(node); // ★ 新しい金庫画面を呼び出す
-                return;
-            }
-            vaultUpload.click();
-        };
-
-        document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
-
-        if (vaultUpload) {
-            vaultUpload.onchange = async (e) => {
-                const files = e.target.files;
-                if (!files || files.length === 0) return;
-                this.hideMenu();
-                
-                let successCount = 0;
-                for (let i = 0; i < files.length; i++) {
-                    await VaultMedia.storeMedia(files[i], node);
-                    successCount++;
-                }
-                
-                this.app.autoSave(); 
-                if (window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.2);
-                alert(`${successCount}枚の写真を暗号化して地下金庫に封印しました。`);
-            };
-        }
-
-        if (node.url) {
-            document.getElementById('m-open').onclick = () => {
-                if (checkDrag()) return;
-                this.hideMenu();
-                const a = document.createElement('a');
-                a.href = node.url;
-                a.target = node.url.startsWith('http') ? '_blank' : '_self';
-                a.rel = 'noopener noreferrer';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            };
-        }
-
-        document.getElementById('m-ghost').onclick = () => {
-            if (checkDrag()) return;
-            this.hideMenu();
-            node.isGhost = !node.isGhost;
-            this.app.autoSave();
-            if(window.universeAudio) window.universeAudio.playWarp();
-        };
-
-        document.getElementById('m-lock').onclick = () => {
-            if (checkDrag()) return;
-            this.hideMenu();
-            if (node.isLocked) {
-                if(confirm("この星の封印を完全に解除しますか？")) {
-                    node.isLocked = false;
-                    delete node.password; 
-                    node.isTempUnlocked = false;
-                    this.app.autoSave();
-                }
-            } else {
-                this.lockUI.openForSet(node);
-            }
-        };
-
-        document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
-        document.getElementById('m-dive').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
-        document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
-        document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
-        document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
-        document.getElementById('m-ren').onclick = () => { if (checkDrag()) return; const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
-        document.getElementById('m-set-icon').onclick = () => { if (checkDrag()) return; const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
-        document.getElementById('m-link').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
-        
-        document.getElementById('m-connect').onclick = () => {
-            if (checkDrag()) return;
-            this.hideMenu();
-            this.app.isLinking = true;
-            this.app.linkSourceNode = node;
-            
-            const onNextClick = (e) => {
-                let clientX = e.clientX || 0; let clientY = e.clientY || 0;
-                if (e.changedTouches && e.changedTouches.length > 0) {
-                    clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
-                }
-                const rect = this.app.canvas.getBoundingClientRect();
-                const worldX = ((clientX - rect.left) - this.app.canvas.width / 2) / this.app.camera.scale - this.app.camera.x;
-                const worldY = ((clientY - rect.top) - this.app.canvas.height / 2) / this.app.camera.scale - this.app.camera.y;
-                
-                this.app.endLink(worldX, worldY);
-                
-                window.removeEventListener('mouseup', onNextClick);
-                window.removeEventListener('touchend', onNextClick);
-            };
-            
-            setTimeout(() => {
-                window.addEventListener('mouseup', onNextClick);
-                window.addEventListener('touchend', onNextClick);
-            }, 100);
-        };
-
-        document.getElementById('m-del').onclick = () => { 
-            if (checkDrag()) return;
-            if(confirm("収納しますか？")){ 
+        showMenu(node, screenX, screenY) {
+            if (this.state.isRapidDeleteMode) {
                 this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
                 this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
-                this.app.blackHole.push(node); 
-                this.app.autoSave(); 
-                if(window.universeAudio) window.universeAudio.playDelete(); 
-            } 
-            this.hideMenu(); 
-        };
+                this.app.blackHole.push(node);
+                this.app.autoSave();
+                if(window.universeAudio) window.universeAudio.playDelete();
+                return;
+            }
 
-        document.getElementById('m-close').onclick = () => {
-            if (checkDrag()) return;
-            this.hideMenu();
-        };
-    }
+            if (node.isLocked && !node.isTempUnlocked) {
+                this.hideQuickNote();
+                this.hideMenu();
+                this.lockUI.openForUnlock(node, () => {
+                    this.showMenu(node, screenX, screenY);
+                });
+                return;
+            }
+
+            this.hideQuickNote();
+            
+            this.actionMenu.style.left = `${Math.min(screenX, window.innerWidth - 230)}px`;
+            this.actionMenu.style.top = `${Math.min(screenY, Math.max(0, window.innerHeight - 480))}px`;
+            this.actionMenu.style.display = 'flex';
+            
+            const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
+            
+            const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
+
+            const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
+            const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
+            
+            const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
+            const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
+
+            // ★ 追加：VaultMedia用のテキストとカラー
+            const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
+            const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
+            this.actionMenu.innerHTML = `
+                <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
+                ${openUrlBtn}
+                
+                <button id="m-vault" style="${btnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
+                <button id="m-nexus" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold; margin-top:10px;">📡 QRセキュア通信</button>
+                <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
+
+                <button id="m-ai" style="${btnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
+                <button id="m-dive" style="${btnStyle}">➡ 内部へ潜る</button>
+                <button id="m-note" style="${btnStyle} color:#aaffff;">📝 記憶を編集</button>
+                <div style="display:flex; gap:4px; margin-bottom:4px;">
+                    <button id="m-up" style="${btnStyle} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                    <button id="m-down" style="${btnStyle} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
+                </div>
+                <button id="m-ren" style="${btnStyle} color:#ccff66;">✏ 名前変更</button>
+                <button id="m-set-icon" style="${btnStyle} color:#ffaa00;">🖼 画像設定</button>
+                <button id="m-link" style="${btnStyle} color:#aaaaff;">📱 URL登録</button>
+                <button id="m-connect" style="${btnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+                <button id="m-ghost" style="${btnStyle} color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
+                <button id="m-lock" style="${btnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
+                <button id="m-del" style="${btnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
+                <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:11px; color:#888;">❌ 閉じる</button>`;
+
+            const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
+
+            // ★ 追加：VaultMediaのイベント処理
+            const vaultUpload = document.getElementById('m-vault-upload');
+            document.getElementById('m-vault').onclick = async () => {
+                if (checkDrag()) return;
+                if (node.vault && node.vault.length > 0) {
+                    this.hideMenu();
+                    this.mediaView.open(node); // ★ 新しい金庫画面を呼び出す
+                    return;
+                }
+                vaultUpload.click();
+            };
+
+            document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
+
+            if (vaultUpload) {
+                vaultUpload.onchange = async (e) => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    this.hideMenu();
+                    
+                    let successCount = 0;
+                    for (let i = 0; i < files.length; i++) {
+                        await VaultMedia.storeMedia(files[i], node);
+                        successCount++;
+                    }
+                    
+                    this.app.autoSave(); 
+                    if (window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.2);
+                    alert(`${successCount}件のファイルを暗号化して地下金庫に封印しました。`);
+                };
+            }
+
+            if (vaultUpload) {
+                vaultUpload.onchange = async (e) => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    this.hideMenu();
+                    
+                    let successCount = 0;
+                    for (let i = 0; i < files.length; i++) {
+                        await VaultMedia.storeMedia(files[i], node);
+                        successCount++;
+                    }
+                    
+                    this.app.autoSave(); 
+                    if (window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.2);
+                    alert(`${successCount}枚の写真を暗号化して地下金庫に封印しました。`);
+                };
+            }
+
+            if (node.url) {
+                document.getElementById('m-open').onclick = () => {
+                    if (checkDrag()) return;
+                    this.hideMenu();
+                    const a = document.createElement('a');
+                    a.href = node.url;
+                    a.target = node.url.startsWith('http') ? '_blank' : '_self';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+            }
+
+            document.getElementById('m-ghost').onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                node.isGhost = !node.isGhost;
+                this.app.autoSave();
+                if(window.universeAudio) window.universeAudio.playWarp();
+            };
+
+            document.getElementById('m-lock').onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                if (node.isLocked) {
+                    if(confirm("この星の封印を完全に解除しますか？")) {
+                        node.isLocked = false;
+                        delete node.password; 
+                        node.isTempUnlocked = false;
+                        this.app.autoSave();
+                    }
+                } else {
+                    this.lockUI.openForSet(node);
+                }
+            };
+
+            document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
+            document.getElementById('m-dive').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
+            document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
+            document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
+            document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
+            document.getElementById('m-ren').onclick = () => { if (checkDrag()) return; const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
+            document.getElementById('m-set-icon').onclick = () => { if (checkDrag()) return; const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
+            document.getElementById('m-link').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
+            
+            document.getElementById('m-connect').onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                this.app.isLinking = true;
+                this.app.linkSourceNode = node;
+                
+                const onNextClick = (e) => {
+                    let clientX = e.clientX || 0; let clientY = e.clientY || 0;
+                    if (e.changedTouches && e.changedTouches.length > 0) {
+                        clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+                    }
+                    const rect = this.app.canvas.getBoundingClientRect();
+                    const worldX = ((clientX - rect.left) - this.app.canvas.width / 2) / this.app.camera.scale - this.app.camera.x;
+                    const worldY = ((clientY - rect.top) - this.app.canvas.height / 2) / this.app.camera.scale - this.app.camera.y;
+                    
+                    this.app.endLink(worldX, worldY);
+                    
+                    window.removeEventListener('mouseup', onNextClick);
+                    window.removeEventListener('touchend', onNextClick);
+                };
+                
+                setTimeout(() => {
+                    window.addEventListener('mouseup', onNextClick);
+                    window.addEventListener('touchend', onNextClick);
+                }, 100);
+            };
+
+            document.getElementById('m-del').onclick = () => { 
+                if (checkDrag()) return;
+                if(confirm("収納しますか？")){ 
+                    this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
+                    this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+                    this.app.blackHole.push(node); 
+                    this.app.autoSave(); 
+                    if(window.universeAudio) window.universeAudio.playDelete(); 
+                } 
+                this.hideMenu(); 
+            };
+
+            document.getElementById('m-close').onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+            };
+        }
 
     showQuickNote(node, x, y) {
         if (!node.note || node.note.trim() === "") return;
