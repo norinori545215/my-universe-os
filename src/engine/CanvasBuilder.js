@@ -7,7 +7,7 @@ import { TimeMachine } from '../core/TimeMachine.js';
 import { AutoPilot } from './AutoPilot.js';
 
 export class CanvasBuilder {
-    constructor(canvasId) {
+constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         
@@ -28,6 +28,10 @@ export class CanvasBuilder {
         this.hasMovedNode = false;
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
+
+        // ★ 追加：メニューからの移動モード用フラグ
+        this.isMovingNode = false;
+        this.nodeToMove = null;
 
         this.grabOffsetX = 0;
         this.grabOffsetY = 0;
@@ -64,6 +68,31 @@ export class CanvasBuilder {
             onNodeGrabStart: (x, y) => this.grabNode(x, y),
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
+                
+                // ★ 追加：ドラッグ＆ドロップで別の星に重ねて離した時の処理
+                if (this.hasMovedNode && this.grabbedNode) {
+                    const gNode = this.grabbedNode;
+                    this.grabbedNode = null; // 自分自身を一旦隠して当たり判定を調べる
+                    const targetNode = this.getNodeAt(this.mouseWorldX, this.mouseWorldY);
+                    this.grabbedNode = gNode; // 戻す
+
+                    if (targetNode && targetNode !== this.grabbedNode && !targetNode.isGhost) {
+                        if (confirm(`「${this.grabbedNode.name}」を「${targetNode.name}」の中に移動させますか？`)) {
+                            // 現在の宇宙から削除
+                            this.currentUniverse.nodes = this.currentUniverse.nodes.filter(n => n !== this.grabbedNode && n.id !== this.grabbedNode.id);
+                            this.currentUniverse.links = this.currentUniverse.links.filter(l => l.source !== this.grabbedNode && l.target !== this.grabbedNode && l.source.id !== this.grabbedNode.id && l.target.id !== this.grabbedNode.id);
+                            
+                            // 対象の内部宇宙へ追加
+                            this.grabbedNode.parentUniverse = targetNode.innerUniverse;
+                            targetNode.innerUniverse.nodes.push(this.grabbedNode);
+                            
+                            this.grabbedNode.baseX = 0; this.grabbedNode.baseY = 0;
+                            this.grabbedNode.x = 0; this.grabbedNode.y = 0;
+                            if(window.universeAudio) window.universeAudio.playWarp();
+                        }
+                    }
+                }
+                
                 this.grabbedNode = null; 
                 if (this.hasMovedNode) this.autoSave(); 
             },
@@ -335,12 +364,36 @@ export class CanvasBuilder {
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffffff', true);
     }
 
-    handleNodeClick(worldX, worldY, event) {
+handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
         if (this.isLongPressed) { this.isLongPressed = false; this.grabbedNode = null; return; }
         
         const target = this.grabbedNode || this.getNodeAt(worldX, worldY);
         this.grabbedNode = null; 
+
+        // ★ 追加：メニューから「別の星へ移動」モードに入っている時
+        if (this.isMovingNode) {
+            if (target && target !== this.nodeToMove && !target.isGhost) {
+                if (confirm(`「${this.nodeToMove.name}」を「${target.name}」の中に移動させますか？`)) {
+                    // 元の場所から削除
+                    this.currentUniverse.nodes = this.currentUniverse.nodes.filter(n => n !== this.nodeToMove && n.id !== this.nodeToMove.id);
+                    this.currentUniverse.links = this.currentUniverse.links.filter(l => l.source !== this.nodeToMove && l.target !== this.nodeToMove && l.source.id !== this.nodeToMove.id && l.target.id !== this.nodeToMove.id);
+                    
+                    // 移動先へ追加
+                    this.nodeToMove.parentUniverse = target.innerUniverse;
+                    target.innerUniverse.nodes.push(this.nodeToMove);
+                    
+                    this.nodeToMove.baseX = 0; this.nodeToMove.baseY = 0;
+                    this.nodeToMove.x = 0; this.nodeToMove.y = 0;
+                    this.autoSave();
+                    if(window.universeAudio) window.universeAudio.playWarp();
+                }
+            }
+            this.isMovingNode = false;
+            this.nodeToMove = null;
+            this.spawnRipple(worldX, worldY, '#ff0000'); // キャンセルor完了のエフェクト
+            return;
+        }
 
         if (this.isZoomingIn || this.hasMovedNode || this.appMode === 'LINK') {
             this.ui.hideMenu(); return;
@@ -385,10 +438,8 @@ export class CanvasBuilder {
                 } else {
                     this.lastClickedNode = target; this.lastClickTime = now;
                     this.singleClickTimeout = setTimeout(() => {
-                        
                         const executeSingleClickAction = () => {
                             this.spawnRipple(target.x, target.y, target.color); 
-                            
                             if (target.url) {
                                 const a = document.createElement('a');
                                 a.href = target.url;
@@ -407,7 +458,6 @@ export class CanvasBuilder {
                         } else {
                             executeSingleClickAction();
                         }
-
                     }, 300);
                 }
             }
