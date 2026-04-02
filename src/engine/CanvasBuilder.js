@@ -183,7 +183,6 @@ export class CanvasBuilder {
                 animateToPast(node, pastNode.x, pastNode.y);
                 node.size = pastNode.size;
                 node.color = pastNode.color;
-                // ★ 時間旅行時にも既読ステータスを復元する場合はここに追加できます
                 node.isObserved = pastNode.isObserved; 
             }
         });
@@ -357,6 +356,11 @@ export class CanvasBuilder {
                 let posX = clientX + 15; let posY = clientY + 15;
                 if (posX + 180 > window.innerWidth) posX = window.innerWidth - 180;
                 if (posY + 300 > window.innerHeight) posY = window.innerHeight - 300;
+                
+                // ★ 編集/スマホモードでも既読をつける
+                target.isObserved = true;
+                this.autoSave();
+                
                 this.ui.showMenu(target, posX, posY);
                 this.spawnRipple(target.x, target.y, '#ffcc00'); 
                 return;
@@ -372,7 +376,7 @@ export class CanvasBuilder {
                         if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
                         this.spawnRipple(target.x, target.y, '#ff00ff', true); 
 
-                        // ★ ダブルクリックでも「既読（観測済み）」にする
+                        // ★ ダブルクリックで既読にする
                         target.isObserved = true;
                         this.autoSave();
 
@@ -395,7 +399,7 @@ export class CanvasBuilder {
                         const executeSingleClickAction = () => {
                             this.spawnRipple(target.x, target.y, target.color); 
                             
-                            // ★ シングルクリック（詳細を開く・リンクへ飛ぶ等）で「既読（観測済み）」にする
+                            // ★ シングルクリックで既読にする
                             target.isObserved = true;
                             this.autoSave();
 
@@ -571,7 +575,6 @@ export class CanvasBuilder {
                 let radius = Math.hypot(dx, dy);
                 if (radius < 20) radius = 80;
                 
-                // ★ 既読の星をつなぐリンクは少し色を変えるなどの演出も可能です（今回はそのまま）
                 this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.1 + (pulse * 0.15)})`;
                 this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.arc(realSource.x, realSource.y, radius, 0, Math.PI * 2); this.ctx.stroke();
                 this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
@@ -607,27 +610,15 @@ export class CanvasBuilder {
 
             this.ctx.globalAlpha = globalAlpha;
 
-            // ★ 未読の星を強調するエフェクト（パルス）を追加
-            let unreadPulse = 0;
-            if (!node.isObserved) {
-                unreadPulse = Math.sin(this.time * 5) * 5; // 未読の星は激しく明滅
-            }
-
             const isGrabbed = (node === this.grabbedNode);
             let drawSize = node.size + (isGrabbed ? 3 : 0);
             drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; 
-            drawSize += pulse * 2.0 + unreadPulse; // 未読ならパルスを追加
+            drawSize += pulse * 2.0; 
             
-            // ★ 既読（観測済み）の星はモヤを落ち着かせ、未読の星は白く強く光らせる
-            if (node.isObserved) {
-                this.ctx.shadowBlur = isGrabbed ? 15 : 5 + (pulse * 5); 
-                this.ctx.shadowColor = node.color; // 既読は本来の色
-            } else {
-                this.ctx.shadowBlur = isGrabbed ? 40 : 25 + (pulse * 20); 
-                this.ctx.shadowColor = '#ffffff'; // 未読は白く輝くオーラを纏わせる
-            }
+            // ★ 元の自然な光り方に完全に戻しました
+            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); 
+            this.ctx.shadowColor = node.color; 
             
-
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
                 const img = this.imageCache[node.iconUrl];
@@ -647,15 +638,19 @@ export class CanvasBuilder {
                 this.ctx.fillText(node.isTempUnlocked ? "🔓" : "🔒", node.x, node.y - drawSize - 10); 
             }
             
-            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
-            let displayName = node.url ? `🔗 ${node.name}` : node.name;
-            
-            // ★ 既読（観測済み）の星の名前の前に「✨」マークを追加する
-            if (node.isObserved) {
-                displayName = `✨ ${displayName}`;
-            }
-            
+            // ★ 名前の変更も完全撤回し、代わりに小さく「✓ 既読」と出すだけにしました
+            this.ctx.fillStyle = '#ffffff'; 
+            this.ctx.font = '12px sans-serif'; 
+            this.ctx.textAlign = 'center';
+            const displayName = node.url ? `🔗 ${node.name}` : node.name;
             this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
+            
+            // 【控えめな既読表示】
+            if (node.isObserved) {
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; // 少し暗めの色で控えめに
+                this.ctx.font = '10px sans-serif';
+                this.ctx.fillText("✓ 既読", node.x, node.y + drawSize + 35);
+            }
             
             this.ctx.globalAlpha = 1.0;
         });
