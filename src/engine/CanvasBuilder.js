@@ -117,61 +117,6 @@ constructor(canvasId) {
         this.animate();
 
         this.autoPilot = new AutoPilot(this);
-
-        // ★★★ 追加：2D / 3D 次元切り替えトグル機能 ★★★
-        this.is3DMode = false;
-        this.hyper3DInstance = null;
-
-        const dimBtn = document.createElement('button');
-        dimBtn.innerHTML = '🌌 3D MODE';
-        dimBtn.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:15000; padding:12px 30px; background:rgba(0,20,30,0.8); border:1px solid #00ffcc; color:#00ffcc; border-radius:30px; font-weight:bold; cursor:pointer; letter-spacing:2px; box-shadow:0 0 15px rgba(0,255,204,0.3); backdrop-filter:blur(10px); transition:all 0.3s;';
-        document.body.appendChild(dimBtn);
-
-        dimBtn.onclick = async () => {
-            if (!this.is3DMode) {
-                // 【2D -> 3D にシフト】
-                this.is3DMode = true;
-                dimBtn.innerHTML = '🪐 2D MODE';
-                dimBtn.style.borderColor = '#ff00ff';
-                dimBtn.style.color = '#ff00ff';
-                dimBtn.style.boxShadow = '0 0 15px rgba(255,0,255,0.3)';
-                
-                // 2Dキャンバスをフェードアウト
-                this.canvas.style.transition = 'opacity 0.3s';
-                this.canvas.style.opacity = '0'; 
-                setTimeout(() => this.canvas.style.display = 'none', 300);
-
-                if(window.universeAudio) window.universeAudio.playWarp();
-
-                // 3Dエンジンを "動的ロード" して起動
-                try {
-                    const { Hyper3D } = await import('./Hyper3D.js');
-                    this.hyper3DInstance = new Hyper3D(this);
-                } catch (e) {
-                    console.error("Hyper3D.jsのロードに失敗しました:", e);
-                    alert("3Dエンジンの起動に失敗しました。");
-                }
-            } else {
-                // 【3D -> 2D に戻る】
-                this.is3DMode = false;
-                dimBtn.innerHTML = '🌌 3D MODE';
-                dimBtn.style.borderColor = '#00ffcc';
-                dimBtn.style.color = '#00ffcc';
-                dimBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.3)';
-                
-                // 2Dキャンバスをフェードイン
-                this.canvas.style.display = 'block';
-                setTimeout(() => this.canvas.style.opacity = '1', 50);
-
-                if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
-
-                // 3D空間を破棄
-                if (this.hyper3DInstance) {
-                    this.hyper3DInstance.destroy();
-                    this.hyper3DInstance = null;
-                }
-            }
-        };
     }
 
     async init() {

@@ -40,6 +40,9 @@ export class UIManager {
         
         window.universeAudio = new AudioCore();
         this.createUI();
+
+        // ★ 新規追加: 3D切り替えトグルの初期化
+        this.createDimensionToggle();
         
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
@@ -47,6 +50,65 @@ export class UIManager {
             if(oldLogout) oldLogout.style.display = 'none';
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
+    }
+
+    // ★ 新規追加: 3Dモードへの切り替えボタンとロジックをここにカプセル化
+    createDimensionToggle() {
+        this.is3DMode = false;
+        this.hyper3DInstance = null;
+
+        const dimBtn = document.createElement('button');
+        dimBtn.id = 'ui-dim-toggle';
+        dimBtn.innerHTML = '🌌 3D MODE';
+        dimBtn.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:15000; padding:12px 30px; background:rgba(0,20,30,0.8); border:1px solid #00ffcc; color:#00ffcc; border-radius:30px; font-weight:bold; cursor:pointer; letter-spacing:2px; box-shadow:0 0 15px rgba(0,255,204,0.3); backdrop-filter:blur(10px); transition:all 0.3s;';
+        document.body.appendChild(dimBtn);
+
+        dimBtn.onclick = async () => {
+            if (!this.is3DMode) {
+                // 【2D -> 3D にシフト】
+                this.is3DMode = true;
+                dimBtn.innerHTML = '🪐 2D MODE';
+                dimBtn.style.borderColor = '#ff00ff';
+                dimBtn.style.color = '#ff00ff';
+                dimBtn.style.boxShadow = '0 0 15px rgba(255,0,255,0.3)';
+                
+                // 2Dキャンバスをフェードアウト
+                this.app.canvas.style.transition = 'opacity 0.3s';
+                this.app.canvas.style.opacity = '0'; 
+                setTimeout(() => this.app.canvas.style.display = 'none', 300);
+
+                if(window.universeAudio) window.universeAudio.playWarp();
+
+                // UIManagerから見てHyper3Dは ../engine/Hyper3D.js にある
+                try {
+                    const { Hyper3D } = await import('../engine/Hyper3D.js');
+                    // this.app (CanvasBuilder) を渡して起動
+                    this.hyper3DInstance = new Hyper3D(this.app);
+                } catch (e) {
+                    console.error("Hyper3D.jsのロードに失敗:", e);
+                    alert("3Dエンジンの起動に失敗しました。");
+                }
+            } else {
+                // 【3D -> 2D に戻る】
+                this.is3DMode = false;
+                dimBtn.innerHTML = '🌌 3D MODE';
+                dimBtn.style.borderColor = '#00ffcc';
+                dimBtn.style.color = '#00ffcc';
+                dimBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.3)';
+                
+                // 2Dキャンバスをフェードイン
+                this.app.canvas.style.display = 'block';
+                setTimeout(() => this.app.canvas.style.opacity = '1', 50);
+
+                if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
+
+                // 3D空間を破棄
+                if (this.hyper3DInstance) {
+                    this.hyper3DInstance.destroy();
+                    this.hyper3DInstance = null;
+                }
+            }
+        };
     }
 
     makeDraggable(el, dragHandleId = null) {
@@ -661,7 +723,7 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
-showMenu(node, screenX, screenY) {
+    showMenu(node, screenX, screenY) {
         if (this.state.isRapidDeleteMode) {
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
@@ -957,7 +1019,7 @@ showMenu(node, screenX, screenY) {
         if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.5em; opacity:0.3;">EDIT</span>`;
     }
 
-showAppLibrary(node) {
+    showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
         html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;

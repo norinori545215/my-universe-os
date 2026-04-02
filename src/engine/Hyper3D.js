@@ -1,7 +1,6 @@
 // src/engine/Hyper3D.js
-import * as THREE from 'three';
-// ※もしビルドエラーが出る場合は、下のパスを 'three/examples/jsm/controls/OrbitControls.js' に変更してください
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as THREE from 'https://esm.sh/three';
+import { OrbitControls } from 'https://esm.sh/three/addons/controls/OrbitControls.js';
 
 export class Hyper3D {
     constructor(app) {
@@ -17,24 +16,24 @@ export class Hyper3D {
 
         // 2. シーン、カメラ、レンダラーの構築
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x05050a, 0.002); // 宇宙の果てを暗くフェードアウト
+        this.scene.fog = new THREE.FogExp2(0x05050a, 0.002);
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
         this.camera.position.set(0, 150, 400);
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // スマホの高解像度対応
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.setClearColor(0x05050a, 1);
 
-        // 3. 空間コントロール（マウスドラッグでぐるぐる回せる）
+        // 3. 空間コントロール
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
-        this.controls.autoRotate = true; // 放置すると宇宙全体がゆっくり回る
+        this.controls.autoRotate = true;
         this.controls.autoRotateSpeed = 0.5;
 
-        // 4. 光源（サイバーパンク・ライティング）
+        // 4. 光源
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
         this.scene.add(ambientLight);
         const mainLight = new THREE.PointLight(0x00ffcc, 2, 1000);
@@ -52,18 +51,15 @@ export class Hyper3D {
         this.animate();
     }
 
-    // 2Dのデータを完全な3D球体として配置する
     initUniverse() {
         if (!this.currentUniverse || !this.currentUniverse.nodes) return;
 
         const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
-        // 星（Node）の生成
         this.currentUniverse.nodes.forEach(node => {
             const isGhost = node.isGhost;
             const colorHex = parseInt((node.color || '#00ffcc').replace('#', '0x'), 16);
 
-            // サイバーパンクな金属＋ネオンの質感
             const material = new THREE.MeshPhysicalMaterial({
                 color: colorHex,
                 emissive: colorHex,
@@ -72,12 +68,11 @@ export class Hyper3D {
                 roughness: 0.2,
                 transparent: true,
                 opacity: isGhost ? 0.3 : 0.9,
-                wireframe: isGhost // 幽霊星はワイヤーフレームになる演出
+                wireframe: isGhost
             });
 
             const mesh = new THREE.Mesh(sphereGeo, material);
             
-            // 2D座標(X, Y)を3D座標(X, Z)にマッピングし、Y軸(高さ)にランダムな揺らぎを与える
             const posX = node.x || (Math.random() - 0.5) * 200;
             const posZ = node.y || (Math.random() - 0.5) * 200;
             const posY = (Math.random() - 0.5) * 100;
@@ -91,7 +86,6 @@ export class Hyper3D {
             this.meshMap.set(node, mesh);
         });
 
-        // 星同士を繋ぐエネルギーライン（Link）の生成
         const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.3 });
         this.currentUniverse.links.forEach(link => {
             const sourceNode = this.currentUniverse.nodes.find(n => n === link.source || (n.id && n.id === link.source.id));
@@ -120,13 +114,11 @@ export class Hyper3D {
         if (!this.isActive) return;
         requestAnimationFrame(() => this.animate());
 
-        // 153bpmパルス同期（BGMのキックに合わせて星が光る）
         const bpm = 153;
         const msPerBeat = 60000 / (bpm / 2);
         const beatPhase = (Date.now() % msPerBeat) / msPerBeat;
         const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2);
 
-        // 全ての星を鼓動・自転させる
         this.meshMap.forEach((mesh) => {
             mesh.rotation.y += 0.005;
             mesh.material.emissiveIntensity = 0.2 + (pulse * 0.8);
@@ -136,11 +128,10 @@ export class Hyper3D {
         this.renderer.render(this.scene, this.camera);
     }
 
-    // 2Dに戻る時の完全破棄処理（メモリリーク防止）
     destroy() {
         this.isActive = false;
         window.removeEventListener('resize', this.resizeHandler);
         this.renderer.dispose();
-        this.canvas.remove(); // DOMから完全に消去
+        this.canvas.remove();
     }
 }
