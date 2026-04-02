@@ -17,7 +17,11 @@ export class Hyper3D {
         this.scene.fog = new THREE.FogExp2(0x020205, 0.0015); 
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
-        this.camera.position.set(0, 0, 350); 
+        
+        // ★ 修正: カメラの初期位置を「2Dで見ていた場所」にピッタリ合わせる！
+        const startX = -this.app.camera.x;
+        const startY = this.app.camera.y; // 3DではY軸が逆
+        this.camera.position.set(startX, startY, 400); 
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -30,11 +34,12 @@ export class Hyper3D {
         this.controls.enablePan = true; 
         this.controls.autoRotate = true; 
         this.controls.autoRotateSpeed = 0.2; 
+        this.controls.target.set(startX, startY, 0); // 視線の中心も2Dに合わせる
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(ambientLight);
         const mainLight = new THREE.PointLight(0x00ffcc, 2, 2000);
-        mainLight.position.set(0, 0, 0);
+        mainLight.position.set(startX, startY, 0); // 光源も現在地に持ってくる
         this.scene.add(mainLight);
 
         this.nodeDataMap = new Map(); 
@@ -43,22 +48,19 @@ export class Hyper3D {
 
         this.createStarfield();
 
-        // ★ 新規追加: レーザー判定（Raycaster）の準備
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // ウィンドウリサイズとマウスクリックのイベントを登録
         this.resizeHandler = () => this.resize();
         window.addEventListener('resize', this.resizeHandler);
         
         this.clickHandler = (e) => this.onClick(e);
         window.addEventListener('click', this.clickHandler);
 
-        this.initUniverse();
+        this.syncNodes(); // 初回の星生成
         this.animate();
     }
 
-    // テキスト看板の生成
     createTextSprite(text, colorStr) {
         const canvas = document.createElement('canvas');
         canvas.width = 512;
@@ -80,7 +82,6 @@ export class Hyper3D {
         return sprite;
     }
 
-    // 360度の星屑
     createStarfield() {
         const starGeometry = new THREE.BufferGeometry();
         const starVertices = [];
@@ -93,13 +94,11 @@ export class Hyper3D {
         this.scene.add(this.starfield);
     }
 
-    // ★ 新規追加: 星を「超カッコいいエネルギー体」として生成する関数
     createStarMesh(node, size, threeColor) {
         const group = new THREE.Group();
-        group.userData.node = node; // 判定用にデータを埋め込む
+        group.userData.node = node; 
         const isGhost = !!node.isGhost;
 
-        // 1. コア（高密度な中心核）
         const coreGeo = new THREE.SphereGeometry(size, 32, 32);
         const coreMat = new THREE.MeshPhysicalMaterial({
             color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
@@ -109,17 +108,15 @@ export class Hyper3D {
         core.userData.node = node;
         group.add(core);
 
-        // 2. ホログラム・ワイヤーフレーム（デジタルな骨格）
         const wireGeo = new THREE.SphereGeometry(size * 1.15, 16, 16);
         const wireMat = new THREE.MeshBasicMaterial({
             color: threeColor, wireframe: true, transparent: true, opacity: 0.3,
-            blending: THREE.AdditiveBlending // 光を重ねて輝かせる
+            blending: THREE.AdditiveBlending 
         });
         const wire = new THREE.Mesh(wireGeo, wireMat);
         wire.userData.node = node;
         group.add(wire);
 
-        // 3. グロー（オーラのような発光）
         const glowCanvas = document.createElement('canvas');
         glowCanvas.width = 128; glowCanvas.height = 128;
         const ctx = glowCanvas.getContext('2d');
@@ -139,39 +136,74 @@ export class Hyper3D {
         return { group, core, wire, glow };
     }
 
-    initUniverse() {
-        if (!this.currentUniverse || !this.currentUniverse.nodes) return;
+    // ★ 新規搭載: 2Dと3Dのデータをリアルタイムに完全同期する最強エンジン
+    syncNodes() {
+        if (!this.currentUniverse) return;
+        const currentNodes = this.currentUniverse.nodes;
 
-        this.currentUniverse.nodes.forEach(node => {
+        // 1. 削除された星を3D空間からも消滅させる
+        for (const [node, data] of this.nodeDataMap.entries()) {
+            if (!currentNodes.includes(node)) {
+                this.scene.remove(data.group);
+                this.nodeDataMap.delete(node);
+            }
+        }
+
+        // 2. 新しい星の生成 ＆ 既存の星の位置・名前をリアルタイム更新
+        currentNodes.forEach(node => {
+            let data = this.nodeDataMap.get(node);
             let nodeColor = node.color || '#00ffcc';
-            let threeColor;
-            try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00ffcc); }
 
-            const size = (node.size || 20) * 0.6;
-            
-            // ★ カッコいい星を生成
-            const starObj = this.createStarMesh(node, size, threeColor);
+            if (!data) {
+                // まだ3D化されていない星があれば生成
+                let threeColor;
+                try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00ffcc); }
+                const size = (node.size || 20) * 0.6;
+                
+                data = this.createStarMesh(node, size, threeColor);
+                if (node.z === undefined) node.z = (Math.random() - 0.5) * 200;
 
-            if (node.z === undefined) node.z = (Math.random() - 0.5) * 200; 
-            const posX = node.x || 0;
-            const posY = -(node.y || 0); 
-            const posZ = node.z;
+                const label = this.createTextSprite(node.name, nodeColor);
+                label.position.set(0, size + 15, 0);
+                label.userData.node = node;
+                label.userData.lastName = node.name; // 名前変更の検知用
+                data.group.add(label);
+                
+                data.label = label;
+                data.labelColor = nodeColor;
 
-            starObj.group.position.set(posX, posY, posZ);
+                this.scene.add(data.group);
+                this.nodeDataMap.set(node, data);
+            }
 
-            const label = this.createTextSprite(node.name, nodeColor);
-            label.position.set(0, size + 15, 0); 
-            label.userData.node = node;
-            starObj.group.add(label);
+            // 座標のリアルタイム同期（2Dエンジンで計算された軌道やフォーメーションを3Dへ適用）
+            const targetX = node.x || 0;
+            const targetY = -(node.y || 0); 
+            const targetZ = node.z || 0;
+            data.group.position.set(targetX, targetY, targetZ);
 
-            this.scene.add(starObj.group);
-            this.nodeDataMap.set(node, starObj);
+            // メニューから名前が変更されたら、即座に3Dの看板も書き換える
+            if (data.label && data.label.userData.lastName !== node.name) {
+                data.group.remove(data.label);
+                const size = (node.size || 20) * 0.6;
+                const newLabel = this.createTextSprite(node.name, data.labelColor);
+                newLabel.position.set(0, size + 15, 0);
+                newLabel.userData.node = node;
+                newLabel.userData.lastName = node.name;
+                data.group.add(newLabel);
+                data.label = newLabel;
+            }
         });
 
+        // 3. リンク（繋がれた線）のリアルタイム同期
+        while(this.linksGroup.children.length > 0) { 
+            this.linksGroup.remove(this.linksGroup.children[0]); 
+        }
+        
         const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.3 });
         this.currentUniverse.links.forEach(link => {
-            const sourceNode = this.currentUniverse.nodes.find(n => n === link.source || (n.id && n.id === link.source.id));
-            const targetNode = this.currentUniverse.nodes.find(n => n === link.target || (n.id && n.id === link.target.id));
+            const sourceNode = currentNodes.find(n => n === link.source || (n.id && n.id === link.source.id));
+            const targetNode = currentNodes.find(n => n === link.target || (n.id && n.id === link.target.id));
             if (sourceNode && targetNode) {
                 const sData = this.nodeDataMap.get(sourceNode);
                 const tData = this.nodeDataMap.get(targetNode);
@@ -185,26 +217,19 @@ export class Hyper3D {
         });
     }
 
-    // ★ 新規追加: マウスクリック時に「視線（Ray）」を飛ばして星に触れる処理
     onClick(event) {
         if (!this.isActive) return;
-        // UI（メニューなど）をクリックした時は反応させない
         if (event.target !== this.canvas) return;
 
-        // マウス座標を -1.0 〜 +1.0 の3Dスクリーン座標に変換
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-        // カメラ位置からクリックした方向へ光線を飛ばす
         this.raycaster.setFromCamera(this.mouse, this.camera);
-        
-        // 星（シーン内のオブジェクト）とぶつかったか判定
         const intersects = this.raycaster.intersectObjects(this.scene.children, true);
         
         let clickedNode = null;
         for (let i = 0; i < intersects.length; i++) {
             let obj = intersects[i].object;
-            // ぶつかったパーツ（コアやワイヤー）から、親の「星データ」を遡って探す
             while(obj && !obj.userData.node) { obj = obj.parent; }
             if (obj && obj.userData.node) {
                 clickedNode = obj.userData.node;
@@ -213,12 +238,9 @@ export class Hyper3D {
         }
 
         if (clickedNode) {
-            // 星に触れた！
             if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
-            // 2Dの時と全く同じUIメニューをその座標に開く
             this.app.ui.showMenu(clickedNode, event.clientX, event.clientY);
         } else {
-            // 何もない宇宙空間をクリックしたらメニューを閉じる
             this.app.ui.hideMenu();
             if (this.app.ui.hideQuickNote) this.app.ui.hideQuickNote();
         }
@@ -239,7 +261,9 @@ export class Hyper3D {
         const beatPhase = (Date.now() % msPerBeat) / msPerBeat;
         const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2);
 
-        // 星のコアとワイヤーを別々のスピードで回転させる（超カッコいい演出）
+        // ★ 毎フレーム、2Dエンジンのデータを3Dに同期！
+        this.syncNodes();
+
         this.nodeDataMap.forEach((data) => {
             if (data.core) data.core.rotation.y += 0.005;
             if (data.wire) {
@@ -262,7 +286,6 @@ export class Hyper3D {
     destroy() {
         this.isActive = false;
         window.removeEventListener('resize', this.resizeHandler);
-        // ★ イベントリスナーを外す（バグ防止）
         window.removeEventListener('click', this.clickHandler);
         this.renderer.dispose();
         this.canvas.remove();

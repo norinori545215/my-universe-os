@@ -54,15 +54,14 @@ export class UIManager {
     }
 
     // ★ 新規追加: 3Dエンジンの起動・破棄を行う関数
+    // ★ 修正: 2Dキャンバスのサイズ計算が狂わないように安全に隠す
     async toggle3DMode() {
         if (!this.is3DMode) {
-            // 2D -> 3D にシフト
+            // 2D -> 3D
             this.is3DMode = true;
-            
-            // 2Dキャンバスをフェードアウト
             this.app.canvas.style.transition = 'opacity 0.3s';
             this.app.canvas.style.opacity = '0'; 
-            setTimeout(() => this.app.canvas.style.display = 'none', 300);
+            this.app.canvas.style.pointerEvents = 'none'; // 操作だけ無効化し、DOMとしては残す
 
             if(window.universeAudio) window.universeAudio.playWarp();
 
@@ -73,18 +72,18 @@ export class UIManager {
                 console.error("Hyper3D.jsのロードに失敗:", e);
                 alert("3Dエンジンの起動に失敗しました。");
                 this.is3DMode = false;
-                
-                // エラー時は2Dに戻す
-                this.app.canvas.style.display = 'block';
-                setTimeout(() => this.app.canvas.style.opacity = '1', 50);
+                this.app.canvas.style.opacity = '1';
+                this.app.canvas.style.pointerEvents = 'auto';
             }
         } else {
-            // 3D -> 2D に戻る
+            // 3D -> 2D
             this.is3DMode = false;
             
-            // 2Dキャンバスをフェードイン
-            this.app.canvas.style.display = 'block';
-            setTimeout(() => this.app.canvas.style.opacity = '1', 50);
+            // 2Dキャンバスを安全に復帰
+            this.app.canvas.style.pointerEvents = 'auto';
+            this.app.canvas.style.opacity = '1';
+            // 念のため2Dエンジンのサイズ計算を強制リセット
+            this.app.resizeCanvas();
 
             if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
 
@@ -94,7 +93,6 @@ export class UIManager {
                 this.hyper3DInstance = null;
             }
         }
-        // カプセルのアイコン状態を更新
         this.updateUIState();
     }
 
