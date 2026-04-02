@@ -80,7 +80,7 @@ initUniverse() {
         const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
         this.currentUniverse.nodes.forEach(node => {
-            // ★ 修正：!! をつけることで、undefined を強制的に false に変換します
+            // !! で強制的に true/false に変換
             const isGhost = !!node.isGhost; 
             const colorHex = parseInt((node.color || '#00ffcc').replace('#', '0x'), 16);
 
@@ -92,8 +92,11 @@ initUniverse() {
                 roughness: 0.1,
                 transparent: true,
                 opacity: isGhost ? 0.3 : 0.9,
-                wireframe: isGhost // これで必ず true か false になるのでエラーが消えます！
+                wireframe: isGhost
             });
+
+            // ★★★ 先ほど私が誤って消してしまった、最重要の1行を復活！ ★★★
+            const mesh = new THREE.Mesh(sphereGeo, material);
 
             // 一度決めたZ座標はnodeに保存し、2Dに戻っても消えないようにする
             if (node.z === undefined) {
