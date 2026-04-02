@@ -925,7 +925,14 @@ showMenu(node, screenX, screenY) {
     showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
-        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button> <button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;
+        
+        // ★ 追加：すでにURLが設定されている場合のみ「解除ボタン」を表示
+        if (node.url) {
+            html += `<button id="remove-url-btn" style="width:100%; padding:12px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:8px; margin-bottom:10px;">🔗 リンクを解除して元に戻す</button>`;
+        }
+        
+        html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
         this.appLibraryModal.innerHTML = html; this.appLibraryModal.style.display = 'block';
         
         this.app.appPresets.forEach((app, i) => { document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; }; });
@@ -933,6 +940,19 @@ showMenu(node, screenX, screenY) {
             this.appLibraryModal.style.display='none'; const url = prompt("URL:", node.url);
             if(url) { node.url = url; if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){ try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; } } this.app.autoSave(); }
         };
+
+        // ★ 追加：リンク解除ボタンが押された時の処理
+        if (node.url) {
+            document.getElementById('remove-url-btn').onclick = () => {
+                if (confirm("リンクを解除して普通の星に戻しますか？")) {
+                    node.url = "";
+                    node.iconUrl = ""; // アイコン画像も消して元の丸い星に戻す
+                    this.app.autoSave();
+                    this.appLibraryModal.style.display = 'none';
+                }
+            };
+        }
+
         document.getElementById('lib-close').onclick = () => this.appLibraryModal.style.display='none';
     }
 

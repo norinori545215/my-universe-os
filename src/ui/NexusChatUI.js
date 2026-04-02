@@ -46,7 +46,7 @@ export class NexusChatUI {
         return `NX-${Math.abs(hash).toString(16).substring(0, 6).toUpperCase()}`;
     }
 
-    async startGlobalInboxListener() {
+async startGlobalInboxListener() {
         if (!db) return;
         const myId = this.getMyIdentity();
         if (!myId) return;
@@ -86,7 +86,19 @@ export class NexusChatUI {
                         const peerPubObj = JSON.parse(peerPubStr);
                         const shortId = this.getShortId(peerPubObj);
                         
-                        const newNode = this.app.currentUniverse.addNode(`User ${shortId}`, 0, 0, 30, '#ff00ff', 'star');
+                        // ★ 変更：チャットまとめ用の親星を探す（なければカメラの中心に作る）
+                        let hubNode = this.app.currentUniverse.nodes.find(n => n.name === '📡 通信ネットワーク');
+                        if (!hubNode) {
+                            const cx = this.app.camera ? -this.app.camera.x : 0;
+                            const cy = this.app.camera ? -this.app.camera.y : 0;
+                            hubNode = this.app.currentUniverse.addNode('📡 通信ネットワーク', cx, cy, 45, '#ff00ff', 'galaxy');
+                        }
+                        
+                        // ★ 変更：親星の「内部宇宙（innerUniverse）」に新しいチャット星を作る
+                        const rx = (Math.random() - 0.5) * 200;
+                        const ry = (Math.random() - 0.5) * 200;
+                        const newNode = hubNode.innerUniverse.addNode(`User ${shortId}`, rx, ry, 30, '#ff00ff', 'star');
+                        
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
                         newNode.messages = [];
