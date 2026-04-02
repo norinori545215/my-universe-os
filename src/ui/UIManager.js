@@ -699,11 +699,13 @@ showMenu(node, screenX, screenY) {
         const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
         const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
         
-        // ★ アコーディオンのスタイル定義（少しコンパクトにしました）
         const detailsStyle = "background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; margin-bottom:8px; overflow:hidden;";
         const summaryStyle = "padding:10px; font-size:13px; font-weight:bold; cursor:pointer; outline:none; background:rgba(0,0,0,0.4); display:flex; align-items:center; gap:5px; user-select:none;";
         const contentStyle = "padding:8px; display:flex; flex-direction:column; gap:4px; background:rgba(0,0,0,0.2);";
         const innerBtnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:10px; cursor:pointer; text-align:left; border-radius:6px; font-size:12px; width:100%; transition:background 0.2s;';
+
+        // ★ 追加：親の宇宙が存在する時だけ「外へ出す」ボタンを作成
+        const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
 
         this.actionMenu.innerHTML = `
             <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
@@ -735,9 +737,14 @@ showMenu(node, screenX, screenY) {
                     <button id="m-ai" style="${innerBtnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
                     <button id="m-dive" style="${innerBtnStyle}">➡ 内部へ潜る</button>
                     <button id="m-connect" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+                    
+                    <!-- ★ ここに移動用のボタンを追加 -->
+                    ${canMoveOut ? `<button id="m-move-out" style="${innerBtnStyle} color:#ffaa00; border:1px dashed #ffaa00;">⤴️ 外の空間へ出す</button>` : ''}
+                    <button id="m-move-node" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">📦 別の星の中へ移動</button>
+
                     <div style="display:flex; gap:4px;">
-                        <button id="m-up" style="${innerBtnStyle} flex:1; text-align:center; color:#ffcc00;">🌟 拡大</button>
-                        <button id="m-down" style="${innerBtnStyle} flex:1; text-align:center; color:#aaa;">🌠 縮小</button>
+                        <button id="m-up" style="${innerBtnStyle} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                        <button id="m-down" style="${innerBtnStyle} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
                     </div>
                 </div>
             </details>
@@ -753,12 +760,10 @@ showMenu(node, screenX, screenY) {
 
             <button id="m-close" style="${btnStyle} background:transparent; text-align:center; font-size:12px; color:#888; margin-top:8px;">❌ 閉じる</button>`;
 
-        // ★ 追加：アコーディオンの排他制御（1つ開いたら他を閉じる）
         const accordions = this.actionMenu.querySelectorAll('.nx-accordion');
         accordions.forEach(acc => {
             acc.addEventListener('click', (e) => {
-                if (e.target.tagName !== 'SUMMARY') return; // SUMMARY以外（ボタン等）のクリックは無視
-                // もし自分が今から「開く」なら、他の開いているものを全て閉じる
+                if (e.target.tagName !== 'SUMMARY') return; 
                 if (!acc.hasAttribute('open')) {
                     accordions.forEach(otherAcc => {
                         if (otherAcc !== acc && otherAcc.hasAttribute('open')) {
@@ -770,6 +775,36 @@ showMenu(node, screenX, screenY) {
         });
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
+
+        // ★ 追加：メニューから「別の星へ移動」する処理
+        const moveNodeBtn = document.getElementById('m-move-node');
+        if (moveNodeBtn) {
+            moveNodeBtn.onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                this.app.isMovingNode = true;
+                this.app.nodeToMove = node;
+                alert("移動先の星をタップ・クリックしてください。\n（何もない場所を押すとキャンセルします）");
+            };
+        }
+
+        // ★ 追加：親の宇宙へ「外に出す」処理
+        const moveOutBtnEl = document.getElementById('m-move-out');
+        if (moveOutBtnEl) {
+            moveOutBtnEl.onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                const parentUni = this.app.universeHistory[this.app.universeHistory.length - 1];
+                if (confirm(`「${node.name}」を外の空間（${parentUni.name}）へ移動しますか？`)) {
+                    this.app.currentUniverse.removeNode(node);
+                    node.parentUniverse = parentUni;
+                    parentUni.nodes.push(node);
+                    node.baseX = -this.app.camera.x; node.baseY = -this.app.camera.y;
+                    this.app.autoSave();
+                    if(window.universeAudio) window.universeAudio.playWarp();
+                }
+            };
+        }
 
         const vaultUpload = document.getElementById('m-vault-upload');
         document.getElementById('m-vault').onclick = async () => {
@@ -922,7 +957,7 @@ showMenu(node, screenX, screenY) {
         if(this.centerTextEl) this.centerTextEl.innerHTML = `${this.app.currentUniverse.name} <span style="font-size:0.5em; opacity:0.3;">EDIT</span>`;
     }
 
-    showAppLibrary(node) {
+showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
         html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;
