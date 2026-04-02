@@ -504,7 +504,6 @@ animate() {
             this.ui.updateBreadcrumbs(); 
         }
 
-        // 背景を少し深くしてネオンを際立たせる
         const bgColor = '#05050a'; 
         this.ctx.fillStyle = bgColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -514,10 +513,11 @@ animate() {
         this.ctx.scale(this.camera.scale, this.camera.scale);
         this.ctx.translate(this.camera.x, this.camera.y);
 
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        // 背景のダスト（少し奥にあるように見せる）
+        this.ctx.fillStyle = 'rgba(0, 255, 204, 0.2)';
         this.currentUniverse.particles.forEach(p => {
             this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.5)), 0, Math.PI * 2);
+            this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.3)), 0, Math.PI * 2);
             this.ctx.fill();
         });
 
@@ -542,6 +542,7 @@ animate() {
             }
         });
 
+        // ★ 3D座標の計算（X, Y, Z深度）
         this.currentUniverse.nodes.forEach(node => {
             if (node.baseX === undefined) node.baseX = node.x || 0;
             if (node.baseY === undefined) node.baseY = node.y || 0;
@@ -549,6 +550,8 @@ animate() {
             const parent = orbitingNodes.get(node);
 
             if (!parent) {
+                node.pseudoZ = 0; // 親星は基準（Z=0）
+                node.perspectiveScale = 1;
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
                 } else {
@@ -558,6 +561,8 @@ animate() {
             } else {
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
+                    node.pseudoZ = 1; // 掴んでいる時は一番手前
+                    node.perspectiveScale = 1.2;
                 } else {
                     if (parent.baseX === undefined) parent.baseX = parent.x || 0;
                     if (parent.baseY === undefined) parent.baseY = parent.y || 0;
@@ -565,20 +570,25 @@ animate() {
                     const dx = node.baseX - parent.baseX;
                     const dy = node.baseY - parent.baseY;
                     let radius = Math.hypot(dx, dy);
-                    // ★ 星が重ならないよう、最小半径を少し広げました
-                    if (radius < 40) radius = 80; 
+                    if (radius < 40) radius = 80;
 
                     const baseAngle = Math.atan2(dy, dx);
-                    // ★ 遠くの星ほどゆっくり回るように調整
-                    const speed = 25 / Math.max(radius, 50); 
+                    const speed = 25 / Math.max(radius, 50);
                     const currentAngle = baseAngle + (this.time * speed);
 
+                    // ★ 奥行き（Z軸）の計算：サイン波で-1(奥) 〜 1(手前) を取得
+                    const orbitZ = Math.sin(currentAngle); 
+                    node.pseudoZ = orbitZ; // 描画順に使用
+                    node.perspectiveScale = 1 + (orbitZ * 0.25); // 奥は縮小(0.75倍)、手前は拡大(1.25倍)
+
+                    // ★ 楕円軌道（斜め上からの視点：Y軸を0.35倍に圧縮）
                     node.x = parent.x + Math.cos(currentAngle) * radius;
-                    node.y = parent.y + Math.sin(currentAngle) * radius;
+                    node.y = parent.y + Math.sin(currentAngle) * radius * 0.35; 
                 }
             }
         });
 
+        // ワームホールの描画
         this.ctx.lineWidth = 3;
         this.wormholes.forEach(wh => {
             const realSource = findRealNode(wh.source);
@@ -594,11 +604,11 @@ animate() {
                 const endX = visibleNode.x + Math.sin(this.time)*50; const endY = visibleNode.y - 500;
                 this.ctx.lineTo(endX, endY); this.ctx.stroke();
                 this.ctx.fillStyle = '#ff88ff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
-                this.ctx.fillText(`➡ ${destNode.name} (${destNode.parentUniverse ? destNode.parentUniverse.name : 'Unknown'})`, endX, visibleNode.y - 120);
+                this.ctx.fillText(`➡ ${destNode.name}`, endX, visibleNode.y - 120);
             }
         });
 
-        // ★★★ 衛星軌道（ホログラムリングとエネルギーライン）の描画 ★★★
+        // 立体的な軌道リングとテザーの描画
         this.currentUniverse.links.forEach(link => {
             const realSource = findRealNode(link.source);
             const realTarget = findRealNode(link.target);
@@ -611,32 +621,31 @@ animate() {
                 let radius = Math.hypot(dx, dy);
                 if (radius < 40) radius = 80;
 
-                // 1. サイバーパンクな軌道リング（HUDレーダー風）
+                // ★ リングの空間を斜めに傾ける（Y軸を圧縮）
                 this.ctx.save();
                 this.ctx.translate(realSource.x, realSource.y);
-                this.ctx.rotate(this.time * 0.1); // リング自体もゆっくり回転
+                this.ctx.scale(1, 0.35); // これで完全な楕円（3Dパース）になる
+                this.ctx.rotate(this.time * 0.1);
                 
-                // 外側の破線レーダー
-                this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.15 + (pulse * 0.2)})`;
+                this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.15 + (pulse * 0.1)})`;
                 this.ctx.lineWidth = 1.5;
-                this.ctx.setLineDash([4, 12, 2, 8]); // 不規則なサイバーダッシュ
+                this.ctx.setLineDash([4, 12, 2, 8]);
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, radius, 0, Math.PI * 2); 
                 this.ctx.stroke();
                 
-                // 内側の薄い発光ライン
                 this.ctx.setLineDash([]);
-                this.ctx.strokeStyle = `rgba(255, 0, 255, ${0.05 + (pulse * 0.1)})`;
+                this.ctx.strokeStyle = `rgba(255, 0, 255, ${0.05 + (pulse * 0.05)})`;
                 this.ctx.lineWidth = 4;
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, radius - 2, 0, Math.PI * 2); 
                 this.ctx.stroke();
                 this.ctx.restore();
 
-                // 2. エネルギーライン（親星から衛星へ供給される光）
+                // テザー（ライン）
                 const grad = this.ctx.createLinearGradient(realSource.x, realSource.y, realTarget.x, realTarget.y);
                 grad.addColorStop(0, `rgba(0, 255, 204, ${0.5 + pulse})`);
-                grad.addColorStop(1, `rgba(0, 255, 204, 0)`); // 衛星に向かって消えていく
+                grad.addColorStop(1, `rgba(0, 255, 204, 0)`);
 
                 this.ctx.strokeStyle = grad;
                 this.ctx.lineWidth = 1;
@@ -649,38 +658,31 @@ animate() {
             }
         });
 
-        if (this.isLinking && this.linkSourceNode) {
-            this.ctx.strokeStyle = '#00ffcc';
-            this.ctx.setLineDash([5, 5]); this.ctx.beginPath();
-            this.ctx.moveTo(this.linkSourceNode.x, this.linkSourceNode.y);
-            this.ctx.lineTo(this.mouseWorldX, this.mouseWorldY);
-            this.ctx.stroke(); this.ctx.setLineDash([]);
-        }
+        // ★★★ 星のZ深度（奥から手前）ソート ★★★
+        // 描画順を「Z軸の奥（マイナス）」から「手前（プラス）」に並び替える
+        const sortedNodes = [...this.currentUniverse.nodes].sort((a, b) => (a.pseudoZ || 0) - (b.pseudoZ || 0));
 
-        for (let i = this.ripples.length - 1; i >= 0; i--) {
-            const r = this.ripples[i]; r.radius += r.speed; r.alpha -= r.speed / r.maxRadius; 
-            if (r.alpha <= 0) { this.ripples.splice(i, 1); } 
-            else {
-                this.ctx.save(); this.ctx.strokeStyle = r.color; this.ctx.globalAlpha = r.alpha; this.ctx.lineWidth = 2;
-                this.ctx.beginPath(); this.ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2); this.ctx.stroke(); this.ctx.restore();
-            }
-        }
-
-        this.currentUniverse.nodes.forEach(node => {
-            let globalAlpha = 1.0;
+        sortedNodes.forEach(node => {
+            let baseAlpha = 1.0;
             if (node.isGhost) {
                 const distToCenter = Math.hypot(node.x - screenCenterX, node.y - screenCenterY);
                 const visibleRadius = 300 / this.camera.scale;
                 if (distToCenter > visibleRadius) return;
-                globalAlpha = 1.0 - (distToCenter / visibleRadius);
+                baseAlpha = 1.0 - (distToCenter / visibleRadius);
             }
 
-            this.ctx.globalAlpha = globalAlpha;
+            // 奥に行くほど暗く、手前に来るほど鮮やかにする
+            const depthDarkness = 0.5 + ((node.perspectiveScale || 1) * 0.5);
+            this.ctx.globalAlpha = baseAlpha * depthDarkness;
 
             const isGrabbed = (node === this.grabbedNode);
-            let drawSize = node.size + (isGrabbed ? 3 : 0);
-            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; drawSize += pulse * 2.0; 
-            this.ctx.shadowBlur = isGrabbed ? 30 : 15 + (pulse * 15); this.ctx.shadowColor = node.color;
+            // ★ サイズに遠近法（perspectiveScale）を掛ける
+            let drawSize = (node.size + (isGrabbed ? 3 : 0)) * (node.perspectiveScale || 1);
+            drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; 
+            drawSize += pulse * 2.0; 
+            
+            this.ctx.shadowBlur = isGrabbed ? 30 : (15 + (pulse * 15)) * (node.perspectiveScale || 1); 
+            this.ctx.shadowColor = node.color;
 
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
@@ -696,12 +698,15 @@ animate() {
 
             if (node.isLocked) { 
                 this.ctx.fillStyle = node.isTempUnlocked ? "#00ffcc" : "#ff4444"; 
-                this.ctx.font = "16px serif"; 
+                this.ctx.font = `${16 * (node.perspectiveScale || 1)}px serif`; 
                 this.ctx.textAlign = "center"; 
                 this.ctx.fillText(node.isTempUnlocked ? "🔓" : "🔒", node.x, node.y - drawSize - 10); 
             }
-            this.ctx.fillStyle = '#ffffff'; this.ctx.font = '12px sans-serif'; this.ctx.textAlign = 'center';
-            const displayName = node.url ? `🔗 ${node.name}` : node.name; this.ctx.fillText(displayName, node.x, node.y + drawSize + 20);
+            this.ctx.fillStyle = '#ffffff'; 
+            this.ctx.font = `${12 * (node.perspectiveScale || 1)}px sans-serif`; 
+            this.ctx.textAlign = 'center';
+            const displayName = node.url ? `🔗 ${node.name}` : node.name; 
+            this.ctx.fillText(displayName, node.x, node.y + drawSize + (20 * (node.perspectiveScale || 1)));
             
             this.ctx.globalAlpha = 1.0;
         });
