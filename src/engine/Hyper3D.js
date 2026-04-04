@@ -1,7 +1,6 @@
 // src/engine/Hyper3D.js
 import * as THREE from 'https://esm.sh/three';
 import { OrbitControls } from 'https://esm.sh/three/addons/controls/OrbitControls.js';
-// ★ 重すぎる原因だったEffectComposer（ブルーム処理）のインポートを全削除！
 
 export class Hyper3D {
     constructor(app) {
@@ -15,20 +14,19 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
-        // ★ 修正: 靄（もや）の原因だったフォグを大幅に薄くし、遠くだけが暗くなるように調整 (0.0015 -> 0.0005)
-        this.scene.fog = new THREE.FogExp2(0x020205, 0.0005); 
+        // 宇宙の深淵（完全な漆黒）
+        this.scene.background = new THREE.Color(0x000000);
+        this.scene.fog = new THREE.FogExp2(0x000000, 0.0003); 
 
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
         
         const startX = -this.app.camera.x;
         const startY = this.app.camera.y; 
-        this.camera.position.set(startX, startY, 400); 
+        this.camera.position.set(startX, startY, 500); 
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        // スマホ等での重さを軽減するため、ピクセル比の上限を1.5に制限（十分綺麗です）
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        this.renderer.setClearColor(0x020205, 1); 
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
@@ -36,17 +34,30 @@ export class Hyper3D {
         this.controls.enablePan = true; 
         this.controls.autoRotate = false; 
         this.controls.target.set(startX, startY, 0); 
+        this.controls.minDistance = 20; 
+        this.controls.maxDistance = 8000; 
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // 少し明るくして視認性アップ
+        // ★ 立体感を際立たせるための照明設計 ★
+        // 1. 全体をわずかに照らす環境光（暗め）
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15); 
         this.scene.add(ambientLight);
-        const mainLight = new THREE.PointLight(0x00ffcc, 1.5, 2000);
-        mainLight.position.set(startX, startY, 0); 
-        this.scene.add(mainLight);
+        
+        // 2. 宇宙の遠方から差し込む強烈な主光源（これで星に「影」ができ、球体に見える）
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        directionalLight.position.set(1000, 2000, 1000);
+        this.scene.add(directionalLight);
+
+        // 3. カメラの視線の先を照らすヘッドライト（艶を反射させる）
+        const cameraLight = new THREE.PointLight(0xffffff, 1.0, 2000);
+        this.camera.add(cameraLight);
+        this.scene.add(this.camera);
 
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.25 });
+        
+        // リンク線
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0x88bbff, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending });
 
         this.createStarfield();
 
@@ -78,31 +89,63 @@ export class Hyper3D {
         this.animate();
     }
 
-    createTextSprite(text, colorStr) {
+    createTextSprite(text) {
         const canvas = document.createElement('canvas');
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        ctx.shadowColor = colorStr || '#00ffcc';
-        ctx.shadowBlur = 8; // 影をシャープにして靄を減らす
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.font = '32px sans-serif'; 
+        ctx.textAlign = 'center'; 
+        ctx.textBaseline = 'middle';
         ctx.fillText(text, 256, 64);
+        
         const texture = new THREE.CanvasTexture(canvas);
-        const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.set(120, 30, 1); 
+        sprite.scale.set(100, 25, 1); 
         return sprite;
     }
 
     createStarfield() {
-        const starGeometry = new THREE.BufferGeometry();
-        const starVertices = [];
-        for (let i = 0; i < 2000; i++) { // 背景の星屑を2000に減らして超軽量化
-            starVertices.push((Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000);
+        const starGeo = new THREE.BufferGeometry();
+        const count = 4000;
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+
+        for(let i=0; i<count; i++) {
+            positions[i*3] = (Math.random() - 0.5) * 12000;
+            positions[i*3+1] = (Math.random() - 0.5) * 12000;
+            positions[i*3+2] = (Math.random() - 0.5) * 12000;
+            
+            const rand = Math.random();
+            let r = 1, g = 1, b = 1;
+            if(rand > 0.8) { b = 1.0; r = 0.8; g = 0.9; } 
+            else if(rand > 0.6) { r = 1.0; g = 0.9; b = 0.7; } 
+            else { r = 0.9; g = 0.9; b = 0.9; } 
+
+            colors[i*3] = r; colors[i*3+1] = g; colors[i*3+2] = b;
         }
-        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-        const starMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 1.5, transparent: true, opacity: 0.5 });
-        this.starfield = new THREE.Points(starGeometry, starMaterial);
+
+        starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        starGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const dotCanvas = document.createElement('canvas');
+        dotCanvas.width = 16; dotCanvas.height = 16;
+        const dotCtx = dotCanvas.getContext('2d');
+        dotCtx.beginPath(); dotCtx.arc(8, 8, 6, 0, Math.PI*2); dotCtx.fillStyle = '#fff'; dotCtx.fill();
+
+        const starMat = new THREE.PointsMaterial({ 
+            size: 3.0, 
+            map: new THREE.CanvasTexture(dotCanvas),
+            vertexColors: true, 
+            transparent: true, 
+            opacity: 0.6, 
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.starfield = new THREE.Points(starGeo, starMat);
         this.scene.add(this.starfield);
     }
 
@@ -110,41 +153,39 @@ export class Hyper3D {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // ★ 修正: 超絶重いMeshPhysicalMaterialをやめ、高速で綺麗なMeshStandardMaterialに変更
-        const coreGeo = new THREE.SphereGeometry(1, 32, 32);
-        const coreMat = new THREE.MeshStandardMaterial({
-            color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
-            roughness: 0.2, metalness: 0.5, transparent: true, opacity: isGhost ? 0.3 : 0.95
+        // ★ 変更: 立体感を極限まで高めたマテリアル（艶と影の表現）
+        const coreGeo = new THREE.SphereGeometry(1, 64, 64); // 球体を滑らかに
+        const coreMat = new THREE.MeshPhysicalMaterial({
+            color: threeColor,
+            emissive: threeColor,
+            emissiveIntensity: 0.15, // ★ここが重要。自ら光りすぎないことで、ライトによる「影」を落とす
+            metalness: 0.3,
+            roughness: 0.2, // ツヤツヤにする
+            clearcoat: 1.0, // 表面をガラスのようにコーティングして光を反射させる
+            clearcoatRoughness: 0.1,
+            transparent: true, 
+            opacity: isGhost ? 0.3 : 0.95
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.scale.set(size, size, size);
         core.userData.node = node;
         group.add(core);
 
-        const wireGeo = new THREE.SphereGeometry(1.15, 16, 16);
-        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.3, blending: THREE.AdditiveBlending });
-        const wire = new THREE.Mesh(wireGeo, wireMat);
-        wire.scale.set(size, size, size);
-        wire.userData.node = node;
-        group.add(wire);
+        // ★ 変更: 球体の裏側（縁）だけを描画し、大気のように見せる（リムライト効果）
+        const auraGeo = new THREE.SphereGeometry(1.12, 32, 32);
+        const auraMat = new THREE.MeshBasicMaterial({
+            color: threeColor,
+            transparent: true,
+            opacity: isGhost ? 0.05 : 0.25,
+            blending: THREE.AdditiveBlending,
+            side: THREE.BackSide, // ★内側だけを描画することで、縁が光る球体に見せるトリック
+            depthWrite: false
+        });
+        const aura = new THREE.Mesh(auraGeo, auraMat);
+        aura.scale.set(size, size, size);
+        group.add(aura);
 
-        // ブルームの代わりに、軽量な2Dキャンバスベースのオーラを強めにかける
-        const glowCanvas = document.createElement('canvas');
-        glowCanvas.width = 128; glowCanvas.height = 128;
-        const ctx = glowCanvas.getContext('2d');
-        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        grad.addColorStop(0, 'rgba(255,255,255,0.9)'); 
-        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
-        const glowTex = new THREE.CanvasTexture(glowCanvas);
-        const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: threeColor, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.2 : 0.6 });
-        const glow = new THREE.Sprite(glowMat);
-        glow.scale.set(size * 4, size * 4, 1);
-        glow.userData.node = node;
-        group.add(glow);
-
-        return { group, core, wire, glow }; // glowを追加
+        return { group, core, aura };
     }
 
     applySphereFormation() {
@@ -289,14 +330,13 @@ export class Hyper3D {
 
             if (!data) {
                 data = this.createStarMesh(node, size, threeColor, isGhost);
-                if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 200;
+                if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 400;
 
-                const label = this.createTextSprite(node.name, nodeColor);
-                label.position.set(0, size + 15, 0);
+                const label = this.createTextSprite(node.name);
+                label.position.set(0, size * 1.5 + 10, 0);
                 label.userData.node = node; label.userData.lastName = node.name;
                 data.group.add(label);
-                
-                data.label = label; data.labelColor = nodeColor;
+                data.label = label;
 
                 const targetX = node.x || 0; const targetY = -(node.y || 0); const targetZ = node.z || 0;
                 data.group.position.set(targetX, targetY, targetZ);
@@ -305,17 +345,14 @@ export class Hyper3D {
                 this.nodeDataMap.set(node, data);
             } else {
                 data.core.scale.set(size, size, size);
-                data.wire.scale.set(size, size, size);
-                data.glow.scale.set(size * 4, size * 4, 1); // 擬似ブルーム（オーラ）のサイズも同期
-
+                data.aura.scale.set(size, size, size); 
+                
                 data.core.material.color.copy(threeColor);
                 data.core.material.emissive.copy(threeColor);
-                data.wire.material.color.copy(threeColor);
-                data.glow.material.color.copy(threeColor); // オーラの色も同期
-
+                data.aura.material.color.copy(threeColor);
+                
                 data.core.material.opacity = isGhost ? 0.3 : 0.95;
-                data.wire.material.opacity = isGhost ? 0.1 : 0.3;
-                data.glow.material.opacity = isGhost ? 0.2 : 0.6;
+                data.aura.material.opacity = isGhost ? 0.05 : 0.25;
             }
 
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
@@ -327,11 +364,11 @@ export class Hyper3D {
 
             if (data.label && data.label.userData.lastName !== node.name) {
                 data.group.remove(data.label);
-                const newLabel = this.createTextSprite(node.name, nodeColor);
-                newLabel.position.set(0, size + 15, 0);
+                const newLabel = this.createTextSprite(node.name);
+                newLabel.position.set(0, size * 1.5 + 10, 0);
                 newLabel.userData.node = node; newLabel.userData.lastName = node.name;
                 data.group.add(newLabel);
-                data.label = newLabel; data.labelColor = nodeColor;
+                data.label = newLabel;
             }
         });
 
@@ -349,7 +386,7 @@ export class Hyper3D {
                 this.raycaster.ray.at(distance, mousePoint);
                 const points = [sourceData.group.position, mousePoint];
                 const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-                const tempLine = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xff00ff, dashSize: 5, gapSize: 5 }));
+                const tempLine = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0x88bbff, dashSize: 5, gapSize: 5 }));
                 tempLine.computeLineDistances();
                 this.linksGroup.add(tempLine);
             }
@@ -392,7 +429,7 @@ export class Hyper3D {
             this.camera.position.lerp(this.diveTarget, 0.08);
             this.controls.target.lerp(this.diveTarget, 0.08);
 
-            if (this.camera.position.distanceTo(this.diveTarget) < 10) {
+            if (this.camera.position.distanceTo(this.diveTarget) < 5) {
                 this.app.universeHistory.push(this.app.currentUniverse);
                 this.app.currentUniverse = this.app.targetUniverse;
                 this.app.camera.reset();
@@ -412,35 +449,24 @@ export class Hyper3D {
             
             const startX = -this.app.camera.x;
             const startY = this.app.camera.y;
-            this.camera.position.set(startX, startY, 400); 
+            this.camera.position.set(startX, startY, 500); 
             this.controls.target.set(startX, startY, 0); 
         }
-
-        const bpm = 153;
-        const msPerBeat = 60000 / (bpm / 2);
-        const beatPhase = (Date.now() % msPerBeat) / msPerBeat;
-        const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2);
 
         this.syncNodes();
 
         this.nodeDataMap.forEach((data) => {
-            if (data.core) data.core.rotation.y += 0.005;
-            if (data.wire) {
-                data.wire.rotation.x -= 0.008;
-                data.wire.rotation.y -= 0.008;
+            if (data.core) {
+                data.core.rotation.y += 0.002;
+                data.core.rotation.x += 0.001;
             }
-            // 鼓動による明るさの変化も控えめに
-            if (data.core) data.core.material.emissiveIntensity = 0.5 + (pulse * 0.3);
         });
 
         if (this.starfield) {
-            this.starfield.rotation.y += 0.0005;
-            this.starfield.rotation.x += 0.0002;
+            this.starfield.rotation.y += 0.0001;
         }
 
         this.controls.update();
-        
-        // ★ 修正: 超重いComposerを削除し、軽量で高速な通常のRendererに戻しました
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -450,6 +476,9 @@ export class Hyper3D {
         window.removeEventListener('pointerdown', this.pointerDown);
         window.removeEventListener('pointermove', this.pointerMove);
         window.removeEventListener('pointerup', this.pointerUp);
+        
+        if(this.scene.background) this.scene.background.dispose();
+        
         this.renderer.dispose();
         this.canvas.remove();
     }
