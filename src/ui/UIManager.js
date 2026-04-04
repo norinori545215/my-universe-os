@@ -55,13 +55,16 @@ export class UIManager {
 
     // ★ 新規追加: 3Dエンジンの起動・破棄を行う関数
     // ★ 修正: 2Dキャンバスのサイズ計算が狂わないように安全に隠す
+// ★ 修正: 2Dキャンバスを安全に隠し、透明な壁バグを防ぐ
     async toggle3DMode() {
         if (!this.is3DMode) {
-            // 2D -> 3D
+            // 2D -> 3D にシフト
             this.is3DMode = true;
+            
             this.app.canvas.style.transition = 'opacity 0.3s';
             this.app.canvas.style.opacity = '0'; 
-            this.app.canvas.style.pointerEvents = 'none'; // 操作だけ無効化し、DOMとしては残す
+            // ★ 追加: 2Dキャンバスのタッチ判定を完全に無効化する
+            this.app.canvas.style.pointerEvents = 'none'; 
 
             if(window.universeAudio) window.universeAudio.playWarp();
 
@@ -76,14 +79,12 @@ export class UIManager {
                 this.app.canvas.style.pointerEvents = 'auto';
             }
         } else {
-            // 3D -> 2D
+            // 3D -> 2D に戻る
             this.is3DMode = false;
             
-            // 2Dキャンバスを安全に復帰
+            // ★ 追加: 2Dキャンバスのタッチ判定を復活させる
             this.app.canvas.style.pointerEvents = 'auto';
             this.app.canvas.style.opacity = '1';
-            // 念のため2Dエンジンのサイズ計算を強制リセット
-            this.app.resizeCanvas();
 
             if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
 
