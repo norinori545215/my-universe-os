@@ -1,7 +1,6 @@
 // src/engine/Hyper3D.js
 import * as THREE from 'https://esm.sh/three';
 import { OrbitControls } from 'https://esm.sh/three/addons/controls/OrbitControls.js';
-// ★ 重すぎる原因だったEffectComposer（ブルーム処理）のインポートを全削除！
 
 export class Hyper3D {
     constructor(app) {
@@ -15,20 +14,24 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
-        // ★ 修正: 靄（もや）の原因だったフォグを大幅に薄くし、遠くだけが暗くなるように調整 (0.0015 -> 0.0005)
-        this.scene.fog = new THREE.FogExp2(0x020205, 0.0005); 
 
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        // ★ アップデート1: 靄（フォグ）を完全に削除し、クリアな深淵を目指す
+        this.scene.fog = null; 
+
+        // ★ アップデート2: 美しい星雲（ネビュラ）の背景テクスチャを追加
+        this.createNebulaBackground();
+
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000); // 遠くまで見えるように遠点を拡張
         
         const startX = -this.app.camera.x;
         const startY = this.app.camera.y; 
-        this.camera.position.set(startX, startY, 400); 
+        this.camera.position.set(startX, startY, 500); // 初期位置を少し引いて、全体を見渡しやすく
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        // スマホ等での重さを軽減するため、ピクセル比の上限を1.5に制限（十分綺麗です）
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        this.renderer.setClearColor(0x020205, 1); 
+        // 背景は星雲テクスチャが担うため、クリアカラーは漆黒に
+        this.renderer.setClearColor(0x000000, 1); 
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
@@ -36,17 +39,21 @@ export class Hyper3D {
         this.controls.enablePan = true; 
         this.controls.autoRotate = false; 
         this.controls.target.set(startX, startY, 0); 
+        this.controls.minDistance = 50; // 近づきすぎ防止
+        this.controls.maxDistance = 5000; // 遠ざかりすぎ防止
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // 少し明るくして視認性アップ
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // 環境光を抑えて、星自体の発光を際立たせる
         this.scene.add(ambientLight);
-        const mainLight = new THREE.PointLight(0x00ffcc, 1.5, 2000);
-        mainLight.position.set(startX, startY, 0); 
+        // 星々を照らす、わずかに青みがかった主光源
+        const mainLight = new THREE.PointLight(0xaaccff, 1.5, 5000);
+        mainLight.position.set(startX, startY, 1000); 
         this.scene.add(mainLight);
 
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.25 });
+        // リンク線も、よりサイバーで綺麗な青緑に
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2 });
 
         this.createStarfield();
 
@@ -78,12 +85,36 @@ export class Hyper3D {
         this.animate();
     }
 
+    // ★ 新規追加: 美しい星雲の背景（スカイボックスの簡易版）を作成
+    createNebulaBackground() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024; canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        // 漆黒のベース
+        ctx.fillStyle = '#000000'; ctx.fillRect(0,0,1024,1024);
+        
+        // ランダムな星雲を描画
+        for(let i=0; i<5; i++) {
+            const x = Math.random() * 1024; const y = Math.random() * 1024;
+            const radius = 200 + Math.random() * 300;
+            const grd = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            const hue = Math.random() * 360;
+            grd.addColorStop(0, `hsla(${hue}, 100%, 10%, 0.2)`); // 深く薄い色
+            grd.addColorStop(1, 'hsla(0, 0%, 0%, 0)');
+            ctx.fillStyle = grd; ctx.fillRect(0, 0, 1024, 1024);
+        }
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        this.scene.background = texture;
+    }
+
     createTextSprite(text, colorStr) {
         const canvas = document.createElement('canvas');
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         ctx.shadowColor = colorStr || '#00ffcc';
-        ctx.shadowBlur = 8; // 影をシャープにして靄を減らす
+        ctx.shadowBlur = 10;
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(text, 256, 64);
@@ -97,54 +128,120 @@ export class Hyper3D {
     createStarfield() {
         const starGeometry = new THREE.BufferGeometry();
         const starVertices = [];
-        for (let i = 0; i < 2000; i++) { // 背景の星屑を2000に減らして超軽量化
-            starVertices.push((Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000);
+        const starColors = [];
+        for (let i = 0; i < 5000; i++) { // 星屑を5000に増やして、広大さを表現
+            starVertices.push((Math.random() - 0.5) * 10000, (Math.random() - 0.5) * 10000, (Math.random() - 0.5) * 10000);
+            
+            // ★ アップデート3: 星屑にわずかな色彩（白、青、黄、赤）を与える
+            const r = 0.8 + Math.random() * 0.2;
+            const g = 0.8 + Math.random() * 0.2;
+            const b = 0.8 + Math.random() * 0.2;
+            if(Math.random() > 0.9) { // 10%の確率で色を偏らせる
+                const type = Math.random();
+                if(type < 0.4) { starColors.push(r*0.7, g*0.7, b); } // 青白い
+                else if(type < 0.8) { starColors.push(r, g, b*0.7); } // 黄色っぽい
+                else { starColors.push(r, g*0.7, b*0.7); } // 赤っぽい
+            } else {
+                starColors.push(r, g, b); // ほぼ白
+            }
         }
         starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-        const starMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 1.5, transparent: true, opacity: 0.5 });
+        starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+        
+        // ★ 修正: vertexColorsを有効にし、PointsMaterial自体にテクスチャ（丸い点）を適用
+        const starMaterial = new THREE.PointsMaterial({ size: 2.5, vertexColors: true, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
+        // 丸い点のテクスチャを作成して適用（靄を減らすためシャープに）
+        const dotCanvas = document.createElement('canvas');
+        dotCanvas.width = 32; dotCanvas.height = 32;
+        const dotCtx = dotCanvas.getContext('2d');
+        dotCtx.fillStyle = '#ffffff'; dotCtx.beginPath(); dotCtx.arc(16, 16, 14, 0, Math.PI*2); dotCtx.fill();
+        starMaterial.map = new THREE.CanvasTexture(dotCanvas);
+
         this.starfield = new THREE.Points(starGeometry, starMaterial);
         this.scene.add(this.starfield);
+    }
+
+    // ★ 新規追加: 惑星のような渦巻きテクスチャを作成
+    createPlanetTexture(colorStr) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        
+        // ベースカラー
+        const color = new THREE.Color(colorStr);
+        ctx.fillStyle = color.getStyle(); ctx.fillRect(0,0,256,256);
+        
+        // 渦巻き模様（ガス惑星風）
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.globalAlpha = 0.15;
+        for(let i=0; i<30; i++) {
+            ctx.beginPath();
+            const y = Math.random() * 256;
+            ctx.moveTo(0, y);
+            for(let x=0; x<256; x+=10) {
+                const wave = Math.sin(x * 0.05 + y * 0.1) * 5;
+                ctx.lineTo(x, y + wave + (Math.random()-0.5)*2);
+            }
+            ctx.stroke();
+        }
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping; // 横方向にループさせる
+        return texture;
     }
 
     createStarMesh(node, size, threeColor, isGhost) {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // ★ 修正: 超絶重いMeshPhysicalMaterialをやめ、高速で綺麗なMeshStandardMaterialに変更
+        // ★ アップデート4: のっぺりした球体をやめ、Planetテクスチャを貼り付けたリアルな惑星へ
         const coreGeo = new THREE.SphereGeometry(1, 32, 32);
+        const planetTexture = this.createPlanetTexture(node.color);
         const coreMat = new THREE.MeshStandardMaterial({
-            color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
-            roughness: 0.2, metalness: 0.5, transparent: true, opacity: isGhost ? 0.3 : 0.95
+            map: planetTexture,
+            emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.6, // 自らも美しく光る
+            roughness: 0.5, metalness: 0.2, transparent: true, opacity: isGhost ? 0.3 : 0.98
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.scale.set(size, size, size);
         core.userData.node = node;
+        core.rotation.y = Math.random() * Math.PI * 2; // 初期回転をランダムに
         group.add(core);
+        group.userData.core = core; // アニメーション用に記録
 
-        const wireGeo = new THREE.SphereGeometry(1.15, 16, 16);
-        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.3, blending: THREE.AdditiveBlending });
+        // ワイヤーフレーム（ホログラム装甲）
+        const wireGeo = new THREE.SphereGeometry(1.1, 16, 16);
+        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.05 : 0.2, blending: THREE.AdditiveBlending });
         const wire = new THREE.Mesh(wireGeo, wireMat);
         wire.scale.set(size, size, size);
         wire.userData.node = node;
         group.add(wire);
+        group.userData.wire = wire; // アニメーション用に記録
 
-        // ブルームの代わりに、軽量な2Dキャンバスベースのオーラを強めにかける
+        // ★ アップデート5: 擬似オーラ（Glow）をより柔らかく、重層的に重ねて美しく
         const glowCanvas = document.createElement('canvas');
         glowCanvas.width = 128; glowCanvas.height = 128;
         const ctx = glowCanvas.getContext('2d');
         const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
         grad.addColorStop(0, 'rgba(255,255,255,0.9)'); 
-        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
+        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.7)`); 
+        grad.addColorStop(0.5, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.2)`); // 柔らかい広がりを追加
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
         const glowTex = new THREE.CanvasTexture(glowCanvas);
-        const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: threeColor, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.2 : 0.6 });
-        const glow = new THREE.Sprite(glowMat);
-        glow.scale.set(size * 4, size * 4, 1);
-        glow.userData.node = node;
-        group.add(glow);
+        // オーラ（Sprite）を2枚重ねて、深みを出す
+        const glowMat1 = new THREE.SpriteMaterial({ map: glowTex, color: threeColor, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.1 : 0.5 });
+        const glow1 = new THREE.Sprite(glowMat1);
+        glow1.scale.set(size * 3.5, size * 3.5, 1);
+        glow1.userData.node = node;
+        group.add(glow1);
 
-        return { group, core, wire, glow }; // glowを追加
+        const glowMat2 = new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.05 : 0.2 });
+        const glow2 = new THREE.Sprite(glowMat2);
+        glow2.scale.set(size * 5, size * 5, 1); // より大きく、白い光を重ねる
+        glow2.userData.node = node;
+        group.add(glow2);
+
+        return { group };
     }
 
     applySphereFormation() {
@@ -152,7 +249,7 @@ export class Hyper3D {
         const count = nodes.length;
         if (count === 0) return;
         
-        const radius = Math.max(150, count * 20); 
+        const radius = Math.max(200, count * 25); 
         const phi = Math.PI * (3 - Math.sqrt(5)); 
         
         nodes.forEach((node, i) => {
@@ -289,7 +386,7 @@ export class Hyper3D {
 
             if (!data) {
                 data = this.createStarMesh(node, size, threeColor, isGhost);
-                if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 200;
+                if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 400;
 
                 const label = this.createTextSprite(node.name, nodeColor);
                 label.position.set(0, size + 15, 0);
@@ -304,18 +401,18 @@ export class Hyper3D {
                 this.scene.add(data.group);
                 this.nodeDataMap.set(node, data);
             } else {
-                data.core.scale.set(size, size, size);
-                data.wire.scale.set(size, size, size);
-                data.glow.scale.set(size * 4, size * 4, 1); // 擬似ブルーム（オーラ）のサイズも同期
-
-                data.core.material.color.copy(threeColor);
-                data.core.material.emissive.copy(threeColor);
-                data.wire.material.color.copy(threeColor);
-                data.glow.material.color.copy(threeColor); // オーラの色も同期
-
-                data.core.material.opacity = isGhost ? 0.3 : 0.95;
-                data.wire.material.opacity = isGhost ? 0.1 : 0.3;
-                data.glow.material.opacity = isGhost ? 0.2 : 0.6;
+                // サイズと色、ゴースト状態の同期
+                data.group.userData.core.scale.set(size, size, size);
+                data.group.userData.wire.scale.set(size, size, size);
+                // Glow（Sprite）のサイズ同期はGroupごと行われるため不要
+                
+                data.group.userData.core.material.color.copy(threeColor);
+                data.group.userData.core.material.emissive.copy(threeColor);
+                data.group.userData.wire.material.color.copy(threeColor);
+                
+                // ゴースト状態
+                data.group.userData.core.material.opacity = isGhost ? 0.3 : 0.98;
+                data.group.userData.wire.material.opacity = isGhost ? 0.05 : 0.2;
             }
 
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
@@ -392,7 +489,8 @@ export class Hyper3D {
             this.camera.position.lerp(this.diveTarget, 0.08);
             this.controls.target.lerp(this.diveTarget, 0.08);
 
-            if (this.camera.position.distanceTo(this.diveTarget) < 10) {
+            // ダイブの最後、霧がないのでパッと切り替わるのを防ぐため、カメラを星の内部に突入させる
+            if (this.camera.position.distanceTo(this.diveTarget) < 5) {
                 this.app.universeHistory.push(this.app.currentUniverse);
                 this.app.currentUniverse = this.app.targetUniverse;
                 this.app.camera.reset();
@@ -412,7 +510,7 @@ export class Hyper3D {
             
             const startX = -this.app.camera.x;
             const startY = this.app.camera.y;
-            this.camera.position.set(startX, startY, 400); 
+            this.camera.position.set(startX, startY, 500); 
             this.controls.target.set(startX, startY, 0); 
         }
 
@@ -424,23 +522,23 @@ export class Hyper3D {
         this.syncNodes();
 
         this.nodeDataMap.forEach((data) => {
-            if (data.core) data.core.rotation.y += 0.005;
-            if (data.wire) {
-                data.wire.rotation.x -= 0.008;
-                data.wire.rotation.y -= 0.008;
+            // ★ 修正: 星のコア（惑星）とワイヤーフレームを自転させる
+            if (data.group.userData.core) data.group.userData.core.rotation.y += 0.003; // ゆっくり自転
+            if (data.group.userData.wire) {
+                data.group.userData.wire.rotation.x -= 0.005;
+                data.group.userData.wire.rotation.y -= 0.005;
             }
-            // 鼓動による明るさの変化も控えめに
-            if (data.core) data.core.material.emissiveIntensity = 0.5 + (pulse * 0.3);
+            // 鼓動による明るさの変化も、テクスチャがあるので控えめに
+            if (data.group.userData.core) data.group.userData.core.material.emissiveIntensity = 0.4 + (pulse * 0.3);
         });
 
+        // 背景の星屑もゆっくり回転させる
         if (this.starfield) {
-            this.starfield.rotation.y += 0.0005;
-            this.starfield.rotation.x += 0.0002;
+            this.starfield.rotation.y += 0.0001;
+            this.starfield.rotation.x += 0.00005;
         }
 
         this.controls.update();
-        
-        // ★ 修正: 超重いComposerを削除し、軽量で高速な通常のRendererに戻しました
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -450,6 +548,9 @@ export class Hyper3D {
         window.removeEventListener('pointerdown', this.pointerDown);
         window.removeEventListener('pointermove', this.pointerMove);
         window.removeEventListener('pointerup', this.pointerUp);
+        
+        if(this.scene.background) this.scene.background.dispose();
+        
         this.renderer.dispose();
         this.canvas.remove();
     }
