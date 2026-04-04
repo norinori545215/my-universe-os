@@ -14,10 +14,9 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
-        this.scene.fog = null; // 靄を完全に排除し、クリアな視界を確保
-
-        // ★ 神アプデ1: 息を呑むほど美しい「深宇宙の星雲（ネビュラ）」背景
-        this.createNebulaBackground();
+        // ★ 真っ暗な宇宙：背景は完全な漆黒。遠くに行くほど闇に溶け込む黒いフォグ
+        this.scene.background = new THREE.Color(0x000000);
+        this.scene.fog = new THREE.FogExp2(0x000000, 0.0005); 
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
         
@@ -39,21 +38,18 @@ export class Hyper3D {
         this.controls.minDistance = 20; 
         this.controls.maxDistance = 8000; 
 
-        // 光源もよりドラマチックに
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.1); 
+        // 宇宙の冷たさを出すため、環境光は極限まで抑える
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.05); 
         this.scene.add(ambientLight);
-        const mainLight = new THREE.PointLight(0xffffff, 2.0, 5000);
-        mainLight.position.set(startX, startY, 1000); 
-        this.scene.add(mainLight);
 
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
         
-        // リンクの線もエネルギービームのように美しく
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
+        // リンク線は、闇を邪魔しないように細く儚い白銀色に
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending });
 
-        // ★ 神アプデ2: シェーダー制御の「瞬く星屑」
+        // 背景の無数の星屑
         this.createStarfield();
 
         this.raycaster = new THREE.Raycaster();
@@ -84,105 +80,63 @@ export class Hyper3D {
         this.animate();
     }
 
-    createNebulaBackground() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 2048; canvas.height = 1024;
-        const ctx = canvas.getContext('2d');
-        
-        ctx.fillStyle = '#020205'; ctx.fillRect(0,0,2048,1024);
-        ctx.globalCompositeOperation = 'screen';
-        
-        // 宇宙空間に漂う紫や青のガスを描画
-        for(let i=0; i<20; i++) {
-            const x = Math.random() * 2048; const y = Math.random() * 1024;
-            const radius = 300 + Math.random() * 500;
-            const grd = ctx.createRadialGradient(x, y, 0, x, y, radius);
-            const hues = [220, 280, 320, 180]; // 青、紫、ピンク、シアン
-            const hue = hues[Math.floor(Math.random() * hues.length)];
-            
-            grd.addColorStop(0, `hsla(${hue}, 80%, 20%, 0.15)`);
-            grd.addColorStop(0.5, `hsla(${hue}, 80%, 10%, 0.05)`);
-            grd.addColorStop(1, 'hsla(0, 0%, 0%, 0)');
-            ctx.fillStyle = grd; ctx.fillRect(0, 0, 2048, 1024);
-        }
-        
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        this.scene.background = texture;
-    }
-
-    createTextSprite(text, colorStr) {
+    createTextSprite(text) {
         const canvas = document.createElement('canvas');
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        ctx.shadowColor = colorStr || '#00ffcc';
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        
+        // 文字は飾り気をなくし、白くシャープで静寂なフォントに
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = '32px sans-serif'; 
+        ctx.textAlign = 'center'; 
+        ctx.textBaseline = 'middle';
         ctx.fillText(text, 256, 64);
+        
         const texture = new THREE.CanvasTexture(canvas);
+        // depthWriteをfalseにして、星の裏側に回っても綺麗に透けるようにする
         const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.set(120, 30, 1); 
+        sprite.scale.set(100, 25, 1); 
         return sprite;
     }
 
     createStarfield() {
         const starGeo = new THREE.BufferGeometry();
-        const count = 4000;
+        const count = 5000;
         const positions = new Float32Array(count * 3);
         const colors = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count); 
 
         for(let i=0; i<count; i++) {
-            positions[i*3] = (Math.random() - 0.5) * 10000;
-            positions[i*3+1] = (Math.random() - 0.5) * 10000;
-            positions[i*3+2] = (Math.random() - 0.5) * 10000;
+            // 宇宙の彼方まで広がるように
+            positions[i*3] = (Math.random() - 0.5) * 12000;
+            positions[i*3+1] = (Math.random() - 0.5) * 12000;
+            positions[i*3+2] = (Math.random() - 0.5) * 12000;
             
-            // 星屑に多彩な色（青白、オレンジなど）を付与
-            const hue = Math.random() < 0.2 ? Math.random() : 0.6; 
-            const color = new THREE.Color().setHSL(hue, 0.8, 0.8);
-            colors[i*3] = color.r; colors[i*3+1] = color.g; colors[i*3+2] = color.b;
-            
-            sizes[i] = Math.random() * 3.0 + 1.0;
-            phases[i] = Math.random() * Math.PI * 2; // 瞬きのタイミングをバラバラに
+            // 星屑はリアルな天体のように、白、わずかな青、わずかなオレンジのみ
+            const rand = Math.random();
+            let r = 1, g = 1, b = 1;
+            if(rand > 0.8) { b = 1.0; r = 0.8; g = 0.9; } // 青白い星
+            else if(rand > 0.6) { r = 1.0; g = 0.9; b = 0.7; } // オレンジの星
+            else { r = 0.9; g = 0.9; b = 0.9; } // わずかに暗い星
+
+            colors[i*3] = r; colors[i*3+1] = g; colors[i*3+2] = b;
         }
 
         starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         starGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        starGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        starGeo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
 
-        // カスタムGLSLシェーダーで「瞬き」と「カメラ距離に応じたサイズ変更」を処理
-        const starMat = new THREE.ShaderMaterial({
-            uniforms: { time: { value: 0 } },
-            vertexShader: `
-                uniform float time;
-                attribute float size;
-                attribute vec3 color;
-                attribute float phase;
-                varying vec3 vColor;
-                varying float vAlpha;
-                void main() {
-                    vColor = color;
-                    vAlpha = 0.5 + 0.5 * sin(time * 2.0 + phase); // リアルな瞬き
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = size * (400.0 / -mvPosition.z);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                varying vec3 vColor;
-                varying float vAlpha;
-                void main() {
-                    vec2 coord = gl_PointCoord - vec2(0.5);
-                    if(length(coord) > 0.5) discard; // 丸い星にする
-                    gl_FragColor = vec4(vColor, vAlpha * 0.8);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
+        // 丸くてシャープな星屑のテクスチャ
+        const dotCanvas = document.createElement('canvas');
+        dotCanvas.width = 16; dotCanvas.height = 16;
+        const dotCtx = dotCanvas.getContext('2d');
+        dotCtx.beginPath(); dotCtx.arc(8, 8, 6, 0, Math.PI*2); dotCtx.fillStyle = '#fff'; dotCtx.fill();
+
+        const starMat = new THREE.PointsMaterial({ 
+            size: 2.0, 
+            map: new THREE.CanvasTexture(dotCanvas),
+            vertexColors: true, 
+            transparent: true, 
+            opacity: 0.8, 
             depthWrite: false
         });
 
@@ -194,88 +148,41 @@ export class Hyper3D {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // ★ 神アプデ3: GLSLカスタムシェーダーによる「本物の発光体」
-        const coreGeo = new THREE.SphereGeometry(size, 32, 32);
-        const coreMat = new THREE.ShaderMaterial({
-            uniforms: {
-                color: { value: threeColor },
-                time: { value: Math.random() * 100 }
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 color;
-                uniform float time;
-                varying vec3 vNormal;
-                void main() {
-                    float pulse = 0.9 + 0.1 * sin(time * 3.0);
-                    // エッジをわずかに暗くして球体の立体感を出す
-                    float edge = max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    gl_FragColor = vec4(color * pulse, 1.0) * (edge * 0.5 + 0.5);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending
+        // ★ リアルな星：中心は熱量で「純白」に輝く（ワイヤーフレームは廃止）
+        const coreGeo = new THREE.SphereGeometry(size * 0.4, 32, 32);
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff, // 中心は常に白
+            transparent: true, 
+            opacity: isGhost ? 0.3 : 1.0
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         group.add(core);
 
-        // ★ 神アプデ4: フレネル効果シェーダーによる「コロナ（大気の発光）」
-        const haloGeo = new THREE.SphereGeometry(size * 1.3, 32, 32);
-        const haloMat = new THREE.ShaderMaterial({
-            uniforms: {
-                color: { value: threeColor },
-                opacityMod: { value: isGhost ? 0.2 : 0.8 }
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 color;
-                uniform float opacityMod;
-                varying vec3 vNormal;
-                void main() {
-                    float dotP = dot(vNormal, vec3(0.0, 0.0, 1.0));
-                    // 縁(エッジ)に向かうほど発光が強くなるフレネル計算
-                    float fresnel = pow(max(0.0, 1.1 - dotP), 3.0);
-                    gl_FragColor = vec4(color, 1.0) * fresnel * opacityMod;
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false // これにより重なりが美しくなります
-        });
-        const halo = new THREE.Mesh(haloGeo, haloMat);
-        group.add(halo);
-
-        // 中心から放たれる強力なレンズフレア（擬似ブルーム）
+        // ★ リアルな星：色の情報は、周囲の「コロナ（大気/光の拡散）」として表現する
         const glowCanvas = document.createElement('canvas');
         glowCanvas.width = 128; glowCanvas.height = 128;
         const ctx = glowCanvas.getContext('2d');
         const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        // 中心は白、外側に向かって設定された色にグラデーションし、最後は闇に溶ける
         grad.addColorStop(0, 'rgba(255,255,255,1.0)'); 
-        grad.addColorStop(0.1, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
+        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
+        grad.addColorStop(0.6, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.1)`);
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+        
         const glowTex = new THREE.CanvasTexture(glowCanvas);
-        const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: threeColor, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.2 : 0.7, depthWrite: false });
+        const glowMat = new THREE.SpriteMaterial({ 
+            map: glowTex, 
+            transparent: true, 
+            blending: THREE.AdditiveBlending, 
+            opacity: isGhost ? 0.2 : 0.8,
+            depthWrite: false
+        });
         const glow = new THREE.Sprite(glowMat);
         glow.scale.set(size * 6, size * 6, 1);
         group.add(glow);
 
-        // アニメーション用に記録
-        group.userData.coreUniforms = coreMat.uniforms;
-
-        return { group };
+        return { group, core, glow };
     }
 
     applySphereFormation() {
@@ -411,23 +318,22 @@ export class Hyper3D {
 
         currentNodes.forEach(node => {
             let data = this.nodeDataMap.get(node);
-            let nodeColor = node.color || '#00ffcc';
+            let nodeColor = node.color || '#ffffff';
             const isGhost = !!node.isGhost;
             const size = (node.size || 20) * 0.6;
 
             let threeColor;
-            try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00ffcc); }
+            try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0xffffff); }
 
             if (!data) {
                 data = this.createStarMesh(node, size, threeColor, isGhost);
                 if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 400;
 
-                const label = this.createTextSprite(node.name, nodeColor);
-                label.position.set(0, size + 15, 0);
+                const label = this.createTextSprite(node.name);
+                label.position.set(0, size * 2 + 10, 0);
                 label.userData.node = node; label.userData.lastName = node.name;
                 data.group.add(label);
-                
-                data.label = label; data.labelColor = nodeColor;
+                data.label = label;
 
                 const targetX = node.x || 0; const targetY = -(node.y || 0); const targetZ = node.z || 0;
                 data.group.position.set(targetX, targetY, targetZ);
@@ -435,17 +341,23 @@ export class Hyper3D {
                 this.scene.add(data.group);
                 this.nodeDataMap.set(node, data);
             } else {
-                // UPDATE properties for Shaders
-                data.group.children[0].scale.set(size, size, size); // Core
-                data.group.children[1].scale.set(size * 1.3, size * 1.3, size * 1.3); // Halo
-                data.group.children[2].scale.set(size * 6, size * 6, 1); // Glow Sprite
+                data.core.scale.set(size * 0.4, size * 0.4, size * 0.4);
+                data.glow.scale.set(size * 6, size * 6, 1); 
                 
-                data.group.children[0].material.uniforms.color.value.copy(threeColor);
-                data.group.children[1].material.uniforms.color.value.copy(threeColor);
-                data.group.children[2].material.color.copy(threeColor);
-                
-                data.group.children[1].material.uniforms.opacityMod.value = isGhost ? 0.2 : 0.8;
-                data.group.children[2].material.opacity = isGhost ? 0.2 : 0.7;
+                // コアは白のまま、コロナの色だけ更新
+                const glowCanvas = document.createElement('canvas');
+                glowCanvas.width = 128; glowCanvas.height = 128;
+                const ctx = glowCanvas.getContext('2d');
+                const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+                grad.addColorStop(0, 'rgba(255,255,255,1.0)'); 
+                grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
+                grad.addColorStop(0.6, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.1)`);
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+                data.glow.material.map = new THREE.CanvasTexture(glowCanvas);
+
+                data.core.material.opacity = isGhost ? 0.3 : 1.0;
+                data.glow.material.opacity = isGhost ? 0.2 : 0.8;
             }
 
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
@@ -457,11 +369,11 @@ export class Hyper3D {
 
             if (data.label && data.label.userData.lastName !== node.name) {
                 data.group.remove(data.label);
-                const newLabel = this.createTextSprite(node.name, nodeColor);
-                newLabel.position.set(0, size + 15, 0);
+                const newLabel = this.createTextSprite(node.name);
+                newLabel.position.set(0, size * 2 + 10, 0);
                 newLabel.userData.node = node; newLabel.userData.lastName = node.name;
                 data.group.add(newLabel);
-                data.label = newLabel; data.labelColor = nodeColor;
+                data.label = newLabel;
             }
         });
 
@@ -479,7 +391,7 @@ export class Hyper3D {
                 this.raycaster.ray.at(distance, mousePoint);
                 const points = [sourceData.group.position, mousePoint];
                 const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-                const tempLine = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xff00ff, dashSize: 5, gapSize: 5 }));
+                const tempLine = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 5, gapSize: 5 }));
                 tempLine.computeLineDistances();
                 this.linksGroup.add(tempLine);
             }
@@ -510,8 +422,6 @@ export class Hyper3D {
     animate() {
         if (!this.isActive) return;
         requestAnimationFrame(() => this.animate());
-
-        const time = performance.now() * 0.001;
 
         if (this.app.isZoomingIn && this.app.diveTargetNode) {
             if (!this.isDiving) {
@@ -548,19 +458,25 @@ export class Hyper3D {
             this.controls.target.set(startX, startY, 0); 
         }
 
+        const bpm = 153;
+        const msPerBeat = 60000 / (bpm / 2);
+        const beatPhase = (Date.now() % msPerBeat) / msPerBeat;
+        const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2);
+
         this.syncNodes();
 
-        // ★ 神アプデ5: シェーダーへの時間(time)の伝達
         this.nodeDataMap.forEach((data) => {
-            if (data.group.userData.coreUniforms) {
-                data.group.userData.coreUniforms.time.value = time;
+            // 星のまたたき（コロナのサイズをわずかに変化させる）
+            if (data.glow) {
+                const baseScale = (data.group.userData.node.size || 20) * 0.6 * 6;
+                const fluctuate = baseScale + (Math.sin(Date.now() * 0.002 + data.group.position.x) * baseScale * 0.05);
+                data.glow.scale.set(fluctuate, fluctuate, 1);
             }
         });
 
         if (this.starfield) {
-            this.starfield.material.uniforms.time.value = time;
-            this.starfield.rotation.y += 0.0002;
-            this.starfield.rotation.x += 0.0001;
+            // 背景の星も、静寂を保つために本当にゆっくりとだけ回る
+            this.starfield.rotation.y += 0.00005;
         }
 
         this.controls.update();
