@@ -14,6 +14,7 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
+        // 背景は完全な漆黒
         this.scene.background = new THREE.Color(0x000000);
         this.scene.fog = new THREE.FogExp2(0x000000, 0.0003); 
 
@@ -29,6 +30,7 @@ export class Hyper3D {
 
         this.camera.position.set(targetX, targetY, 600); 
 
+        // 屈折を綺麗に見せるためアンチエイリアスをON
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -42,22 +44,26 @@ export class Hyper3D {
         this.controls.minDistance = 20; 
         this.controls.maxDistance = 8000; 
 
+        // ★ クリスタルの面（エッジ）を際立たせる照明設計 ★
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); 
         this.scene.add(ambientLight);
         
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
+        // 屈折と反射を生み出すメインライト
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.0);
         dirLight1.position.set(1000, 2000, 1000);
         this.scene.add(dirLight1);
 
-        const cameraLight = new THREE.PointLight(0xffffff, 1.0, 2000);
-        this.camera.add(cameraLight);
-        this.scene.add(this.camera);
+        // 影になりすぎるのを防ぐサブライト
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight2.position.set(-1000, -1000, -1000);
+        this.scene.add(dirLight2);
 
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
         
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
+        // リンク線（マナの糸）
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
 
         this.createStarfield();
 
@@ -94,8 +100,8 @@ export class Hyper3D {
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
-        ctx.font = 'bold 32px "Times New Roman", serif'; // FFっぽくセリフ体で神聖に
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; 
+        ctx.font = '28px "Times New Roman", serif'; // FFを意識したセリフ体
         ctx.textAlign = 'center'; 
         ctx.textBaseline = 'middle';
         ctx.shadowColor = '#000';
@@ -111,7 +117,7 @@ export class Hyper3D {
 
     createStarfield() {
         const starGeo = new THREE.BufferGeometry();
-        const count = 4000;
+        const count = 3000;
         const positions = new Float32Array(count * 3);
         const colors = new Float32Array(count * 3);
 
@@ -138,104 +144,93 @@ export class Hyper3D {
         dotCtx.beginPath(); dotCtx.arc(8, 8, 6, 0, Math.PI*2); dotCtx.fillStyle = '#fff'; dotCtx.fill();
 
         const starMat = new THREE.PointsMaterial({ 
-            size: 2.5, 
+            size: 2.0, 
             map: new THREE.CanvasTexture(dotCanvas),
             vertexColors: true, 
             transparent: true, 
-            opacity: 0.7, 
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
+            opacity: 0.6, 
+            depthWrite: false
         });
 
         this.starfield = new THREE.Points(starGeo, starMat);
         this.scene.add(this.starfield);
     }
 
-    // ★ 完全新規：FF的クリスタルクラスター（群晶）生成メソッド ★
+    // ★ 究極の立体クリスタル生成メソッド ★
     createStarMesh(node, size, threeColor, isGhost) {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // 1. 神聖なるマテリアル
-        // AdditiveBlending（加算合成）により、破片が重なるほど中心が白く眩しく輝く！
-        const crystalMat = new THREE.MeshPhongMaterial({
-            color: threeColor, 
-            emissive: threeColor, 
-            emissiveIntensity: 0.6, // 内側から強烈に光る
-            specular: 0xffffff, // 鋭いハイライト
-            shininess: 200, 
-            transparent: true, 
-            opacity: isGhost ? 0.3 : 0.85,
-            blending: THREE.AdditiveBlending, // ★ここが超重要。光が重なって白飛びする魔法
-            flatShading: true, // 面をバキバキに割る
-            side: THREE.DoubleSide // 裏面も描画して複雑さを増す
+        // ベース形状：正八面体（FFのセーブクリスタルの基本形）
+        const crystalGeo = new THREE.OctahedronGeometry(1, 0); 
+        
+        // 1. 【外殻】完全なガラスの層
+        // 内部を屈折して映し出し、表面はバキバキに光を反射する
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff, // ガラス自体は無色
+            transmission: 1.0, // 100%の透過（奥を透かして屈折させる）
+            opacity: 1.0,
+            transparent: true,
+            roughness: 0.0, // 表面はツルツル
+            metalness: 0.1,
+            ior: 2.4, // ★屈折率（ダイヤモンド級。これにより中のコアが歪んで美しく見える）
+            thickness: size * 2.0, // ガラスの厚み
+            clearcoat: 1.0, // 表面のクリアな反射
+            flatShading: true, // ★面ごとにカクカクさせる（立体の要）
+            side: THREE.FrontSide
         });
-        group.userData.crystalMat = crystalMat;
+        const glass = new THREE.Mesh(crystalGeo, glassMat);
+        // 縦長に引き伸ばす
+        glass.scale.set(size * 0.8, size * 2.2, size * 0.8);
+        group.add(glass);
 
-        const cluster = new THREE.Group();
+        // 2. 【内核】パライバトルマリン色に光るコア
+        // ガラスの中に閉じ込められた魔力の源
+        const coreMat = new THREE.MeshStandardMaterial({
+            color: threeColor, 
+            emissive: threeColor, // 色に合わせて発光
+            emissiveIntensity: isGhost ? 0.2 : 2.0, // 強く光らせる
+            roughness: 0.8,
+            transparent: true,
+            opacity: isGhost ? 0.2 : 0.9,
+            flatShading: true
+        });
+        const core = new THREE.Mesh(crystalGeo, coreMat);
+        // 外殻のガラスより一回り小さくする
+        core.scale.set(size * 0.5, size * 1.6, size * 0.5);
+        group.add(core);
 
-        // ベースとなる鋭い破片の形
-        const geoShard = new THREE.OctahedronGeometry(1, 0); 
+        // 3. 【光源】周囲を照らす本物の光
+        // クリスタル自体が光源となり、周囲のリンク線などを照らす
+        const innerLight = new THREE.PointLight(threeColor, isGhost ? 0.5 : 2.0, size * 15);
+        group.add(innerLight);
 
-        // 中央の巨大なクリスタル主柱
-        const mainShard = new THREE.Mesh(geoShard, crystalMat);
-        mainShard.scale.set(0.6, 2.5, 0.6); // 縦に長く鋭く
-        cluster.add(mainShard);
-
-        // 周囲に突き刺さるサブクリスタル（4〜5本乱立させる）
-        const shardCount = 4 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < shardCount; i++) {
-            const shard = new THREE.Mesh(geoShard, crystalMat);
-            const s = 0.3 + Math.random() * 0.3; // メインより少し小さい
-            shard.scale.set(s, s * (2.0 + Math.random() * 1.5), s);
+        // 4. サブクリスタル（根本に小さな破片を2つ追加して情報量を上げる）
+        for (let i = 0; i < 2; i++) {
+            const subGlass = new THREE.Mesh(crystalGeo, glassMat);
+            const subCore = new THREE.Mesh(crystalGeo, coreMat);
             
-            // 中央から少し外れた位置に配置
-            const angle = (i / shardCount) * Math.PI * 2;
-            const dist = 0.3 + Math.random() * 0.3;
-            shard.position.set(Math.cos(angle)*dist, (Math.random()-0.5)*0.5, Math.sin(angle)*dist);
+            const s = size * 0.4;
+            subGlass.scale.set(s * 0.8, s * 1.8, s * 0.8);
+            subCore.scale.set(s * 0.5, s * 1.3, s * 0.5);
             
-            // 外側に向かって斜めに突き刺さるように傾ける
-            shard.rotation.x = (Math.random() - 0.5) * 0.8;
-            shard.rotation.z = (Math.random() - 0.5) * 0.8;
-            shard.rotation.y = Math.random() * Math.PI;
+            const subGroup = new THREE.Group();
+            subGroup.add(subGlass);
+            subGroup.add(subCore);
             
-            cluster.add(shard);
+            // 根本に斜めに突き刺す
+            const angle = i * Math.PI;
+            subGroup.position.set(Math.cos(angle) * size * 0.4, -size * 0.8, Math.sin(angle) * size * 0.4);
+            subGroup.rotation.z = (i === 0) ? 0.5 : -0.5;
+            subGroup.rotation.x = 0.3;
+            
+            group.add(subGroup);
         }
 
-        group.add(cluster);
-        group.userData.cluster = cluster; // アニメーション用に記録
-
-        // 2. 内部からの強烈な魔力光源
-        const innerLight = new THREE.PointLight(threeColor, isGhost ? 0.5 : 3.0, 100);
-        group.add(innerLight);
+        // アニメーション・同期用に保存
+        group.userData.glass = glass;
+        group.userData.core = core;
         group.userData.innerLight = innerLight;
-
-        // 3. マナの光暈（オーラ）
-        const glowCanvas = document.createElement('canvas');
-        glowCanvas.width = 128; glowCanvas.height = 128;
-        const ctx = glowCanvas.getContext('2d');
-        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        grad.addColorStop(0, 'rgba(255,255,255,1.0)'); 
-        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
-        
-        const glowTex = new THREE.CanvasTexture(glowCanvas);
-        const glowMat = new THREE.SpriteMaterial({ 
-            map: glowTex, 
-            color: threeColor, 
-            transparent: true, 
-            blending: THREE.AdditiveBlending, 
-            opacity: isGhost ? 0.2 : 0.9,
-            depthWrite: false
-        });
-        const glow = new THREE.Sprite(glowMat);
-        glow.scale.set(6, 6, 1); // 相対サイズで設定
-        group.add(glow);
-        group.userData.glow = glow; 
-
-        // 最後に、全体を与えられた `size` で一括スケール！
-        group.scale.set(size, size, size);
 
         return { group };
     }
@@ -373,10 +368,10 @@ export class Hyper3D {
 
         currentNodes.forEach(node => {
             let data = this.nodeDataMap.get(node);
-            let nodeColor = node.color || '#00f2f2'; 
+            let nodeColor = node.color || '#00f2f2'; // 初期値をパライバブルーに
             const isGhost = !!node.isGhost;
-            // クラスターは巨大になるため少し縮小補正
-            const size = (node.size || 20) * 0.4;
+            // サイズ補正
+            const size = (node.size || 20) * 0.7;
 
             let threeColor;
             try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00f2f2); }
@@ -386,8 +381,7 @@ export class Hyper3D {
                 if (node.z === undefined || Math.abs(node.z) > 1000) node.z = (Math.random() - 0.5) * 400;
 
                 const label = this.createTextSprite(node.name);
-                // テキストは常にグループの少し上に配置
-                label.position.set(0, 4, 0);
+                label.position.set(0, size * 2.5 + 10, 0);
                 label.userData.node = node; label.userData.lastName = node.name;
                 data.group.add(label);
                 data.label = label;
@@ -398,20 +392,27 @@ export class Hyper3D {
                 this.scene.add(data.group);
                 this.nodeDataMap.set(node, data);
             } else {
-                // スケールはグループ全体に対して一括でかける！
-                data.group.scale.set(size, size, size);
+                // 色とサイズのリアルタイム同期
+                data.group.userData.glass.scale.set(size * 0.8, size * 2.2, size * 0.8);
+                data.group.userData.core.scale.set(size * 0.5, size * 1.6, size * 0.5);
                 
-                // 色と透明度の同期
-                data.group.userData.crystalMat.color.copy(threeColor);
-                data.group.userData.crystalMat.emissive.copy(threeColor);
-                data.group.userData.crystalMat.opacity = isGhost ? 0.3 : 0.85;
+                // コア（内側）の色を更新
+                data.group.userData.core.material.color.copy(threeColor);
+                data.group.userData.core.material.emissive.copy(threeColor);
+                data.group.userData.core.material.opacity = isGhost ? 0.2 : 0.9;
+                
+                // サブクリスタルの色も一括更新
+                data.group.children.forEach(child => {
+                    if (child instanceof THREE.Group) {
+                        child.children[1].material.color.copy(threeColor);
+                        child.children[1].material.emissive.copy(threeColor);
+                    }
+                });
 
-                data.group.userData.glow.material.color.copy(threeColor);
-                data.group.userData.glow.material.opacity = isGhost ? 0.2 : 0.9;
-                
+                // 内部ライトの更新
                 if (data.group.userData.innerLight) {
                     data.group.userData.innerLight.color.copy(threeColor);
-                    data.group.userData.innerLight.intensity = isGhost ? 0.5 : 3.0;
+                    data.group.userData.innerLight.intensity = isGhost ? 0.5 : 2.0;
                 }
             }
 
@@ -425,7 +426,7 @@ export class Hyper3D {
             if (data.label && data.label.userData.lastName !== node.name) {
                 data.group.remove(data.label);
                 const newLabel = this.createTextSprite(node.name);
-                newLabel.position.set(0, 4, 0); // スケール後の中央上部
+                newLabel.position.set(0, size * 2.5 + 10, 0);
                 newLabel.userData.node = node; newLabel.userData.lastName = node.name;
                 data.group.add(newLabel);
                 data.label = newLabel;
@@ -520,15 +521,12 @@ export class Hyper3D {
         this.syncNodes();
 
         this.nodeDataMap.forEach((data) => {
-            // ★ クリスタル群晶全体が、マナを帯びてゆっくり自転する
-            if (data.group.userData.cluster) {
-                data.group.userData.cluster.rotation.y += 0.005;
-                data.group.userData.cluster.rotation.x += 0.002;
-            }
+            // クリスタル全体の自転（神聖さを出すためゆっくり）
+            data.group.rotation.y += 0.002;
             
             // 浮遊アニメーション
             const baseZ = data.group.userData.node.z || 0;
-            data.group.position.z = baseZ + (Math.sin(Date.now() * 0.001 + data.group.position.x) * 5); 
+            data.group.position.z = baseZ + (Math.sin(Date.now() * 0.001 + data.group.position.x) * 3); 
         });
 
         if (this.starfield) {
