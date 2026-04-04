@@ -18,7 +18,6 @@ export class Hyper3D {
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
         
-        // カメラの初期位置を2Dの中心にピッタリ合わせる
         const startX = -this.app.camera.x;
         const startY = this.app.camera.y; 
         this.camera.position.set(startX, startY, 400); 
@@ -32,7 +31,7 @@ export class Hyper3D {
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
         this.controls.enablePan = true; 
-        this.controls.autoRotate = false; // ドラッグ操作の邪魔にならないよう自動回転はオフ
+        this.controls.autoRotate = false; 
         this.controls.target.set(startX, startY, 0); 
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
@@ -48,7 +47,6 @@ export class Hyper3D {
 
         this.createStarfield();
 
-        // ★ 星を掴んで動かすためのレーザー判定システム
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
@@ -57,7 +55,7 @@ export class Hyper3D {
         this.pointerDownPos = { x: 0, y: 0 };
         this.draggedNode = null;
         this.draggedGroup = null;
-        this.dragPlane = new THREE.Plane(); // ドラッグ用の見えない壁
+        this.dragPlane = new THREE.Plane(); 
         
         this.resizeHandler = () => this.resize();
         window.addEventListener('resize', this.resizeHandler);
@@ -101,23 +99,24 @@ export class Hyper3D {
         this.scene.add(this.starfield);
     }
 
-    createStarMesh(node, size, threeColor) {
+    createStarMesh(node, size, threeColor, isGhost) {
         const group = new THREE.Group();
         group.userData.node = node; 
-        const isGhost = !!node.isGhost;
 
-        const coreGeo = new THREE.SphereGeometry(size, 32, 32);
+        const coreGeo = new THREE.SphereGeometry(1, 32, 32);
         const coreMat = new THREE.MeshPhysicalMaterial({
             color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
             roughness: 0.2, metalness: 0.8, transparent: true, opacity: isGhost ? 0.3 : 0.95
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
+        core.scale.set(size, size, size);
         core.userData.node = node;
         group.add(core);
 
-        const wireGeo = new THREE.SphereGeometry(size * 1.15, 16, 16);
-        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
+        const wireGeo = new THREE.SphereGeometry(1.15, 16, 16);
+        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.3, blending: THREE.AdditiveBlending });
         const wire = new THREE.Mesh(wireGeo, wireMat);
+        wire.scale.set(size, size, size);
         wire.userData.node = node;
         group.add(wire);
 
@@ -137,7 +136,6 @@ export class Hyper3D {
         return { group, core, wire, glow };
     }
 
-    // ★ 追加: マウス・指で画面を押し込んだ時の処理
     onPointerDown(event) {
         if (!this.isActive || event.target !== this.canvas) return;
         
@@ -162,13 +160,11 @@ export class Hyper3D {
         this.hasMoved = false;
 
         if (clickedNode) {
-            // 星を掴んだらカメラの回転を一時停止
             this.controls.enabled = false; 
             this.draggedNode = clickedNode;
             this.draggedGroup = this.nodeDataMap.get(clickedNode).group;
-            this.app.grabbedNode = clickedNode; // 2Dエンジンにも「掴んだ」と教える
+            this.app.grabbedNode = clickedNode; 
             
-            // ドラッグ用の見えない壁（平面）をカメラの向きに合わせて生成
             const normal = new THREE.Vector3();
             this.camera.getWorldDirection(normal);
             normal.negate();
@@ -176,10 +172,12 @@ export class Hyper3D {
         }
     }
 
-    // ★ 追加: マウス・指を動かして星をドラッグする処理
     onPointerMove(event) {
         if (!this.isActive) return;
         
+        this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
         if (this.isPointerDown) {
             const dx = event.clientX - this.pointerDownPos.x;
             const dy = event.clientY - this.pointerDownPos.y;
@@ -187,17 +185,12 @@ export class Hyper3D {
         }
 
         if (this.draggedNode && this.hasMoved) {
-            this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
-            
             const intersectPoint = new THREE.Vector3();
             this.raycaster.ray.intersectPlane(this.dragPlane, intersectPoint);
             
             if (intersectPoint) {
-                // 星をマウスの座標に移動
                 this.draggedGroup.position.copy(intersectPoint);
-                // 2D側の座標も書き換えて完全同期
                 this.draggedNode.baseX = intersectPoint.x;
                 this.draggedNode.baseY = -intersectPoint.y;
                 this.draggedNode.z = intersectPoint.z;
@@ -207,26 +200,58 @@ export class Hyper3D {
         }
     }
 
-    // ★ 追加: 指を離した時（メニューを開く か 保存する）
     onPointerUp(event) {
         if (!this.isActive) return;
         this.isPointerDown = false;
+
+        // ★ 3Dでの「🔗別の星と結ぶ」処理
+        if (this.app.isLinking && this.app.linkSourceNode) {
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+            let targetNode = null;
+            for (let i = 0; i < intersects.length; i++) {
+                let obj = intersects[i].object;
+                while(obj && !obj.userData.node) { obj = obj.parent; }
+                if (obj && obj.userData.node) {
+                    targetNode = obj.userData.node;
+                    break;
+                }
+            }
+            
+            if (targetNode && targetNode !== this.app.linkSourceNode) {
+                const existingIndex = this.app.currentUniverse.links.findIndex(l => 
+                    (l.source === this.app.linkSourceNode && l.target === targetNode) ||
+                    (l.source === targetNode && l.target === this.app.linkSourceNode) ||
+                    (l.source.id && l.source.id === this.app.linkSourceNode.id && l.target.id === targetNode.id) ||
+                    (l.source.id && l.source.id === targetNode.id && l.target.id === this.app.linkSourceNode.id)
+                );
+                if (existingIndex !== -1) {
+                    this.app.currentUniverse.links.splice(existingIndex, 1);
+                    if(window.universeAudio) window.universeAudio.playSystemSound(300, 'square', 0.1);
+                } else {
+                    this.app.currentUniverse.addLink(this.app.linkSourceNode, targetNode);
+                    if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+                }
+                this.app.autoSave();
+            }
+            this.app.isLinking = false;
+            this.app.linkSourceNode = null;
+            return;
+        }
         
         if (this.draggedNode) {
-            this.controls.enabled = true; // カメラ回転を復活
+            this.controls.enabled = true; 
             this.app.grabbedNode = null;
             
             if (this.hasMoved) {
-                this.app.autoSave(); // 動かした場合はセーブ
+                this.app.autoSave(); 
             } else {
-                // 動かさずに指を離した＝クリック（タップ）としてメニューを開く！
                 if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
                 this.app.ui.showMenu(this.draggedNode, event.clientX, event.clientY);
             }
             this.draggedNode = null;
             this.draggedGroup = null;
         } else {
-            // 何もない宇宙空間をクリックしたらメニューを閉じる
             if (!this.hasMoved && event.target === this.canvas) {
                 this.app.ui.hideMenu();
                 if (this.app.ui.hideQuickNote) this.app.ui.hideQuickNote();
@@ -249,18 +274,16 @@ export class Hyper3D {
         currentNodes.forEach(node => {
             let data = this.nodeDataMap.get(node);
             let nodeColor = node.color || '#00ffcc';
+            const isGhost = !!node.isGhost;
+            const size = (node.size || 20) * 0.6;
+
+            let threeColor;
+            try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00ffcc); }
 
             if (!data) {
-                let threeColor;
-                try { threeColor = new THREE.Color(nodeColor); } catch(e) { threeColor = new THREE.Color(0x00ffcc); }
-                const size = (node.size || 20) * 0.6;
-                
-                data = this.createStarMesh(node, size, threeColor);
-                
-                // ★ 修正: はるか彼方に迷子になった星のZ軸を、視界に入る範囲(±200)に強制送還！
-                if (node.z === undefined || Math.abs(node.z) > 400) {
-                    node.z = (Math.random() - 0.5) * 200;
-                }
+                // 新規生成
+                data = this.createStarMesh(node, size, threeColor, isGhost);
+                if (node.z === undefined || Math.abs(node.z) > 400) node.z = (Math.random() - 0.5) * 200;
 
                 const label = this.createTextSprite(node.name, nodeColor);
                 label.position.set(0, size + 15, 0);
@@ -273,9 +296,22 @@ export class Hyper3D {
 
                 this.scene.add(data.group);
                 this.nodeDataMap.set(node, data);
+            } else {
+                // ★ ここが超重要！ メニューからの変更（サイズ、色、幽霊化）を毎フレーム即座に反映！
+                data.core.scale.set(size, size, size);
+                data.wire.scale.set(size, size, size);
+                data.glow.scale.set(size * 4, size * 4, 1);
+
+                data.core.material.color.copy(threeColor);
+                data.core.material.emissive.copy(threeColor);
+                data.wire.material.color.copy(threeColor);
+                data.glow.material.color.copy(threeColor);
+
+                data.core.material.opacity = isGhost ? 0.3 : 0.95;
+                data.wire.material.opacity = isGhost ? 0.1 : 0.3;
+                data.glow.material.opacity = isGhost ? 0.2 : 0.7;
             }
 
-            // ドラッグ中じゃない時だけ、2Dの座標を3Dに反映（これでリンクさせた時の公転も3Dに反映されます）
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
                 const targetX = node.x || 0;
                 const targetY = -(node.y || 0); 
@@ -283,16 +319,15 @@ export class Hyper3D {
                 data.group.position.set(targetX, targetY, targetZ);
             }
 
-            // メニューから名前を変えられたら看板も更新
             if (data.label && data.label.userData.lastName !== node.name) {
                 data.group.remove(data.label);
-                const size = (node.size || 20) * 0.6;
-                const newLabel = this.createTextSprite(node.name, data.labelColor);
+                const newLabel = this.createTextSprite(node.name, nodeColor);
                 newLabel.position.set(0, size + 15, 0);
                 newLabel.userData.node = node;
                 newLabel.userData.lastName = node.name;
                 data.group.add(newLabel);
                 data.label = newLabel;
+                data.labelColor = nodeColor;
             }
         });
 
@@ -303,6 +338,21 @@ export class Hyper3D {
             this.linksGroup.remove(child); 
         }
         
+        // リンク作成中の線を描画
+        if (this.app.isLinking && this.app.linkSourceNode) {
+            const sourceData = this.nodeDataMap.get(this.app.linkSourceNode);
+            if (sourceData) {
+                const distance = this.camera.position.distanceTo(sourceData.group.position);
+                const mousePoint = new THREE.Vector3();
+                this.raycaster.ray.at(distance, mousePoint);
+                const points = [sourceData.group.position, mousePoint];
+                const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                const tempLine = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xff00ff, dashSize: 5, gapSize: 5 }));
+                tempLine.computeLineDistances();
+                this.linksGroup.add(tempLine);
+            }
+        }
+
         this.currentUniverse.links.forEach(link => {
             const sourceNode = currentNodes.find(n => n === link.source || (n.id && n.id === link.source.id));
             const targetNode = currentNodes.find(n => n === link.target || (n.id && n.id === link.target.id));
@@ -328,6 +378,31 @@ export class Hyper3D {
     animate() {
         if (!this.isActive) return;
         requestAnimationFrame(() => this.animate());
+
+        // ★ 内部へ潜る（Dive）機能の完全対応
+        if (this.app.isZoomingIn) {
+            this.app.universeHistory.push(this.app.currentUniverse);
+            this.app.currentUniverse = this.app.targetUniverse;
+            this.app.camera.reset();
+            this.app.isZoomingIn = false;
+            this.app.hasMovedNode = false;
+            this.app.ui.updateBreadcrumbs();
+            if(window.universeAudio) window.universeAudio.playWarp();
+        }
+
+        // 宇宙の階層が変わったことを検知したら、世界を作り直す
+        if (this.currentUniverse !== this.app.currentUniverse) {
+            this.nodeDataMap.forEach(data => {
+                this.scene.remove(data.group);
+            });
+            this.nodeDataMap.clear();
+            this.currentUniverse = this.app.currentUniverse;
+            
+            const startX = -this.app.camera.x;
+            const startY = this.app.camera.y;
+            this.camera.position.set(startX, startY, 400); 
+            this.controls.target.set(startX, startY, 0); 
+        }
 
         const bpm = 153;
         const msPerBeat = 60000 / (bpm / 2);
