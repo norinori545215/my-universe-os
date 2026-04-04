@@ -1,7 +1,6 @@
 // src/engine/Hyper3D.js
 import * as THREE from 'https://esm.sh/three';
 import { OrbitControls } from 'https://esm.sh/three/addons/controls/OrbitControls.js';
-// ★ 追加: ブルーム（圧倒的な光）のためのポストプロセッシング
 import { EffectComposer } from 'https://esm.sh/three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'https://esm.sh/three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'https://esm.sh/three/addons/postprocessing/UnrealBloomPass.js';
@@ -31,12 +30,12 @@ export class Hyper3D {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.setClearColor(0x020205, 1); 
 
-        // ★ 追加: 光が溢れ出す「ブルーム効果」の設定
+        // ★ 修正: 目に優しい上品な光にトーンダウン
         const renderScene = new RenderPass(this.scene, this.camera);
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-        bloomPass.threshold = 0.1; // 光り始める明るさの閾値
-        bloomPass.strength = 1.8; // ネオンの強さ
-        bloomPass.radius = 0.6; // 光の拡散具合
+        bloomPass.threshold = 0.2; // 光り始める閾値を上げて、暗い部分は光らないように
+        bloomPass.strength = 0.7;  // 1.8 -> 0.7へ大幅カット（キツい光を抑える）
+        bloomPass.radius = 0.5;    // 光の広がりも少し抑える
 
         this.composer = new EffectComposer(this.renderer);
         this.composer.addPass(renderScene);
@@ -58,7 +57,8 @@ export class Hyper3D {
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.3 });
+        // ★ 修正: 線の透明度を少し上げてうるさくならないように
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2 });
 
         this.createStarfield();
 
@@ -72,7 +72,6 @@ export class Hyper3D {
         this.draggedGroup = null;
         this.dragPlane = new THREE.Plane(); 
         
-        // ダイブ演出用の変数
         this.isDiving = false;
         this.diveTarget = new THREE.Vector3();
 
@@ -96,7 +95,8 @@ export class Hyper3D {
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         ctx.shadowColor = colorStr || '#00ffcc';
-        ctx.shadowBlur = 15; ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 10; // テキストの影も少し控えめに
+        ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(text, 256, 64);
         const texture = new THREE.CanvasTexture(canvas);
@@ -113,8 +113,7 @@ export class Hyper3D {
             starVertices.push((Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000);
         }
         starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-        // ブルームの影響で白飛びしないように少し暗めに設定
-        const starMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 1.5, transparent: true, opacity: 0.5 });
+        const starMaterial = new THREE.PointsMaterial({ color: 0x666666, size: 1.5, transparent: true, opacity: 0.4 });
         this.starfield = new THREE.Points(starGeometry, starMaterial);
         this.scene.add(this.starfield);
     }
@@ -123,20 +122,19 @@ export class Hyper3D {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // コア（ブルームによって強烈に光る）
+        // ★ 修正: コアの発光（emissiveIntensity）を 1.2 -> 0.8 にダウン
         const coreGeo = new THREE.SphereGeometry(1, 32, 32);
         const coreMat = new THREE.MeshPhysicalMaterial({
-            color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.3 : 1.2,
-            roughness: 0.1, metalness: 0.9, transparent: true, opacity: isGhost ? 0.3 : 1.0
+            color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
+            roughness: 0.1, metalness: 0.9, transparent: true, opacity: isGhost ? 0.3 : 0.9
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.scale.set(size, size, size);
         core.userData.node = node;
         group.add(core);
 
-        // ワイヤーフレーム（ホログラム装甲）
         const wireGeo = new THREE.SphereGeometry(1.2, 16, 16);
-        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.4, blending: THREE.AdditiveBlending });
+        const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.3, blending: THREE.AdditiveBlending });
         const wire = new THREE.Mesh(wireGeo, wireMat);
         wire.scale.set(size, size, size);
         wire.userData.node = node;
@@ -145,23 +143,21 @@ export class Hyper3D {
         return { group, core, wire };
     }
 
-    // ★ 追加: 3Dならではの「全天球（フィボナッチ球面）自動フォーメーション」
     applySphereFormation() {
         const nodes = this.currentUniverse.nodes;
         const count = nodes.length;
         if (count === 0) return;
         
-        const radius = Math.max(150, count * 20); // 星の数に応じて宇宙の広さを決定
-        const phi = Math.PI * (3 - Math.sqrt(5)); // 黄金角
+        const radius = Math.max(150, count * 20); 
+        const phi = Math.PI * (3 - Math.sqrt(5)); 
         
         nodes.forEach((node, i) => {
-            const y = 1 - (i / (count - 1)) * 2; // y は 1 から -1 へ
-            const r = Math.sqrt(1 - y * y); // 緯度ごとの半径
-            const theta = phi * i; // 経度
+            const y = 1 - (i / (count - 1)) * 2; 
+            const r = Math.sqrt(1 - y * y); 
+            const theta = phi * i; 
             
-            // 2Dと3Dの座標をリンクさせて保存
             node.x = Math.cos(theta) * r * radius;
-            node.y = -(y * radius); // 2D用にYを反転
+            node.y = -(y * radius); 
             node.z = Math.sin(theta) * r * radius;
             
             node.baseX = node.x;
@@ -219,7 +215,6 @@ export class Hyper3D {
             this.raycaster.ray.intersectPlane(this.dragPlane, intersectPoint);
             
             if (intersectPoint) {
-                // ドラッグ中はLerpせずに指にピッタリ吸い付かせる
                 this.draggedGroup.position.copy(intersectPoint);
                 this.draggedNode.baseX = intersectPoint.x;
                 this.draggedNode.baseY = -intersectPoint.y;
@@ -299,7 +294,6 @@ export class Hyper3D {
                 
                 data.label = label; data.labelColor = nodeColor;
 
-                // 最初は指定座標にパッと置く
                 const targetX = node.x || 0; const targetY = -(node.y || 0); const targetZ = node.z || 0;
                 data.group.position.set(targetX, targetY, targetZ);
 
@@ -311,16 +305,15 @@ export class Hyper3D {
                 data.core.material.color.copy(threeColor);
                 data.core.material.emissive.copy(threeColor);
                 data.wire.material.color.copy(threeColor);
-                data.core.material.opacity = isGhost ? 0.3 : 1.0;
-                data.wire.material.opacity = isGhost ? 0.1 : 0.4;
+                data.core.material.opacity = isGhost ? 0.3 : 0.9;
+                data.wire.material.opacity = isGhost ? 0.1 : 0.3;
             }
 
-            // ★ ここが神演出！ ドラッグ中でないなら、目標座標に向かって「滑らかに」追従移動（Lerp）する
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
                 const targetX = node.x || 0;
                 const targetY = -(node.y || 0); 
                 const targetZ = node.z || 0;
-                data.group.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.08); // 0.08の速度で吸い込まれるように動く
+                data.group.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.08); 
             }
 
             if (data.label && data.label.userData.lastName !== node.name) {
@@ -373,27 +366,24 @@ export class Hyper3D {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.composer.setSize(window.innerWidth, window.innerHeight); // ブルームのサイズも更新
+        this.composer.setSize(window.innerWidth, window.innerHeight); 
     }
 
     animate() {
         if (!this.isActive) return;
         requestAnimationFrame(() => this.animate());
 
-        // ★ 追加: 映画レベルの没入感！シームレス・ダイブ演出
         if (this.app.isZoomingIn && this.app.diveTargetNode) {
             if (!this.isDiving) {
-                this.controls.enabled = false; // 潜っている間は操作不可
+                this.controls.enabled = false; 
                 this.isDiving = true;
                 const targetData = this.nodeDataMap.get(this.app.diveTargetNode);
                 this.diveTarget = targetData ? targetData.group.position.clone() : new THREE.Vector3(0,0,0);
             }
             
-            // 対象の星に向かって、カメラが超高速で突入する
             this.camera.position.lerp(this.diveTarget, 0.08);
             this.controls.target.lerp(this.diveTarget, 0.08);
 
-            // 対象の星に激突するギリギリで、次元の壁を破って次の階層へ！
             if (this.camera.position.distanceTo(this.diveTarget) < 10) {
                 this.app.universeHistory.push(this.app.currentUniverse);
                 this.app.currentUniverse = this.app.targetUniverse;
@@ -407,7 +397,6 @@ export class Hyper3D {
             }
         }
 
-        // 階層（宇宙）が変わった時の再構築
         if (this.currentUniverse !== this.app.currentUniverse) {
             this.nodeDataMap.forEach(data => { this.scene.remove(data.group); });
             this.nodeDataMap.clear();
@@ -432,7 +421,8 @@ export class Hyper3D {
                 data.wire.rotation.x -= 0.008;
                 data.wire.rotation.y -= 0.008;
             }
-            if (data.core) data.core.material.emissiveIntensity = 0.5 + (pulse * 0.8);
+            // ★ 修正: 鼓動の振り幅も抑えて、チカチカしないように調整
+            if (data.core) data.core.material.emissiveIntensity = 0.3 + (pulse * 0.4);
         });
 
         if (this.starfield) {
@@ -441,8 +431,6 @@ export class Hyper3D {
         }
 
         this.controls.update();
-        
-        // ★ 通常のRendererの代わりに、ブルーム効果の乗ったComposerを描画
         this.composer.render();
     }
 
