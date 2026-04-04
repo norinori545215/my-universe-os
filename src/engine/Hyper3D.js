@@ -1,9 +1,7 @@
 // src/engine/Hyper3D.js
 import * as THREE from 'https://esm.sh/three';
 import { OrbitControls } from 'https://esm.sh/three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'https://esm.sh/three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://esm.sh/three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://esm.sh/three/addons/postprocessing/UnrealBloomPass.js';
+// ★ 重すぎる原因だったEffectComposer（ブルーム処理）のインポートを全削除！
 
 export class Hyper3D {
     constructor(app) {
@@ -17,7 +15,8 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x020205, 0.0015); 
+        // ★ 修正: 靄（もや）の原因だったフォグを大幅に薄くし、遠くだけが暗くなるように調整 (0.0015 -> 0.0005)
+        this.scene.fog = new THREE.FogExp2(0x020205, 0.0005); 
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
         
@@ -27,19 +26,9 @@ export class Hyper3D {
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // スマホ等での重さを軽減するため、ピクセル比の上限を1.5に制限（十分綺麗です）
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         this.renderer.setClearColor(0x020205, 1); 
-
-        // ★ 修正: 目に優しい上品な光にトーンダウン
-        const renderScene = new RenderPass(this.scene, this.camera);
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-        bloomPass.threshold = 0.2; // 光り始める閾値を上げて、暗い部分は光らないように
-        bloomPass.strength = 0.7;  // 1.8 -> 0.7へ大幅カット（キツい光を抑える）
-        bloomPass.radius = 0.5;    // 光の広がりも少し抑える
-
-        this.composer = new EffectComposer(this.renderer);
-        this.composer.addPass(renderScene);
-        this.composer.addPass(bloomPass);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
@@ -48,17 +37,16 @@ export class Hyper3D {
         this.controls.autoRotate = false; 
         this.controls.target.set(startX, startY, 0); 
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // 少し明るくして視認性アップ
         this.scene.add(ambientLight);
-        const mainLight = new THREE.PointLight(0x00ffcc, 2, 2000);
+        const mainLight = new THREE.PointLight(0x00ffcc, 1.5, 2000);
         mainLight.position.set(startX, startY, 0); 
         this.scene.add(mainLight);
 
         this.nodeDataMap = new Map(); 
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
-        // ★ 修正: 線の透明度を少し上げてうるさくならないように
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2 });
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.25 });
 
         this.createStarfield();
 
@@ -95,7 +83,7 @@ export class Hyper3D {
         canvas.width = 512; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         ctx.shadowColor = colorStr || '#00ffcc';
-        ctx.shadowBlur = 10; // テキストの影も少し控えめに
+        ctx.shadowBlur = 8; // 影をシャープにして靄を減らす
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(text, 256, 64);
@@ -109,11 +97,11 @@ export class Hyper3D {
     createStarfield() {
         const starGeometry = new THREE.BufferGeometry();
         const starVertices = [];
-        for (let i = 0; i < 3000; i++) {
+        for (let i = 0; i < 2000; i++) { // 背景の星屑を2000に減らして超軽量化
             starVertices.push((Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000, (Math.random() - 0.5) * 4000);
         }
         starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-        const starMaterial = new THREE.PointsMaterial({ color: 0x666666, size: 1.5, transparent: true, opacity: 0.4 });
+        const starMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 1.5, transparent: true, opacity: 0.5 });
         this.starfield = new THREE.Points(starGeometry, starMaterial);
         this.scene.add(this.starfield);
     }
@@ -122,25 +110,41 @@ export class Hyper3D {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // ★ 修正: コアの発光（emissiveIntensity）を 1.2 -> 0.8 にダウン
+        // ★ 修正: 超絶重いMeshPhysicalMaterialをやめ、高速で綺麗なMeshStandardMaterialに変更
         const coreGeo = new THREE.SphereGeometry(1, 32, 32);
-        const coreMat = new THREE.MeshPhysicalMaterial({
+        const coreMat = new THREE.MeshStandardMaterial({
             color: threeColor, emissive: threeColor, emissiveIntensity: isGhost ? 0.2 : 0.8,
-            roughness: 0.1, metalness: 0.9, transparent: true, opacity: isGhost ? 0.3 : 0.9
+            roughness: 0.2, metalness: 0.5, transparent: true, opacity: isGhost ? 0.3 : 0.95
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
         core.scale.set(size, size, size);
         core.userData.node = node;
         group.add(core);
 
-        const wireGeo = new THREE.SphereGeometry(1.2, 16, 16);
+        const wireGeo = new THREE.SphereGeometry(1.15, 16, 16);
         const wireMat = new THREE.MeshBasicMaterial({ color: threeColor, wireframe: true, transparent: true, opacity: isGhost ? 0.1 : 0.3, blending: THREE.AdditiveBlending });
         const wire = new THREE.Mesh(wireGeo, wireMat);
         wire.scale.set(size, size, size);
         wire.userData.node = node;
         group.add(wire);
 
-        return { group, core, wire };
+        // ブルームの代わりに、軽量な2Dキャンバスベースのオーラを強めにかける
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 128; glowCanvas.height = 128;
+        const ctx = glowCanvas.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grad.addColorStop(0, 'rgba(255,255,255,0.9)'); 
+        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+        const glowTex = new THREE.CanvasTexture(glowCanvas);
+        const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: threeColor, transparent: true, blending: THREE.AdditiveBlending, opacity: isGhost ? 0.2 : 0.6 });
+        const glow = new THREE.Sprite(glowMat);
+        glow.scale.set(size * 4, size * 4, 1);
+        glow.userData.node = node;
+        group.add(glow);
+
+        return { group, core, wire, glow }; // glowを追加
     }
 
     applySphereFormation() {
@@ -302,11 +306,16 @@ export class Hyper3D {
             } else {
                 data.core.scale.set(size, size, size);
                 data.wire.scale.set(size, size, size);
+                data.glow.scale.set(size * 4, size * 4, 1); // 擬似ブルーム（オーラ）のサイズも同期
+
                 data.core.material.color.copy(threeColor);
                 data.core.material.emissive.copy(threeColor);
                 data.wire.material.color.copy(threeColor);
-                data.core.material.opacity = isGhost ? 0.3 : 0.9;
+                data.glow.material.color.copy(threeColor); // オーラの色も同期
+
+                data.core.material.opacity = isGhost ? 0.3 : 0.95;
                 data.wire.material.opacity = isGhost ? 0.1 : 0.3;
+                data.glow.material.opacity = isGhost ? 0.2 : 0.6;
             }
 
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
@@ -366,7 +375,6 @@ export class Hyper3D {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.composer.setSize(window.innerWidth, window.innerHeight); 
     }
 
     animate() {
@@ -421,8 +429,8 @@ export class Hyper3D {
                 data.wire.rotation.x -= 0.008;
                 data.wire.rotation.y -= 0.008;
             }
-            // ★ 修正: 鼓動の振り幅も抑えて、チカチカしないように調整
-            if (data.core) data.core.material.emissiveIntensity = 0.3 + (pulse * 0.4);
+            // 鼓動による明るさの変化も控えめに
+            if (data.core) data.core.material.emissiveIntensity = 0.5 + (pulse * 0.3);
         });
 
         if (this.starfield) {
@@ -431,7 +439,9 @@ export class Hyper3D {
         }
 
         this.controls.update();
-        this.composer.render();
+        
+        // ★ 修正: 超重いComposerを削除し、軽量で高速な通常のRendererに戻しました
+        this.renderer.render(this.scene, this.camera);
     }
 
     destroy() {
