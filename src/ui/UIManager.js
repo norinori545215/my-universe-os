@@ -39,7 +39,7 @@ export class UIManager {
         
         window.universeAudio = new AudioCore();
         
-        // ★ 追加: 3Dエンジン管理用の変数
+        // ★ 3Dエンジン管理用の変数
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
@@ -53,9 +53,7 @@ export class UIManager {
         }, 500);
     }
 
-    // ★ 新規追加: 3Dエンジンの起動・破棄を行う関数
-    // ★ 修正: 2Dキャンバスのサイズ計算が狂わないように安全に隠す
-// ★ 修正: 2Dキャンバスを安全に隠し、透明な壁バグを防ぐ
+    // ★ 2Dキャンバスを安全に隠し、透明な壁バグを防ぐ
     async toggle3DMode() {
         if (!this.is3DMode) {
             // 2D -> 3D にシフト
@@ -63,7 +61,6 @@ export class UIManager {
             
             this.app.canvas.style.transition = 'opacity 0.3s';
             this.app.canvas.style.opacity = '0'; 
-            // ★ 追加: 2Dキャンバスのタッチ判定を完全に無効化する
             this.app.canvas.style.pointerEvents = 'none'; 
 
             if(window.universeAudio) window.universeAudio.playWarp();
@@ -82,7 +79,6 @@ export class UIManager {
             // 3D -> 2D に戻る
             this.is3DMode = false;
             
-            // ★ 追加: 2Dキャンバスのタッチ判定を復活させる
             this.app.canvas.style.pointerEvents = 'auto';
             this.app.canvas.style.opacity = '1';
 
@@ -336,6 +332,8 @@ export class UIManager {
                         <button id="cp-grav-spiral" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🌀 螺旋</button>
                         <button id="cp-grav-grid" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🔲 均列</button>
                         <button id="cp-pathways" style="flex:1; padding:8px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px solid rgba(0,255,204,0.5); border-radius:6px; font-size:11px; cursor:pointer;">✨ 星座</button>
+                        <!-- ★ 3D専用：全天球フォーメーションボタン追加 -->
+                        <button id="cp-grav-sphere" style="flex:1; padding:8px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:6px; font-size:11px; cursor:pointer;" title="3D専用">🌐 全天球</button>
                     </div>
                     
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RAPID WORKFLOW</div>
@@ -366,7 +364,6 @@ export class UIManager {
                     </label>
                     <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
 
-                    <!-- ★ 追加: 3Dエンジン(Hyper3D)のトグル -->
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-3d" ${localStorage.getItem('universe_ext_3d')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジンをスロットに追加</span>
@@ -455,6 +452,16 @@ export class UIManager {
         bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
 
+        // ★ 追加: 全天球グラビティボタン
+        bind('cp-grav-sphere', () => { 
+            if(this.is3DMode && this.hyper3DInstance) {
+                this.hyper3DInstance.applySphereFormation();
+                if(window.universeAudio) window.universeAudio.playWarp();
+            } else {
+                alert("全天球フォーメーションは 3D MODE 起動時のみ使用可能です。");
+            }
+        });
+
         bind('cp-pathways', () => {
             const count = Pathways.autoConstellation(this.app.currentUniverse);
             if (count > 0) {
@@ -483,7 +490,6 @@ export class UIManager {
             this.renderCP(); 
         };
 
-        // ★ 追加: 3Dエンジン切り替えスロットの設定保存
         const ext3D = document.getElementById('cp-ext-3d');
         if(ext3D) ext3D.onchange = (e) => { localStorage.setItem('universe_ext_3d', e.target.checked); this.updateUIState(); };
 
@@ -585,7 +591,6 @@ export class UIManager {
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
-        // ★ 拡張状態の取得
         const is3D = localStorage.getItem('universe_ext_3d') === 'true';
         const isSearch = localStorage.getItem('universe_ext_search') === 'true';
         const isTime = localStorage.getItem('universe_ext_time') === 'true';
@@ -593,7 +598,6 @@ export class UIManager {
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
 
-        // ★ 追加: 3Dエンジンモードのカプセルスロット
         if (is3D) {
             const btn = document.createElement('div');
             btn.innerText = this.is3DMode ? '🌌' : '🪐';
@@ -939,7 +943,18 @@ export class UIManager {
         };
 
         document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
-        document.getElementById('m-dive').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.app.isZoomingIn = true; this.app.targetUniverse = node.innerUniverse; this.app.camera.zoomTo(node.x, node.y); if(window.universeAudio) window.universeAudio.playWarp(); };
+        
+        // ★ 追加: カメラダイブの対象をOS全体に記録する（3D演出用）
+        document.getElementById('m-dive').onclick = () => { 
+            if (checkDrag()) return; 
+            this.hideMenu(); 
+            this.app.isZoomingIn = true; 
+            this.app.targetUniverse = node.innerUniverse; 
+            this.app.diveTargetNode = node; // 3Dダイブ用に記録
+            this.app.camera.zoomTo(node.x, node.y); 
+            if(window.universeAudio) window.universeAudio.playWarp(); 
+        };
+
         document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
         document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
         document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
