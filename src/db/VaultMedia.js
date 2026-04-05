@@ -123,4 +123,16 @@ export class VaultMedia {
         node.vault.forEach(meta => store.delete(meta.id));
         node.vault = [];
     }
+
+    // ★ 追加：特定のメディア実体をIndexedDBから完全に物理消去する
+    static async deleteMedia(mediaId) {
+        const db = await this.initDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(this.storeName, 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+            const request = store.delete(mediaId);
+            request.onsuccess = () => resolve(true);
+            request.onerror = () => reject(request.error);
+        });
+    }
 }

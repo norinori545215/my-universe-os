@@ -60,7 +60,6 @@ export class MediaViewUI {
             const sizeMb = item.size ? (item.size / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown Size';
             const fileName = item.name || `Encrypted_Data_${index}`;
 
-            // ★ 修正: DECRYPTボタンの横にゴミ箱ボタンを追加
             el.innerHTML = `
                 <div style="display:flex; align-items:center; gap:12px; overflow:hidden;">
                     <span style="font-size:20px;">${icon}</span>
@@ -107,10 +106,17 @@ export class MediaViewUI {
                 }
             };
 
-            // ★ 追加: 完全消去（パージ）の処理
-            el.querySelector('.mv-btn-del').onclick = (e) => {
+            // ★ 修正: 完全消去（実体パージ ＋ 記録抹消）の処理
+            el.querySelector('.mv-btn-del').onclick = async (e) => {
                 e.stopPropagation();
                 if (confirm(`⚠️ 警告\n\n「${fileName}」を完全に物理消去しますか？\nこの操作は取り消せません。`)) {
+                    
+                    // 1. IndexedDBから暗号化バイナリ実体を物理削除
+                    if (VaultMedia.deleteMedia) {
+                        await VaultMedia.deleteMedia(item.id);
+                    }
+
+                    // 2. 星の記憶（ノードのリスト）から抹消
                     node.vault.splice(index, 1);
                     this.app.autoSave();
                     if(window.universeAudio) window.universeAudio.playDelete();
