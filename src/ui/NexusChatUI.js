@@ -374,7 +374,7 @@ export class NexusChatUI {
         if (!this.activeNode || !nexusNodes.includes(this.activeNode)) this.openChat(nexusNodes[0]);
     }
 
-    async openChat(node) {
+async openChat(node) {
         if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
         if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
 
@@ -403,7 +403,10 @@ export class NexusChatUI {
                 </div>
                 <div style="font-size:10px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE</div>
             </div>
-            <button id="nx-header-wipe" title="全通信記録を完全消去" style="background:transparent; border:1px solid #ff4444; color:#ff4444; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; margin-left:10px; font-weight:bold; transition:0.2s; white-space:nowrap;">🔥 焼却</button>
+            <div style="display:flex; gap:5px; margin-left:10px;">
+                <button id="nx-header-archive" title="通信記録を独立した星として結晶化" style="background:transparent; border:1px solid #00ffff; color:#00ffff; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;">💎</button>
+                <button id="nx-header-wipe" title="全通信記録を完全消去" style="background:transparent; border:1px solid #ff4444; color:#ff4444; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;">🔥</button>
+            </div>
         `;
 
         document.addEventListener('nexusToggleMenu', () => this.toggleContactList(), { once: true });
@@ -423,6 +426,53 @@ export class NexusChatUI {
             const url = prompt("相手のアイコン画像のURLを入力してください:", node.iconUrl || "");
             if (url !== null) {
                 node.iconUrl = url.trim(); this.app.autoSave(); this.openChat(node);
+            }
+        };
+
+        // ★ 追加：「結晶化」ボタンの処理（ログの抽出と新しい星の生成）
+        const archiveBtn = document.getElementById('nx-header-archive');
+        archiveBtn.onmouseover = () => { archiveBtn.style.background = 'rgba(0,255,255,0.2)'; archiveBtn.style.boxShadow = '0 0 10px rgba(0,255,255,0.5)'; };
+        archiveBtn.onmouseout = () => { archiveBtn.style.background = 'transparent'; archiveBtn.style.boxShadow = 'none'; };
+        archiveBtn.onclick = async () => {
+            if(confirm('現在の「解読可能な通信記録」のみを抽出し、新たな星（ノート）としてこの空間に保存しますか？\n（エラーの残骸や消滅済みのファントムは保存されません）')) {
+                let logText = `=== 通信記録: ${node.name} ===\n生成日時: ${new Date().toLocaleString()}\n\n`;
+                let readableCount = 0;
+
+                for (let msg of node.messages) {
+                    if (msg.isDeleted || msg.phantom) continue;
+                    try {
+                        const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, node.sharedKey);
+                        let text = "";
+                        try {
+                            const parsed = JSON.parse(decrypted);
+                            if (parsed.type === 'text') text = parsed.text;
+                            else if (parsed.type === 'image') text = "[画像データ]";
+                            else if (parsed.type === 'voice') text = "[音声データ]";
+                        } catch(e) { text = decrypted; }
+
+                        const timeStr = new Date(msg.timestamp).toLocaleString();
+                        const sender = msg.sender === 'me' ? '自分' : node.name;
+                        logText += `[${timeStr}] ${sender}:\n${text}\n\n`;
+                        readableCount++;
+                    } catch(e) {
+                        // 復号失敗した残骸はスキップ
+                    }
+                }
+
+                if (readableCount === 0) {
+                    alert("保存可能な（解読できる）通信記録がありません。");
+                    return;
+                }
+
+                const cx = this.app.camera ? -this.app.camera.x : 0;
+                const cy = this.app.camera ? -this.app.camera.y : 0;
+                const archiveNode = this.app.currentUniverse.addNode(`📜 記録: ${node.name}`, cx + (Math.random()*60-30), cy + (Math.random()*60-30), 20, '#00ffff', 'star');
+                
+                archiveNode.note = logText;
+                this.app.autoSave();
+                
+                if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1); // 星の生成音
+                alert(`解読可能な ${readableCount} 件のメッセージを抽出しました！\n新たな星「${archiveNode.name}」のノートパッドからいつでも読めます。`);
             }
         };
 
@@ -449,7 +499,7 @@ export class NexusChatUI {
                 this.msgContainer.innerHTML = '';
                 this.app.autoSave();
                 
-                wipeBtn.innerText = '🔥 焼却';
+                wipeBtn.innerText = '🔥';
                 if(count > 0 || msgs.length > 0) alert(`通信記録を跡形もなく灰にしました。`);
             }
         };
