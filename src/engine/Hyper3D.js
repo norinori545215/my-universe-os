@@ -605,7 +605,10 @@ export class Hyper3D {
         window.removeEventListener('pointermove', this.pointerMove);
         window.removeEventListener('pointerup', this.pointerUp);
         
-        if(this.scene.background) this.scene.background.dispose();
+        // ★修正: 背景が「画像（テクスチャ）」の場合のみ破棄するように安全対策！
+        if(this.scene.background && this.scene.background.isTexture) {
+            this.scene.background.dispose();
+        }
         
         this.renderer.dispose();
         this.canvas.remove();
