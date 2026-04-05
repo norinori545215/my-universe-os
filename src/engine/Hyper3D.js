@@ -34,8 +34,7 @@ export class Hyper3D {
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
         
-        // ★修正1: 起動時に「2Dで見ていた現在のカメラ位置」をそのまま引き継ぐ！
-        // （どこか遠くへ飛ばされるストレスを完全に排除）
+        // 起動時に「2Dで見ていた現在のカメラ位置」をそのまま引き継ぐ
         const startX = -this.app.camera.x;
         const startY = this.app.camera.y;
         this.camera.position.set(startX, startY, 600); 
@@ -49,7 +48,6 @@ export class Hyper3D {
         this.controls.dampingFactor = 0.05;
         this.controls.enablePan = true; 
         this.controls.autoRotate = false; 
-        // カメラの注視点も、2Dの現在地にセット
         this.controls.target.set(startX, startY, 0); 
         this.controls.minDistance = 20; 
         this.controls.maxDistance = 8000; 
@@ -90,11 +88,6 @@ export class Hyper3D {
         this.resizeHandler = () => this.resize();
         window.addEventListener('resize', this.resizeHandler);
         
-        this.pointerDown = (e) => this.onPointerDown(e);
-        this.pointerMove = (e) => this.onPointerMove(e);
-        this.pointerUp = (e) => this.onPointerUp(e);
-        
-        // ★修正2: クリック判定を確実に拾うため、リスナーの優先度を調整
         this.canvas.addEventListener('pointerdown', this.pointerDown);
         window.addEventListener('pointermove', this.pointerMove);
         window.addEventListener('pointerup', this.pointerUp);
@@ -121,7 +114,6 @@ export class Hyper3D {
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(100, 25, 1); 
         
-        // ★修正3: テキストの透明な枠がマウスクリックを邪魔しないよう、当たり判定から除外！
         sprite.raycast = function() {}; 
         
         return sprite;
@@ -203,20 +195,6 @@ export class Hyper3D {
         group.add(core);
         group.userData.core = core; 
 
-        // エッジライン
-        const edgesGeo = new THREE.EdgesGeometry(coreGeo);
-        const edgesMat = new THREE.LineBasicMaterial({ 
-            color: 0xffffff, 
-            transparent: true, 
-            opacity: isGhost ? 0.1 : 0.5, 
-            blending: THREE.AdditiveBlending,
-            linewidth: 1
-        });
-        const edges = new THREE.LineSegments(edgesGeo, edgesMat);
-        edges.scale.set(size, size, size);
-        group.add(edges);
-        group.userData.edges = edges; 
-
         // 内部光源
         const innerLight = new THREE.PointLight(threeColor, isGhost ? 0.8 : 2.5, size * 20);
         innerLight.position.set(0, 0, 0); 
@@ -245,7 +223,6 @@ export class Hyper3D {
         const glow = new THREE.Sprite(glowMat);
         glow.scale.set(size * 8, size * 8, 1);
         
-        // ★修正4: 後光の透明な枠もマウスクリックを邪魔しないよう除外！
         glow.raycast = function() {}; 
         
         group.add(glow);
@@ -284,7 +261,6 @@ export class Hyper3D {
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         this.raycaster.setFromCamera(this.mouse, this.camera);
         
-        // ★修正5: 確実にクリスタル本体（Mesh）だけを拾う
         const intersects = this.raycaster.intersectObjects(this.scene.children, true);
         let clickedNode = null;
         for (let i = 0; i < intersects.length; i++) {
@@ -298,7 +274,7 @@ export class Hyper3D {
         this.hasMoved = false;
 
         if (clickedNode) {
-            this.controls.enabled = false; // カメラの回転をストップ
+            this.controls.enabled = false; 
             this.draggedNode = clickedNode;
             this.draggedGroup = this.nodeDataMap.get(clickedNode).group;
             this.draggedLight = this.draggedGroup.userData.innerLight; 
@@ -328,13 +304,11 @@ export class Hyper3D {
             this.raycaster.ray.intersectPlane(this.dragPlane, intersectPoint);
             
             if (intersectPoint) {
-                // ドラッグした座標を即座に適用（吸い付くように動く）
                 this.draggedGroup.position.copy(intersectPoint);
                 if (this.draggedLight) {
                     this.draggedLight.position.copy(intersectPoint);
                 }
                 
-                // 内部の座標データも更新（保存用）
                 this.draggedNode.baseX = intersectPoint.x;
                 this.draggedNode.baseY = -intersectPoint.y;
                 this.draggedNode.z = intersectPoint.z;
@@ -370,11 +344,11 @@ export class Hyper3D {
         }
         
         if (this.draggedNode) {
-            this.controls.enabled = true; // カメラの回転を復旧
+            this.controls.enabled = true; 
             this.app.grabbedNode = null;
             
             if (this.hasMoved) { 
-                this.app.autoSave(); // ★配置変更を確実に保存！
+                this.app.autoSave(); 
             } 
             else { 
                 if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1); 
@@ -427,14 +401,8 @@ export class Hyper3D {
             } else {
                 data.group.userData.core.scale.set(size, size, size);
                 data.group.userData.glow.scale.set(size * 8, size * 8, 1); 
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.scale.set(size, size, size);
-                }
                 
                 data.group.userData.core.material.emissive.copy(threeColor);
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.material.color.copy(threeColor);
-                }
                 data.group.userData.glow.material.color.copy(threeColor); 
                 
                 const innerLight = data.group.userData.innerLight;
@@ -444,9 +412,6 @@ export class Hyper3D {
                 }
 
                 data.group.userData.core.material.opacity = isGhost ? 0.3 : 1.0;
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.material.opacity = isGhost ? 0.1 : 0.5;
-                }
                 data.group.userData.glow.material.opacity = isGhost ? 0.1 : 0.6;
             }
 
@@ -538,7 +503,6 @@ export class Hyper3D {
                 this.app.diveTargetNode = null;
                 this.controls.enabled = true;
                 
-                // ダイブ完了時も、現在のカメラ（2D）の座標を正しく引き継ぐ
                 const nextX = -this.app.camera.x;
                 const nextY = this.app.camera.y;
                 this.camera.position.set(nextX, nextY, 600);
@@ -551,7 +515,6 @@ export class Hyper3D {
             this.nodeDataMap.clear();
             this.currentUniverse = this.app.currentUniverse;
             
-            // 階層移動時も、2Dのカメラ位置を正しく引き継ぐ
             const nextX = -this.app.camera.x;
             const nextY = this.app.camera.y;
             this.camera.position.set(nextX, nextY, 500); 
@@ -565,10 +528,6 @@ export class Hyper3D {
                 // 自転
                 data.group.userData.core.rotation.y += 0.003;
                 data.group.userData.core.rotation.z += 0.001;
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.rotation.y += 0.003;
-                    data.group.userData.edges.rotation.z += 0.001;
-                }
                 
                 const bpm = 153;
                 const msPerBeat = 60000 / (bpm / 2);
@@ -606,7 +565,6 @@ export class Hyper3D {
         this.isActive = false;
         window.removeEventListener('resize', this.resizeHandler);
         
-        // 修正したイベントリスナーも解除
         this.canvas.removeEventListener('pointerdown', this.pointerDown);
         window.removeEventListener('pointermove', this.pointerMove);
         window.removeEventListener('pointerup', this.pointerUp);
