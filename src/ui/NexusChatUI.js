@@ -19,7 +19,7 @@ export class NexusChatUI {
 
         this.editingMsgId = null;
         this.replyToMsg = null;
-        this.isPhantomMode = false; // ★ 追加：ファントムモード状態
+        this.isPhantomMode = false;
 
         this.createUI();
         
@@ -46,7 +46,7 @@ export class NexusChatUI {
         return `NX-${Math.abs(hash).toString(16).substring(0, 6).toUpperCase()}`;
     }
 
-async startGlobalInboxListener() {
+    async startGlobalInboxListener() {
         if (!db) return;
         const myId = this.getMyIdentity();
         if (!myId) return;
@@ -86,7 +86,6 @@ async startGlobalInboxListener() {
                         const peerPubObj = JSON.parse(peerPubStr);
                         const shortId = this.getShortId(peerPubObj);
                         
-                        // ★ 変更：チャットまとめ用の親星を探す（なければカメラの中心に作る）
                         let hubNode = this.app.currentUniverse.nodes.find(n => n.name === '📡 通信ネットワーク');
                         if (!hubNode) {
                             const cx = this.app.camera ? -this.app.camera.x : 0;
@@ -94,7 +93,6 @@ async startGlobalInboxListener() {
                             hubNode = this.app.currentUniverse.addNode('📡 通信ネットワーク', cx, cy, 45, '#ff00ff', 'galaxy');
                         }
                         
-                        // ★ 変更：親星の「内部宇宙（innerUniverse）」に新しいチャット星を作る
                         const rx = (Math.random() - 0.5) * 200;
                         const ry = (Math.random() - 0.5) * 200;
                         const newNode = hubNode.innerUniverse.addNode(`User ${shortId}`, rx, ry, 30, '#ff00ff', 'star');
@@ -133,7 +131,6 @@ async startGlobalInboxListener() {
                 .nexus-contact-panel { width: 160px; border-right: 1px solid rgba(255,0,255,0.2); transition: 0.3s; z-index: 10; }
                 .nexus-menu-btn { display: none; background: transparent; border: none; color: #ff00ff; font-size: 24px; cursor: pointer; margin-right: 10px; padding: 0 5px; }
                 
-                /* ★ ファントムモード時の紫色の脈動アニメーション */
                 @keyframes phantom-pulse { 0% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } 50% { box-shadow: 0 0 18px #ff00ff; } 100% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } }
 
                 @media (max-width: 600px) {
@@ -220,7 +217,6 @@ async startGlobalInboxListener() {
         this.micBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
-        // ★ Phase 2: ファントムモード・トグルボタン
         this.phantomBtn = document.createElement('button');
         this.phantomBtn.innerText = '👻';
         this.phantomBtn.title = '自己消滅モード (Phantom Protocol)';
@@ -476,7 +472,6 @@ async startGlobalInboxListener() {
                 const readEl = document.getElementById(`read-${msg.id}`);
                 if (readEl) readEl.style.opacity = '1';
 
-                // ★ 送信者側のファントム溶解カウントダウン
                 if (msg.phantom && !msg.phantomTimerStarted) {
                     msg.phantomTimerStarted = true;
                     const timerEl = document.getElementById(`phantom-timer-${msg.id}`);
@@ -525,7 +520,6 @@ async startGlobalInboxListener() {
         }
     }
 
-    // ★ リアクションの表示メニュー
     showReactionMenu(msgId, x, y) {
         const existing = document.getElementById('nx-react-menu');
         if(existing) existing.remove();
@@ -553,7 +547,6 @@ async startGlobalInboxListener() {
         document.body.appendChild(menu);
     }
 
-    // ★ リアクションの書き込み（トグル）
     async toggleReaction(msgId, emoji) {
         if (!this.activeNode || !this.activeNode.channelId) return;
         const myShortId = this.getShortId(this.getMyIdentity().publicKey);
@@ -619,8 +612,8 @@ async startGlobalInboxListener() {
                                 timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), 
                                 isDeleted: data.isDeleted || false,
                                 isEdited: data.isEdited || false,
-                                phantom: data.phantom || false, // ★ ファントムフラグ読込
-                                reactions: data.reactions || {} // ★ リアクション読込
+                                phantom: data.phantom || false, 
+                                reactions: data.reactions || {} 
                             };
                             
                             node.messages.push(msgObj);
@@ -640,7 +633,6 @@ async startGlobalInboxListener() {
                                 const domEl = document.getElementById(`msg-${docId}`);
                                 if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
                             } else {
-                                // 編集またはリアクションの更新
                                 targetMsg.cipher = data.cipher;
                                 targetMsg.iv = data.iv;
                                 targetMsg.isEdited = data.isEdited || targetMsg.isEdited;
@@ -712,7 +704,7 @@ async startGlobalInboxListener() {
         bubbleWrapper.style.cssText = `max-width:70%; display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};`;
 
         const bubble = document.createElement('div');
-        bubble.style.cssText = `padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative;`;
+        bubble.style.cssText = `padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative; overflow:hidden;`;
         
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
@@ -722,7 +714,6 @@ async startGlobalInboxListener() {
             bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '16px 16px 16px 4px';
         }
 
-        // ★ ファントムモードのUI
         if (msg.phantom) {
             bubble.style.animation = 'phantom-pulse 1.5s infinite';
             const phantomTimer = document.createElement('div');
@@ -730,7 +721,6 @@ async startGlobalInboxListener() {
             phantomTimer.style.cssText = `font-size:10px; color:#ff00ff; font-weight:bold; margin-top:5px; text-align:${isMe ? 'right' : 'left'};`;
             phantomTimer.innerText = isMe ? '👻 Phantom (未読)' : '👻 溶解まで: 10秒';
             
-            // 受信者側のカウントダウン
             if (!isMe && !msg.phantomTimerStarted) {
                 msg.phantomTimerStarted = true;
                 let timeLeft = 10;
@@ -753,9 +743,10 @@ async startGlobalInboxListener() {
             bubble.appendChild(phantomTimer);
         }
 
-        let text = ""; let isImage = false; let isVoice = false;
+        let text = ""; let isImage = false; let isVoice = false; let isDecryptFailed = false;
         let replyHtml = ""; 
         
+        // ★★★ 修正箇所：復号失敗時のエラー表示を「サイバーパンクな暗号の残骸」に置き換え ★★★
         try { 
             const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
             try {
@@ -767,10 +758,22 @@ async startGlobalInboxListener() {
                 else if (parsed.type === 'voice') { isVoice = true; text = parsed.data; }
                 else if (parsed.type === 'text') { text = parsed.text; }
             } catch(e) { text = decrypted; }
-        } catch(e) { text = "[ 復号エラー ]"; bubble.style.color = "#ff4444"; bubble.style.borderColor = "#ff4444"; }
+        } catch(e) { 
+            isDecryptFailed = true;
+            // エラーテキストの代わりに、16進数のダミーハッシュ（暗号の欠片）を表示
+            const dummyHash = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+            text = `[ENCRYPTED FRAGMENT]\n0x${dummyHash}...`; 
+        }
         
         const contentDiv = document.createElement('div');
-        if (isImage) {
+        if (isDecryptFailed) {
+            // エラーではなく「解読不能な遺物」としてのオシャレな表示
+            contentDiv.innerHTML = `<div style="font-size:10px; color:#666; font-family:monospace; line-height:1.4;">🔒 暗号鍵が不一致です<br><span style="opacity:0.4;">${text}</span></div>`;
+            bubble.style.background = 'rgba(255,255,255,0.02)';
+            bubble.style.border = '1px dashed rgba(255,255,255,0.1)';
+            bubble.style.color = '#555';
+            bubble.style.boxShadow = 'none';
+        } else if (isImage) {
             contentDiv.innerHTML = replyHtml + `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
             bubble.style.padding = '6px';
         } else if (isVoice) {
@@ -781,7 +784,6 @@ async startGlobalInboxListener() {
         bubble.prepend(contentDiv);
         bubbleWrapper.appendChild(bubble);
 
-        // ★ リアクションの表示トレイ
         if (msg.reactions && Object.keys(msg.reactions).length > 0) {
             const reactTray = document.createElement('div');
             reactTray.style.cssText = `display:flex; gap:3px; margin-top:2px; flex-wrap:wrap; justify-content:${isMe ? 'flex-end' : 'flex-start'};`;
@@ -799,7 +801,7 @@ async startGlobalInboxListener() {
             bubbleWrapper.appendChild(reactTray);
         }
 
-        // ★ リアクション追加ボタン
+        // 解読失敗したメッセージにはリアクションや返信ボタンを付けない
         const reactBtn = document.createElement('div');
         reactBtn.innerHTML = '😀';
         reactBtn.title = 'リアクション';
@@ -816,35 +818,42 @@ async startGlobalInboxListener() {
         replyBtn.onmouseout = () => replyBtn.style.opacity = '0.7';
         replyBtn.onclick = () => this.startReply(msg.id, text);
 
-        if (isMe) {
-            if (msg.isEdited) {
-                const editMark = document.createElement('span');
-                editMark.innerText = '(編)';
-                editMark.style.cssText = 'font-size:9px; color:#888; margin-right:4px;';
-                metaContainer.appendChild(editMark);
+        if (!isDecryptFailed) {
+            if (isMe) {
+                if (msg.isEdited) {
+                    const editMark = document.createElement('span');
+                    editMark.innerText = '(編)';
+                    editMark.style.cssText = 'font-size:9px; color:#888; margin-right:4px;';
+                    metaContainer.appendChild(editMark);
+                }
+                
+                const readMark = document.createElement('div');
+                readMark.id = `read-${msg.id}`;
+                readMark.innerText = '既読';
+                readMark.style.cssText = `font-size:10px; color:#00ffcc; font-weight:bold; transition:opacity 0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:4px; margin-bottom:1px; letter-spacing:1px;`;
+                metaContainer.appendChild(readMark);
+
+                metaContainer.appendChild(reactBtn);
+                metaContainer.appendChild(replyBtn);
+
+                if (!isImage && !isVoice && msg.id) {
+                    const editBtn = document.createElement('div');
+                    editBtn.innerHTML = '✏️';
+                    editBtn.title = 'メッセージ編集';
+                    editBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+                    editBtn.onmouseover = () => editBtn.style.opacity = '1';
+                    editBtn.onmouseout = () => editBtn.style.opacity = '0.7';
+                    editBtn.onclick = () => this.startEdit(msg.id, text);
+                    metaContainer.appendChild(editBtn);
+                }
+            } else {
+                metaContainer.appendChild(reactBtn);
+                metaContainer.appendChild(replyBtn);
             }
-            
-            // ★★★ 修正箇所：既読マークを「👁️」から「既読」テキストに変更 ★★★
-            const readMark = document.createElement('div');
-            readMark.id = `read-${msg.id}`;
-            readMark.innerText = '既読';
-            readMark.style.cssText = `font-size:10px; color:#00ffcc; font-weight:bold; transition:opacity 0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:4px; margin-bottom:1px; letter-spacing:1px;`;
-            metaContainer.appendChild(readMark);
+        }
 
-            metaContainer.appendChild(reactBtn);
-            metaContainer.appendChild(replyBtn);
-
-            if (!isImage && !isVoice && msg.id) {
-                const editBtn = document.createElement('div');
-                editBtn.innerHTML = '✏️';
-                editBtn.title = 'メッセージ編集';
-                editBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
-                editBtn.onmouseover = () => editBtn.style.opacity = '1';
-                editBtn.onmouseout = () => editBtn.style.opacity = '0.7';
-                editBtn.onclick = () => this.startEdit(msg.id, text);
-                metaContainer.appendChild(editBtn);
-            }
-
+        // 解読失敗時でも削除ボタンだけは残す（不要なら消せるように）
+        if (isMe || isDecryptFailed) {
             const delBtn = document.createElement('div');
             delBtn.innerHTML = '🗑️';
             delBtn.title = 'メッセージを完全消去';
@@ -864,9 +873,6 @@ async startGlobalInboxListener() {
                 }
             };
             metaContainer.appendChild(delBtn);
-        } else {
-            metaContainer.appendChild(reactBtn);
-            metaContainer.appendChild(replyBtn);
         }
         
         metaContainer.appendChild(timeEl);
@@ -887,14 +893,12 @@ async startGlobalInboxListener() {
             const text = this.inputField.value.trim();
             if (!text || !this.activeNode) return;
 
-            // ★ 防壁1：自分のID（秘密鍵）が消えていないかチェック
             const myId = this.getMyIdentity();
             if (!myId) {
                 alert("🚨 自分のID（秘密鍵）が見つかりません。再ログインするかIDを復元してください。");
                 return;
             }
             
-            // ★ 防壁2：相手との共有鍵が存在するかチェック
             if (!this.activeNode.sharedKey) {
                 alert("🚨 相手との量子暗号キーが確立されていません。\n先に「📡 QRセキュア通信」で鍵を交換してください。");
                 return;
@@ -922,7 +926,6 @@ async startGlobalInboxListener() {
                 await this.dispatchToNetwork(encrypted);
             }
         } catch (e) {
-            // ★ 防壁3：謎のエラーが起きても絶対に無反応にさせずアラートを出す
             console.error("Send Error:", e);
             alert("送信中にシステムエラーが発生しました: " + e.message);
         }
@@ -931,7 +934,6 @@ async startGlobalInboxListener() {
     async toggleVoiceRecord() {
         if (!this.activeNode) return;
         
-        // ★ 追加：鍵がない時のエラー防壁
         if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
 
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
@@ -997,7 +999,6 @@ async startGlobalInboxListener() {
     async sendImage(file) {
         if (!file || !this.activeNode) return;
         
-        // ★ 追加：鍵がない時のエラー防壁
         if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
         
         this.inputField.placeholder = 'Compressing & Encrypting...';
@@ -1017,7 +1018,6 @@ async startGlobalInboxListener() {
         const myPubStr = JSON.stringify(myId.publicKey);
         const myShortId = this.getShortId(myId.publicKey); 
         
-        // ★ Phantom状態を一旦保存して、リセットする
         const isPhantom = this.isPhantomMode;
         if (this.isPhantomMode) {
             this.isPhantomMode = false;
