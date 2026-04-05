@@ -14,16 +14,14 @@ export class Hyper3D {
         document.body.appendChild(this.canvas);
 
         this.scene = new THREE.Scene();
-        // 宇宙の深淵（完全な漆黒）
         this.scene.background = new THREE.Color(0x000000);
         this.scene.fog = new THREE.FogExp2(0x000000, 0.0003); 
 
-        // ★魔法の環境マップ（これがないとガラスは暗闇で透明人間になる！）★
+        // ガラスの反射を美しく見せるための環境光マップ
         const envCanvas = document.createElement('canvas');
         envCanvas.width = 512; envCanvas.height = 256;
         const envCtx = envCanvas.getContext('2d');
         envCtx.fillStyle = '#000000'; envCtx.fillRect(0,0,512,256);
-        // クリスタルに反射させるためのカラフルな光の玉を不可視空間に描画
         for(let i=0; i<30; i++) {
             envCtx.beginPath();
             envCtx.arc(Math.random()*512, Math.random()*256, Math.random()*30+10, 0, Math.PI*2);
@@ -32,13 +30,19 @@ export class Hyper3D {
         }
         const envTex = new THREE.CanvasTexture(envCanvas);
         envTex.mapping = THREE.EquirectangularReflectionMapping;
-        this.scene.environment = envTex; // この反射源をシーンにセット！
+        this.scene.environment = envTex; 
 
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
         
-        const startX = -this.app.camera.x;
-        const startY = this.app.camera.y; 
-        this.camera.position.set(startX, startY, 500); 
+        let targetX = 0, targetY = 0;
+        if (this.currentUniverse && this.currentUniverse.nodes.length > 0) {
+            this.currentUniverse.nodes.forEach(n => { targetX += (n.x || 0); targetY += -(n.y || 0); });
+            targetX /= this.currentUniverse.nodes.length; targetY /= this.currentUniverse.nodes.length;
+        } else {
+            targetX = -this.app.camera.x; targetY = this.app.camera.y;
+        }
+
+        this.camera.position.set(targetX, targetY, 600); 
 
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -49,12 +53,11 @@ export class Hyper3D {
         this.controls.dampingFactor = 0.05;
         this.controls.enablePan = true; 
         this.controls.autoRotate = false; 
-        this.controls.target.set(startX, startY, 0); 
+        this.controls.target.set(targetX, targetY, 0); 
         this.controls.minDistance = 20; 
         this.controls.maxDistance = 8000; 
 
-        // 照明設計
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3); // 全体を少し明るく
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3); 
         this.scene.add(ambientLight);
         
         const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -69,7 +72,8 @@ export class Hyper3D {
         this.linksGroup = new THREE.Group();
         this.scene.add(this.linksGroup);
         
-        this.lineMat = new THREE.LineBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
+        // リンク線（星同士を繋ぐ線）は、邪魔にならないよう淡く細く
+        this.lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending });
 
         this.createStarfield();
 
@@ -164,40 +168,37 @@ export class Hyper3D {
         this.scene.add(this.starfield);
     }
 
-    // ★画像のようなパライバクリスタルを生成（絶対に消えない仕様）★
     createStarMesh(node, size, threeColor, isGhost) {
         const group = new THREE.Group();
         group.userData.node = node; 
 
-        // 1. 形状（画像のようなシャープな多面体）
+        // クリスタル形状
         const coreGeo = new THREE.OctahedronGeometry(1, 1); 
         coreGeo.scale(1.0, 2.0, 1.0); 
 
-        // 2. ★究極のマテリアル（透過率を下げて実体を持たせ、環境マップで反射させる）★
+        // ★ 安っぽい輪郭線（エッジ）を完全削除。純粋なガラスの反射と透過だけで見せる！ ★
         const coreMat = new THREE.MeshPhysicalMaterial({
-            color: 0xffffff, // ベースは白で光を通しやすく
-            emissive: threeColor, // ユーザーが設定した色で発光
-            emissiveIntensity: isGhost ? 0.2 : 0.8, // 確かな発光で視認性を担保
+            color: 0xffffff, 
+            emissive: threeColor, 
+            emissiveIntensity: isGhost ? 0.2 : 0.9, // 線がない分、内側からの発光を少し強く
             
-            metalness: 0.2, // 少しだけ金属的な反射を入れてシャープに
-            roughness: 0.05, // 表面はツルツル
+            metalness: 0.1, 
+            roughness: 0.05, 
             
-            // ★ここが透過のキモ★
-            transmission: 0.8, // 1.0（完全透明）ではなく、0.8にすることで実体を残す！
+            transmission: 0.8, 
             thickness: size * 2.5, 
-            ior: 2.2, // 高い屈折率
+            ior: 2.2, 
 
-            iridescence: 1.0, // 表面の虹色（遊色効果）
+            iridescence: 1.0, 
             iridescenceIOR: 1.5,
             iridescenceThicknessRange: [100, 400], 
 
-            clearcoat: 1.0, // 表面のガラスコーティング
-            clearcoatRoughness: 0.1,
+            clearcoat: 1.0, 
+            clearcoatRoughness: 0.05,
 
             transparent: true, 
             opacity: isGhost ? 0.3 : 1.0,
             
-            // ★超重要：裏面も描画することで、クリスタル内部での乱反射を表現★
             side: THREE.DoubleSide, 
             depthWrite: true,
         });
@@ -209,33 +210,19 @@ export class Hyper3D {
         group.add(core);
         group.userData.core = core; 
 
-        // 3. エッジライン（角を光らせて立体形状を絶対に失わせない）
-        const edgesGeo = new THREE.EdgesGeometry(coreGeo);
-        const edgesMat = new THREE.LineBasicMaterial({ 
-            color: 0xffffff, // 白く輝くエッジ
-            transparent: true, 
-            opacity: isGhost ? 0.1 : 0.5, 
-            blending: THREE.AdditiveBlending,
-            linewidth: 1
-        });
-        const edges = new THREE.LineSegments(edgesGeo, edgesMat);
-        edges.scale.set(size, size, size);
-        group.add(edges);
-        group.userData.edges = edges; 
-
-        // 4. 内部光源（クリスタルの中から外を照らす）
+        // 内部光源
         const innerLight = new THREE.PointLight(threeColor, isGhost ? 0.8 : 2.5, size * 20);
         innerLight.position.set(0, 0, 0); 
         group.add(innerLight);
         group.userData.innerLight = innerLight;
 
-        // 5. ふんわりとした後光
+        // 後光（Glow）
         const glowCanvas = document.createElement('canvas');
         glowCanvas.width = 128; glowCanvas.height = 128;
         const ctx = glowCanvas.getContext('2d');
         const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
         grad.addColorStop(0, 'rgba(255,255,255,1.0)'); 
-        grad.addColorStop(0.3, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.7)`); 
+        grad.addColorStop(0.2, `rgba(${threeColor.r*255}, ${threeColor.g*255}, ${threeColor.b*255}, 0.8)`); 
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
         
@@ -416,34 +403,20 @@ export class Hyper3D {
                 this.scene.add(data.group);
                 this.nodeDataMap.set(node, data);
             } else {
-                // UIの色変更メニューからの変更をリアルタイムに同期
+                // UIの色変更同期（エッジの同期は削除済み）
                 data.group.userData.core.scale.set(size, size, size);
                 data.group.userData.glow.scale.set(size * 8, size * 8, 1); 
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.scale.set(size, size, size);
-                }
                 
-                // コア（発光部）の色を更新
                 data.group.userData.core.material.emissive.copy(threeColor);
-                // エッジラインの色を更新
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.material.color.copy(threeColor);
-                }
-                // 後光の色を更新
                 data.group.userData.glow.material.color.copy(threeColor); 
                 
-                // 内部光源の色と強さを更新
-                const innerLight = data.group.userData.innerLight;
-                if (innerLight) {
-                    innerLight.color.copy(threeColor);
-                    innerLight.intensity = isGhost ? 0.5 : 2.5;
+                if (data.group.userData.innerLight) {
+                    data.group.userData.innerLight.color.copy(threeColor);
+                    data.group.userData.innerLight.intensity = isGhost ? 0.5 : 2.5;
                 }
 
                 data.group.userData.core.material.opacity = isGhost ? 0.3 : 1.0;
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.material.opacity = isGhost ? 0.1 : 0.5;
-                }
-                data.group.userData.glow.material.opacity = isGhost ? 0.1 : 0.6;
+                data.group.userData.glow.material.opacity = isGhost ? 0.1 : 0.5;
             }
 
             if (this.draggedNode !== node && this.app.grabbedNode !== node) {
@@ -533,6 +506,15 @@ export class Hyper3D {
                 this.isDiving = false;
                 this.app.diveTargetNode = null;
                 this.controls.enabled = true;
+                
+                let nextX = 0, nextY = 0;
+                if (this.app.currentUniverse.nodes.length > 0) {
+                    this.app.currentUniverse.nodes.forEach(n => { nextX += (n.x || 0); nextY += -(n.y || 0); });
+                    nextX /= this.app.currentUniverse.nodes.length;
+                    nextY /= this.app.currentUniverse.nodes.length;
+                }
+                this.camera.position.set(nextX, nextY, 600);
+                this.controls.target.set(nextX, nextY, 0);
             }
         }
 
@@ -541,7 +523,6 @@ export class Hyper3D {
             this.nodeDataMap.clear();
             this.currentUniverse = this.app.currentUniverse;
             
-            // 星がない場所に行かないよう、中心座標を再計算
             let nextX = 0, nextY = 0;
             if (this.currentUniverse.nodes.length > 0) {
                 this.app.currentUniverse.nodes.forEach(n => { nextX += (n.x || 0); nextY += -(n.y || 0); });
@@ -561,10 +542,6 @@ export class Hyper3D {
                 // 自転
                 data.group.userData.core.rotation.y += 0.003;
                 data.group.userData.core.rotation.z += 0.001;
-                if (data.group.userData.edges) {
-                    data.group.userData.edges.rotation.y += 0.003;
-                    data.group.userData.edges.rotation.z += 0.001;
-                }
                 
                 // 浮遊
                 const bpm = 153;
@@ -575,7 +552,6 @@ export class Hyper3D {
                 const baseZ = data.group.userData.node.z || 0;
                 data.group.position.z = baseZ + (Math.sin(Date.now() * 0.001 + data.group.position.x) * 5); 
                 
-                // 光の鼓動
                 if (data.group.userData.innerLight) {
                     const baseIntensity = data.group.userData.node.isGhost ? 0.8 : 2.5;
                     data.group.userData.innerLight.intensity = baseIntensity + (pulse * baseIntensity * 0.15);
