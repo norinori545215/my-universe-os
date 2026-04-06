@@ -16,7 +16,8 @@ import { NexusUI } from './NexusUI.js';
 import { NexusChatUI } from './NexusChatUI.js';
 import { Chronos } from '../core/Chronos.js'; 
 import { RealityBridge } from '../api/RealityBridge.js';
-import { WebXRDive } from './WebXRDive.js'; // ★ WebXRDiveを追加
+import { WebXRDive } from './WebXRDive.js';
+import { WanderingEntities } from '../ai/WanderingEntities.js'; // ★ 追加
 
 export class UIManager {
     constructor(app) {
@@ -376,6 +377,10 @@ export class UIManager {
                     <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:45px; height:45px; border:none; border-radius:8px; background:transparent; cursor:pointer;">
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
+
+                <!-- ★ AIエンティティ召喚ボタンを追加 -->
+                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI ENTITY</div>
+                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">🤖 自律型AIを宇宙に放つ</button>
             `;
         } else if (this.state.activeTab === 'config') {
             const chronosCfg = Chronos.getConfig(); 
@@ -439,7 +444,7 @@ export class UIManager {
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                     <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
-                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
+                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
                     <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">自爆コード (Panic) を設定</button>
                 </div>
                 
@@ -599,6 +604,12 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
+        // ★ 追加: AIエンティティの召喚イベント
+        bind('cp-spawn-entity', () => {
+            WanderingEntities.spawn(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
         bind('cp-btn-logout', () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); });
         
         bind('cp-btn-inventory', () => { this.controlPanel.style.display='none'; this.showInventoryUI(); });
@@ -677,7 +688,6 @@ export class UIManager {
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
 
-        // ★ ここを書き換え：3DモードとVRダイブボタン
         if (is3D) {
             const btn = document.createElement('div');
             btn.innerText = this.is3DMode ? '🌌' : '🪐';
@@ -687,7 +697,6 @@ export class UIManager {
             btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) this.toggle3DMode(); };
             this.capsuleSlots.appendChild(btn);
 
-            // 3Dモード起動中のみ「VRダイブボタン」を横に出現させる
             if (this.is3DMode) {
                 const vrBtn = document.createElement('div');
                 vrBtn.innerText = '🕶️';
