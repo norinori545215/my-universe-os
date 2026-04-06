@@ -1,10 +1,13 @@
+// src/main.js
 import { CanvasBuilder } from '../engine/CanvasBuilder.js';
+import { CognitiveShield } from '../engine/CognitiveShield.js'; // ★ 追加：生体リンク監視システム
 import { auth, db } from '../security/Auth.js';
 import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 window.addEventListener('DOMContentLoaded', () => {
     console.log("マルチバース・エンジン起動...");
     new CanvasBuilder('universe-canvas');
+    new CognitiveShield(); // ★ 追加：バックグラウンドで生体負荷の監視を開始
 });
 
 // ★ どこからでも呼び出せる「完全消去魔法（ビッグバン）」を新設！
