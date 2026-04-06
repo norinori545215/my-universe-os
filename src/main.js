@@ -1,17 +1,22 @@
 // src/main.js
 import { CanvasBuilder } from '../engine/CanvasBuilder.js';
 import { CognitiveShield } from '../engine/CognitiveShield.js'; 
-import { GlitchEngine } from '../engine/GlitchEngine.js'; // ★ 追加：グリッチエンジン
+import { GlitchEngine } from '../engine/GlitchEngine.js'; 
+import { WanderingEntities } from '../ai/WanderingEntities.js'; // ★ 追加
 import { auth, db } from '../security/Auth.js';
 import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 window.addEventListener('DOMContentLoaded', () => {
     console.log("マルチバース・エンジン起動...");
-    new CanvasBuilder('universe-canvas');
-    new CognitiveShield(); 
     
-    // ★ 常にブラウン管（CRT）モニター風の走査線を描画してサイバー感を底上げする
+    // ★ new CanvasBuilder を変数 app に格納するように変更
+    const app = new CanvasBuilder('universe-canvas'); 
+    
+    new CognitiveShield(); 
     GlitchEngine.toggleCRT(true); 
+    
+    // ★ バックグラウンドでAIエンティティの思考ループを開始
+    WanderingEntities.start(app); 
 });
 
 // ★ どこからでも呼び出せる「完全消去魔法（ビッグバン）」を新設！
