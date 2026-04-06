@@ -15,7 +15,8 @@ import { MediaViewUI } from './MediaViewUI.js';
 import { NexusUI } from './NexusUI.js';
 import { NexusChatUI } from './NexusChatUI.js';
 import { Chronos } from '../core/Chronos.js'; 
-import { RealityBridge } from '../api/RealityBridge.js'; // ★ RealityBridgeを追加
+import { RealityBridge } from '../api/RealityBridge.js';
+import { WebXRDive } from './WebXRDive.js'; // ★ WebXRDiveを追加
 
 export class UIManager {
     constructor(app) {
@@ -438,7 +439,7 @@ export class UIManager {
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                     <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
-                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
+                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
                     <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">自爆コード (Panic) を設定</button>
                 </div>
                 
@@ -452,7 +453,6 @@ export class UIManager {
             `;
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
-                <!-- ★ Reality Bridge を追加 -->
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">REALITY BRIDGE (現実同期)</div>
                     <button id="cp-btn-reality" style="width:100%; padding:14px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
@@ -648,7 +648,6 @@ export class UIManager {
         const radar = document.getElementById('cp-radar');
         if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
 
-        // ★ 追加: Reality Bridgeボタンのイベント
         bind('cp-btn-reality', async () => {
             const btn = document.getElementById('cp-btn-reality');
             const originalText = btn.innerText;
@@ -659,7 +658,7 @@ export class UIManager {
             
             btn.innerText = originalText;
             btn.style.opacity = '1';
-            this.controlPanel.style.display = 'none'; // メニューを閉じる
+            this.controlPanel.style.display = 'none'; 
         });
     }
 
@@ -678,6 +677,7 @@ export class UIManager {
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
 
+        // ★ ここを書き換え：3DモードとVRダイブボタン
         if (is3D) {
             const btn = document.createElement('div');
             btn.innerText = this.is3DMode ? '🌌' : '🪐';
@@ -686,6 +686,16 @@ export class UIManager {
             btn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(${color},0.15); border:1px solid rgba(${color},0.5); color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(${color},0.2); font-size:14px;`;
             btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) this.toggle3DMode(); };
             this.capsuleSlots.appendChild(btn);
+
+            // 3Dモード起動中のみ「VRダイブボタン」を横に出現させる
+            if (this.is3DMode) {
+                const vrBtn = document.createElement('div');
+                vrBtn.innerText = '🕶️';
+                vrBtn.title = "Neural Dive (VR)";
+                vrBtn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.15); border:1px dashed #00ffcc; color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(0,255,204,0.4); font-size:14px; margin-left:5px;`;
+                vrBtn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) WebXRDive.initiateDive(this.app, this.hyper3DInstance); };
+                this.capsuleSlots.appendChild(vrBtn);
+            }
         }
 
         if (isSearch) {
