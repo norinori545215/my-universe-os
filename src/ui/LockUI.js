@@ -1,10 +1,11 @@
 // src/ui/LockUI.js
 import { DynamicSeal } from '../security/DynamicSeal.js';
+import { GlitchEngine } from '../engine/GlitchEngine.js'; // ★ GlitchEngineを追加
 
 export class LockUI {
     constructor(app, onAction) {
         this.app = app;
-        this.onAction = onAction; // panic か dummy の文字列を受け取るコールバック
+        this.onAction = onAction; 
         this.createUI();
     }
 
@@ -99,17 +100,19 @@ export class LockUI {
 
             const inputVal = this.input.value;
 
-            // ★ 1. パニックコード（自爆）の検知
+            // 1. パニックコード（自爆）の検知
             const rawPanicCode = localStorage.getItem('universe_panic_code');
             if (rawPanicCode && inputVal === rawPanicCode) {
+                GlitchEngine.trigger(1000, true); // ★ 自爆前にも強烈なバグ！
                 this.close();
                 if(this.onAction) this.onAction('panic');
                 return;
             }
 
-            // ★ 2. ダミーコード（ハニーポット）の検知
+            // 2. ダミーコード（ハニーポット）の検知
             const rawDummyCode = localStorage.getItem('universe_dummy_code');
             if (rawDummyCode && inputVal === rawDummyCode) {
+                GlitchEngine.trigger(300, false); // ★ 偽装展開時も軽くバグる
                 this.close();
                 if(this.onAction) this.onAction('dummy');
                 return;
@@ -127,6 +130,9 @@ export class LockUI {
                     this.close();
                     if(onSuccess) onSuccess();
                 } else {
+                    // ★ 復号失敗時に強烈なグリッチを発生させる！
+                    GlitchEngine.trigger(400, true);
+                    
                     this.input.style.borderColor = '#ffffff';
                     this.input.value = '';
                     this.btnSubmit.innerText = 'AUTHORIZE';
