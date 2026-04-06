@@ -1,4 +1,5 @@
 // src/engine/AudioCore.js
+import { HapticEngine } from './HapticEngine.js'; // ★ 追加：触覚エンジンのインポート
 
 export class AudioCore {
     constructor() {
@@ -21,6 +22,7 @@ export class AudioCore {
             }
             this.startHeartbeat();
             this.playSystemSound(440, 'sine', 0.1); // 起動音（ピコン！）
+            HapticEngine.playTap(); // ★ 追加：起動時のスイッチ感触
         } else {
             this.stopHeartbeat();
         }
@@ -33,6 +35,10 @@ export class AudioCore {
         
         this.heartbeatTimer = setInterval(() => {
             if (this.isMuted) return;
+            
+            // ★ 追加：153bpmの物理的な鼓動（スマホがトクン…と震える）
+            HapticEngine.playPulse();
+
             // ズンッ…という重低音のキックドラムを生成
             const osc = this.ctx.createOscillator();
             const gain = this.ctx.createGain();
@@ -64,18 +70,21 @@ export class AudioCore {
     playSpawn() {
         if (this.isMuted) return;
         this.playSystemSound(880, 'sine', 0.15, 1760);
+        HapticEngine.playSpawn(); // ★ 追加：生成時のトトッという感触
     }
 
     // 🎒 星を消した時・亜空間へ送った時の音（低く吸い込まれる音）
     playDelete() {
         if (this.isMuted) return;
         this.playSystemSound(200, 'sawtooth', 0.2, 50);
+        HapticEngine.playDelete(); // ★ 追加：消去時のズンッという重い感触
     }
 
     // 🌌 ワープ（階層移動）した時の音
     playWarp() {
         if (this.isMuted) return;
         this.playSystemSound(400, 'triangle', 0.3, 800);
+        HapticEngine.playWarp(); // ★ 追加：ワープ時のダダダダッという感触
     }
 
     // 汎用的なシンセサイザー発音機
