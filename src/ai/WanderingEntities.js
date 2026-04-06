@@ -62,9 +62,14 @@ export class WanderingEntities {
         const names = ["Think-Tank_01", "Tachikoma", "Crawler_Ghost", "Wanderer"];
         const name = names[Math.floor(Math.random() * names.length)];
         
-        // 通常の星として生成するが、特別なフラグを立てる
-        const node = app.currentUniverse.addNode(`🤖 ${name}`, cx, cy, 20, '#ff00ff', 'star');
-        node.isEntity = true; // ★ AI判定フラグ
+        // 1. まず通常の星として生成する
+        app.currentUniverse.addNode(`🤖 ${name}`, cx, cy, 20, '#ff00ff', 'star');
+        
+        // 2. 今追加されたばかりの最新の星を取得する（ここを修正！）
+        const node = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
+        
+        // 3. AIとしての人格と運動能力を付与
+        node.isEntity = true;
         node.originalName = `🤖 ${name}`;
         node.vx = (Math.random() - 0.5) * 4;
         node.vy = (Math.random() - 0.5) * 4;
@@ -72,7 +77,7 @@ export class WanderingEntities {
         
         app.autoSave();
         
-        if(window.universeAudio) window.universeAudio.playSpawn();
+        if (window.universeAudio) window.universeAudio.playSpawn();
         
         alert(`自律型AIエンティティ「${name}」を宇宙に放ちました！\n画面内を勝手に動き回り、時々独り言を喋ります。`);
     }
