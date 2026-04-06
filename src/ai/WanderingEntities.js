@@ -8,50 +8,64 @@ export class WanderingEntities {
         setInterval(() => {
             if (!app.currentUniverse || !app.currentUniverse.nodes) return;
             
+            let hasEntity = false;
+
             app.currentUniverse.nodes.forEach(node => {
-                if (node.isEntity) {
+                if (node.isEntity && !node.isGhost) {
+                    hasEntity = true;
+
                     // 速度の初期化
                     if (typeof node.vx !== 'number') node.vx = (Math.random() - 0.5) * 2;
                     if (typeof node.vy !== 'number') node.vy = (Math.random() - 0.5) * 2;
                     
-                    // 慣性移動
-                    node.x += node.vx;
-                    node.y += node.vy;
+                    // ★修正1: 物理エンジン（重力）に逆らって強制移動させるため、固定座標(fx, fy)を直接書き換える
+                    const speed = 1.5;
+                    node.x += node.vx * speed;
+                    node.y += node.vy * speed;
+                    node.fx = node.x; 
+                    node.fy = node.y; 
                     
-                    // 時々ランダムに方向転換（2%の確率）
-                    if (Math.random() < 0.02) {
+                    // 画面外に逃亡しないよう、中心（カメラ位置）へうっすら引き戻す引力
+                    if (app.camera) {
+                        const targetX = -app.camera.x;
+                        const targetY = -app.camera.y;
+                        node.vx += (targetX - node.x) * 0.0005;
+                        node.vy += (targetY - node.y) * 0.0005;
+                    }
+
+                    // 時々ランダムに方向転換
+                    if (Math.random() < 0.05) {
                         node.vx = (Math.random() - 0.5) * 3;
                         node.vy = (Math.random() - 0.5) * 3;
                     }
                     
                     // 活動中アピールとして波紋を出す（1%の確率）
                     if (Math.random() < 0.01 && app.spawnRipple) {
-                        app.spawnRipple(node.x, node.y, node.color || '#00ffcc');
+                        app.spawnRipple(node.x, node.y, node.color || '#ff00ff');
                     }
 
-                    // 時々独り言を喋る（名前に一時的にセリフを入れる）
-                    if (Math.random() < 0.005) {
-                        const originalName = node.originalName || node.name;
+                    // 時々独り言を喋る
+                    if (Math.random() < 0.01) {
                         if (!node.originalName) node.originalName = node.name;
-                        
-                        const quotes = [
-                            "「データがおいしい…」",
-                            "「異常なし。」",
-                            "「ここはどこ？」",
-                            "「スキャン中…」",
-                            "「ゴーストが囁く…」"
-                        ];
+                        const quotes = ["「データ収集…」", "「パトロール中…」", "「異常なし」", "「ゴーストが囁く…」", "「zzz...」"];
                         node.name = quotes[Math.floor(Math.random() * quotes.length)];
                         
-                        // 3秒後に元の名前に戻す
                         setTimeout(() => {
-                            if (node && node.originalName) {
-                                node.name = node.originalName;
-                            }
-                        }, 3000);
+                            if (node && node.originalName) node.name = node.originalName;
+                        }, 2000);
                     }
                 }
             });
+
+            // ★修正2: AIが存在する間は、省エネモードを無効化し、Canvasを強制的に再描画し続ける
+            if (hasEntity) {
+                if (typeof app.draw === 'function') app.draw();
+                if (typeof app.render === 'function') app.render();
+                if (typeof app.update === 'function') app.update();
+                // 物理エンジン(D3.js等)が動いている場合は、シミュレーションに熱を持たせて画面を動かす
+                if (app.simulation) app.simulation.alpha(0.1).restart();
+            }
+
         }, 30); 
     }
 
@@ -59,16 +73,14 @@ export class WanderingEntities {
         const cx = app.camera ? -app.camera.x : 0;
         const cy = app.camera ? -app.camera.y : 0;
         
-        const names = ["Think-Tank_01", "Tachikoma", "Crawler_Ghost", "Wanderer"];
+        const names = ["Think-Tank", "Tachikoma", "Crawler_Ghost", "Wanderer"];
         const name = names[Math.floor(Math.random() * names.length)];
         
-        // 1. まず通常の星として生成する
         app.currentUniverse.addNode(`🤖 ${name}`, cx, cy, 20, '#ff00ff', 'star');
         
-        // 2. 今追加されたばかりの最新の星を取得する（ここを修正！）
+        // 生成したばかりの最新の星を取得する
         const node = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
         
-        // 3. AIとしての人格と運動能力を付与
         node.isEntity = true;
         node.originalName = `🤖 ${name}`;
         node.vx = (Math.random() - 0.5) * 4;
