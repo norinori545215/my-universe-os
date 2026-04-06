@@ -14,14 +14,14 @@ import { VaultMedia } from '../db/VaultMedia.js';
 import { MediaViewUI } from './MediaViewUI.js';
 import { NexusUI } from './NexusUI.js';
 import { NexusChatUI } from './NexusChatUI.js';
-import { Chronos } from '../core/Chronos.js'; // ★ Chronosを追加
+import { Chronos } from '../core/Chronos.js'; 
+import { RealityBridge } from '../api/RealityBridge.js'; // ★ RealityBridgeを追加
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
         
-        // ★ LockUIのコールバックを拡張: type（'panic' か 'dummy'）を受け取る
         this.lockUI = new LockUI(app, (type) => {
             if (type === 'panic') {
                 this.triggerPanic();
@@ -54,19 +54,17 @@ export class UIManager {
 
         this.createUI();
         
-        // ★ アプリ起動時のChronos生存パルス更新とチェック
         Chronos.updatePulse();
         if (Chronos.check()) {
             alert("⚠️ [SECURITY] Chronos protocol has purged the universe.");
             if (window.resetUniverseData) {
-                window.resetUniverseData(); // main.jsの完全消去魔法を呼び出す
+                window.resetUniverseData(); 
             } else {
                 localStorage.clear();
                 window.location.reload();
             }
         }
         
-        // 操作のたびにパルスを打つ（生存報告）
         window.addEventListener('click', () => Chronos.updatePulse(), { passive: true });
         window.addEventListener('keydown', () => Chronos.updatePulse(), { passive: true });
 
@@ -260,7 +258,6 @@ export class UIManager {
         }
     }
 
-    // 元のPanic Wipe（真っ赤になって完全消去）
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -289,7 +286,6 @@ export class UIManager {
         this.updateBreadcrumbs();
     }
 
-    // ★ 追加：法的防壁（ダミー宇宙の展開）
     triggerDummyUniverse() {
         this.hideMenu();
         this.hideQuickNote();
@@ -304,7 +300,6 @@ export class UIManager {
 
         console.warn("⚠️ [SECURITY] Legal Escrow Protocol Activated. Dummy Universe Deployed.");
 
-        // 誰に見られても恥ずかしくないダミー宇宙を構築
         this.app.currentUniverse.name = "Guest Mode";
         this.app.currentUniverse.nodes = [];
         this.app.currentUniverse.links = [];
@@ -317,7 +312,6 @@ export class UIManager {
         this.app.blackHole = [];
         this.app.camera.reset();
         
-        // ★ ダミー中はAutoSaveを無効化（本物のデータを上書きさせないため）
         this.app.autoSave = () => { console.log("🔒 [HoneyPot] ゲストモード中のため保存はスキップされました。"); };
         
         this.updateBreadcrumbs();
@@ -383,7 +377,7 @@ export class UIManager {
                 </div>
             `;
         } else if (this.state.activeTab === 'config') {
-            const chronosCfg = Chronos.getConfig(); // ★ Chronos設定取得
+            const chronosCfg = Chronos.getConfig(); 
 
             content.innerHTML = `
                 <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
@@ -458,6 +452,14 @@ export class UIManager {
             `;
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
+                <!-- ★ Reality Bridge を追加 -->
+                <div style="margin-bottom:25px;">
+                    <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">REALITY BRIDGE (現実同期)</div>
+                    <button id="cp-btn-reality" style="width:100%; padding:14px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
+                        🌐 ビットコイン相場を星として召喚
+                    </button>
+                </div>
+
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">RADAR SEARCH</div>
                     <input type="text" id="cp-radar" placeholder="宇宙を探索..." style="width:100%; background:rgba(0,0,0,0.5); color:#fff; border:1px solid #00ffcc; border-radius:8px; padding:12px; box-sizing:border-box; outline:none; font-size:14px;">
@@ -525,7 +527,6 @@ export class UIManager {
         handleCheckbox('cp-rapid-spawn', 'universe_rapid_spawn');
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
         
-        // ★ Chronosの設定イベント
         const chronosToggle = document.getElementById('cp-chronos-toggle');
         const chronosDays = document.getElementById('cp-chronos-days');
         if (chronosToggle && chronosDays) {
@@ -568,7 +569,6 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
-        // ★ ダミーコード（ハニーポット）設定
         bind('cp-btn-set-dummy', () => {
             const currentCode = localStorage.getItem('universe_dummy_code') || '';
             const newCode = prompt("法的防壁（ダミー宇宙）を展開するパスワードを入力してください。\n（現在のコード: " + (currentCode === '' ? "未設定" : "****") + "）", "");
@@ -578,7 +578,6 @@ export class UIManager {
             }
         });
 
-        // パニック（自爆）コード設定
         bind('cp-btn-set-panic', () => {
             const currentCode = localStorage.getItem('universe_panic_code') || '';
             const newCode = prompt("自爆（全データ消去）を引き起こすパスワードを入力してください。\n（現在のコード: " + (currentCode === '' ? "未設定" : "****") + "）", "");
@@ -648,6 +647,20 @@ export class UIManager {
 
         const radar = document.getElementById('cp-radar');
         if(radar) radar.oninput = (e) => this.handleRadar(e.target.value);
+
+        // ★ 追加: Reality Bridgeボタンのイベント
+        bind('cp-btn-reality', async () => {
+            const btn = document.getElementById('cp-btn-reality');
+            const originalText = btn.innerText;
+            btn.innerText = '🔄 現実空間と同期中...';
+            btn.style.opacity = '0.5';
+            
+            await RealityBridge.syncCryptoStar(this.app);
+            
+            btn.innerText = originalText;
+            btn.style.opacity = '1';
+            this.controlPanel.style.display = 'none'; // メニューを閉じる
+        });
     }
 
     updateMode(mode) {
