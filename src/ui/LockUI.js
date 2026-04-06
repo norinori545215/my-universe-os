@@ -2,9 +2,9 @@
 import { DynamicSeal } from '../security/DynamicSeal.js';
 
 export class LockUI {
-    constructor(app, onPanic) {
+    constructor(app, onAction) {
         this.app = app;
-        this.onPanic = onPanic;
+        this.onAction = onAction; // panic か dummy の文字列を受け取るコールバック
         this.createUI();
     }
 
@@ -97,20 +97,29 @@ export class LockUI {
         this.btnSubmit.onclick = async () => {
             if(this.input.value.length < 1) return;
 
-            // ★ ここでパニックコードを検知して自爆する
+            const inputVal = this.input.value;
+
+            // ★ 1. パニックコード（自爆）の検知
             const rawPanicCode = localStorage.getItem('universe_panic_code');
-            const currentPanicCode = (rawPanicCode !== null && rawPanicCode !== "") ? rawPanicCode : '0000';
-            
-            if (this.input.value === currentPanicCode) {
+            if (rawPanicCode && inputVal === rawPanicCode) {
                 this.close();
-                if(this.onPanic) this.onPanic();
+                if(this.onAction) this.onAction('panic');
                 return;
             }
 
+            // ★ 2. ダミーコード（ハニーポット）の検知
+            const rawDummyCode = localStorage.getItem('universe_dummy_code');
+            if (rawDummyCode && inputVal === rawDummyCode) {
+                this.close();
+                if(this.onAction) this.onAction('dummy');
+                return;
+            }
+
+            // 3. 通常の復号処理
             this.btnSubmit.innerText = 'DECRYPTING...';
 
             try {
-                const success = await DynamicSeal.unseal(node, this.input.value);
+                const success = await DynamicSeal.unseal(node, inputVal);
 
                 if(success) {
                     node.isTempUnlocked = true;

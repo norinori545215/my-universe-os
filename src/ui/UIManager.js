@@ -14,12 +14,22 @@ import { VaultMedia } from '../db/VaultMedia.js';
 import { MediaViewUI } from './MediaViewUI.js';
 import { NexusUI } from './NexusUI.js';
 import { NexusChatUI } from './NexusChatUI.js';
+import { Chronos } from '../core/Chronos.js'; // ★ Chronosを追加
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.notePad = new NotePadUI(app);
-        this.lockUI = new LockUI(app, () => this.triggerPanic());
+        
+        // ★ LockUIのコールバックを拡張: type（'panic' か 'dummy'）を受け取る
+        this.lockUI = new LockUI(app, (type) => {
+            if (type === 'panic') {
+                this.triggerPanic();
+            } else if (type === 'dummy') {
+                this.triggerDummyUniverse();
+            }
+        });
+        
         this.mediaView = new MediaViewUI(app);
         this.nexusUI = new NexusUI(app);
         this.nexusChatUI = new NexusChatUI(app);
@@ -39,12 +49,27 @@ export class UIManager {
         
         window.universeAudio = new AudioCore();
         
-        // ★ 3Dエンジン管理用の変数
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
         this.createUI();
         
+        // ★ アプリ起動時のChronos生存パルス更新とチェック
+        Chronos.updatePulse();
+        if (Chronos.check()) {
+            alert("⚠️ [SECURITY] Chronos protocol has purged the universe.");
+            if (window.resetUniverseData) {
+                window.resetUniverseData(); // main.jsの完全消去魔法を呼び出す
+            } else {
+                localStorage.clear();
+                window.location.reload();
+            }
+        }
+        
+        // 操作のたびにパルスを打つ（生存報告）
+        window.addEventListener('click', () => Chronos.updatePulse(), { passive: true });
+        window.addEventListener('keydown', () => Chronos.updatePulse(), { passive: true });
+
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
             const oldReset = document.getElementById('emergency-reset-btn');
@@ -53,18 +78,13 @@ export class UIManager {
         }, 500);
     }
 
-    // ★ 2Dキャンバスを安全に隠し、透明な壁バグを防ぐ
     async toggle3DMode() {
         if (!this.is3DMode) {
-            // 2D -> 3D にシフト
             this.is3DMode = true;
-            
             this.app.canvas.style.transition = 'opacity 0.3s';
             this.app.canvas.style.opacity = '0'; 
             this.app.canvas.style.pointerEvents = 'none'; 
-
             if(window.universeAudio) window.universeAudio.playWarp();
-
             try {
                 const { Hyper3D } = await import('../engine/Hyper3D.js');
                 this.hyper3DInstance = new Hyper3D(this.app);
@@ -76,15 +96,10 @@ export class UIManager {
                 this.app.canvas.style.pointerEvents = 'auto';
             }
         } else {
-            // 3D -> 2D に戻る
             this.is3DMode = false;
-            
             this.app.canvas.style.pointerEvents = 'auto';
             this.app.canvas.style.opacity = '1';
-
             if(window.universeAudio) window.universeAudio.playSystemSound(400, 'sine', 0.2);
-
-            // 3D空間を破棄
             if (this.hyper3DInstance) {
                 this.hyper3DInstance.destroy();
                 this.hyper3DInstance = null;
@@ -95,10 +110,8 @@ export class UIManager {
 
     makeDraggable(el, dragHandleId = null) {
         let isDragging = false, startX, startY, initX, initY, hasMoved = false;
-        
         const down = (e) => {
             if (dragHandleId && e.target.id !== dragHandleId) return; 
-            
             const ev = e.touches ? e.touches[0] : e;
             hasMoved = false;
             startX = ev.clientX; startY = ev.clientY;
@@ -107,48 +120,29 @@ export class UIManager {
             isDragging = true;
             el.style.transition = 'none';
         };
-        
         const move = (e) => {
             if (!isDragging) return;
             e.stopPropagation();
             if (e.cancelable) e.preventDefault(); 
-            
             const ev = e.touches ? e.touches[0] : e;
             const dx = ev.clientX - startX; const dy = ev.clientY - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-            
             const maxW = window.innerWidth - el.offsetWidth;
             const maxH = window.innerHeight - el.offsetHeight;
             const nx = Math.max(Math.min(0, maxW), Math.min(Math.max(0, maxW), initX + dx));
             const ny = Math.max(Math.min(0, maxH), Math.min(Math.max(0, maxH), initY + dy));
-            
-            el.style.left = `${nx}px`;
-            el.style.top = `${ny}px`;
-            el.style.right = 'auto'; el.style.bottom = 'auto';
+            el.style.left = `${nx}px`; el.style.top = `${ny}px`; el.style.right = 'auto'; el.style.bottom = 'auto';
         };
-        
-        const up = (e) => {
-            if (isDragging) { 
-                isDragging = false; 
-                el.style.transition = '0.2s'; 
-            }
-        };
-
-        el.addEventListener('mousedown', down); 
-        el.addEventListener('touchstart', down, {passive: false});
-        window.addEventListener('mousemove', move, true); 
-        window.addEventListener('touchmove', move, {passive: false, capture: true});
-        window.addEventListener('mouseup', up, true); 
-        window.addEventListener('touchend', up, true);
-        
+        const up = (e) => { if (isDragging) { isDragging = false; el.style.transition = '0.2s'; } };
+        el.addEventListener('mousedown', down); el.addEventListener('touchstart', down, {passive: false});
+        window.addEventListener('mousemove', move, true); window.addEventListener('touchmove', move, {passive: false, capture: true});
+        window.addEventListener('mouseup', up, true); window.addEventListener('touchend', up, true);
         return () => hasMoved; 
     }
 
     protectUI(el) {
-        el.addEventListener('mousedown', e => e.stopPropagation());
-        el.addEventListener('mouseup', e => e.stopPropagation());
-        el.addEventListener('touchstart', e => e.stopPropagation(), {passive: false});
-        el.addEventListener('touchend', e => e.stopPropagation(), {passive: false});
+        el.addEventListener('mousedown', e => e.stopPropagation()); el.addEventListener('mouseup', e => e.stopPropagation());
+        el.addEventListener('touchstart', e => e.stopPropagation(), {passive: false}); el.addEventListener('touchend', e => e.stopPropagation(), {passive: false});
     }
 
     createUI() {
@@ -266,6 +260,7 @@ export class UIManager {
         }
     }
 
+    // 元のPanic Wipe（真っ赤になって完全消去）
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -294,6 +289,41 @@ export class UIManager {
         this.updateBreadcrumbs();
     }
 
+    // ★ 追加：法的防壁（ダミー宇宙の展開）
+    triggerDummyUniverse() {
+        this.hideMenu();
+        this.hideQuickNote();
+        this.controlPanel.style.display = 'none';
+
+        const flash = document.createElement('div');
+        flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#ffffff;z-index:99999;pointer-events:none;transition:opacity 1s ease-out;';
+        document.body.appendChild(flash);
+        setTimeout(() => flash.style.opacity = '0', 50);
+        setTimeout(() => flash.remove(), 1000);
+        if (window.universeAudio) window.universeAudio.playWarp();
+
+        console.warn("⚠️ [SECURITY] Legal Escrow Protocol Activated. Dummy Universe Deployed.");
+
+        // 誰に見られても恥ずかしくないダミー宇宙を構築
+        this.app.currentUniverse.name = "Guest Mode";
+        this.app.currentUniverse.nodes = [];
+        this.app.currentUniverse.links = [];
+        
+        this.app.currentUniverse.addNode('Welcome', 0, -100, 40, '#00ffcc', 'star');
+        this.app.currentUniverse.addNode('Sample Image', -120, 50, 25, '#ff00ff', 'star');
+        this.app.currentUniverse.addNode('Public Logs', 120, 50, 25, '#ffcc00', 'star');
+
+        this.app.universeHistory = [];
+        this.app.blackHole = [];
+        this.app.camera.reset();
+        
+        // ★ ダミー中はAutoSaveを無効化（本物のデータを上書きさせないため）
+        this.app.autoSave = () => { console.log("🔒 [HoneyPot] ゲストモード中のため保存はスキップされました。"); };
+        
+        this.updateBreadcrumbs();
+        alert("【ゲストモード】一部の機能が制限されています。");
+    }
+
     renderCP() {
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -301,7 +331,7 @@ export class UIManager {
         this.controlPanel.innerHTML = `
             <div style="display:flex; background:rgba(0,0,0,0.3); border-bottom:1px solid rgba(0,255,204,0.2);">
                 <button id="tab-create" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='create'?activeStyle:inactiveStyle}">🛠 創造</button>
-                <button id="tab-config" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='config'?activeStyle:inactiveStyle}">🧩 拡張</button>
+                <button id="tab-config" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='config'?activeStyle:inactiveStyle}">🧩 拡張・防壁</button>
                 <button id="tab-data" style="flex:1; padding:15px 5px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.3s; ${this.state.activeTab==='data'?activeStyle:inactiveStyle}">💾 データ</button>
                 <button id="cp-close" style="width:50px; background:transparent; border:none; color:#ff4444; font-size:20px; cursor:pointer;">×</button>
             </div>
@@ -332,7 +362,6 @@ export class UIManager {
                         <button id="cp-grav-spiral" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🌀 螺旋</button>
                         <button id="cp-grav-grid" style="flex:1; padding:8px; background:rgba(255,204,0,0.1); color:#ffcc00; border:1px solid rgba(255,204,0,0.5); border-radius:6px; font-size:11px; cursor:pointer;">🔲 均列</button>
                         <button id="cp-pathways" style="flex:1; padding:8px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px solid rgba(0,255,204,0.5); border-radius:6px; font-size:11px; cursor:pointer;">✨ 星座</button>
-                        <!-- ★ 3D専用：全天球フォーメーションボタン追加 -->
                         <button id="cp-grav-sphere" style="flex:1; padding:8px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:6px; font-size:11px; cursor:pointer;" title="3D専用">🌐 全天球</button>
                     </div>
                     
@@ -354,10 +383,24 @@ export class UIManager {
                 </div>
             `;
         } else if (this.state.activeTab === 'config') {
+            const chronosCfg = Chronos.getConfig(); // ★ Chronos設定取得
+
             content.innerHTML = `
-                <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODULE EXTENSIONS</div>
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
                 <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                     
+                    <div style="border: 1px solid rgba(255, 204, 0, 0.3); padding: 10px; border-radius: 8px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ffcc00;">
+                            <input type="checkbox" id="cp-chronos-toggle" ${chronosCfg.enabled ? 'checked' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                            <b>⏳ Chronos (自律型自爆)</b>
+                        </label>
+                        <div style="font-size:10px; color:#888; margin: 8px 0 5px 26px;">無アクセスが続くと宇宙を灰にする</div>
+                        <div style="margin-left:26px; display:flex; align-items:center; gap:10px;">
+                            <input type="number" id="cp-chronos-days" value="${chronosCfg.days}" style="width:50px; background:rgba(0,0,0,0.5); color:#ffcc00; border:1px solid #ffcc00; border-radius:4px; padding:2px 5px; font-size:12px;">
+                            <span style="font-size:11px; color:#ffcc00;">日後に実行</span>
+                        </div>
+                    </div>
+
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-mobile" ${this.state.isMobileMode?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
                         <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
@@ -398,17 +441,18 @@ export class UIManager {
                     </label>
                 </div>
 
-                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 PANIC WIPE (緊急自爆・擬態)</div>
+                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
-                    <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">背後から設定を見られてもバレないよう、コードは非表示です。</div>
-                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">コードを極秘に設定 / 変更</button>
+                    <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
+                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
+                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">自爆コード (Panic) を設定</button>
                 </div>
                 
                 <div style="margin-top:30px;">
                     <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
                     <div style="display:flex; gap:8px;">
                         <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
-                        <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;">🚨 宇宙初期化</button>
+                        <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;" onclick="if(window.resetUniverseData) window.resetUniverseData();">🚨 宇宙初期化</button>
                     </div>
                 </div>
             `;
@@ -452,7 +496,6 @@ export class UIManager {
         bind('cp-grav-spiral', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'spiral'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
         bind('cp-grav-grid', () => { Gravity.applyFormation(this.app.currentUniverse.nodes, 'grid'); if(window.universeAudio) window.universeAudio.playWarp(); this.app.autoSave(); });
 
-        // ★ 追加: 全天球グラビティボタン
         bind('cp-grav-sphere', () => { 
             if(this.is3DMode && this.hyper3DInstance) {
                 this.hyper3DInstance.applySphereFormation();
@@ -481,6 +524,20 @@ export class UIManager {
 
         handleCheckbox('cp-rapid-spawn', 'universe_rapid_spawn');
         handleCheckbox('cp-rapid-delete', null, 'isRapidDeleteMode');
+        
+        // ★ Chronosの設定イベント
+        const chronosToggle = document.getElementById('cp-chronos-toggle');
+        const chronosDays = document.getElementById('cp-chronos-days');
+        if (chronosToggle && chronosDays) {
+            const updateChronos = () => {
+                const cfg = Chronos.getConfig();
+                cfg.enabled = chronosToggle.checked;
+                cfg.days = parseInt(chronosDays.value) || 30;
+                Chronos.saveConfig(cfg);
+            };
+            chronosToggle.onchange = updateChronos;
+            chronosDays.oninput = updateChronos;
+        }
         
         const extMobile = document.getElementById('cp-ext-mobile');
         if(extMobile) extMobile.onchange = (e) => { 
@@ -511,12 +568,23 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
+        // ★ ダミーコード（ハニーポット）設定
+        bind('cp-btn-set-dummy', () => {
+            const currentCode = localStorage.getItem('universe_dummy_code') || '';
+            const newCode = prompt("法的防壁（ダミー宇宙）を展開するパスワードを入力してください。\n（現在のコード: " + (currentCode === '' ? "未設定" : "****") + "）", "");
+            if (newCode !== null && newCode.trim() !== "") {
+                localStorage.setItem('universe_dummy_code', newCode.trim());
+                alert("ダミーコードを設定しました。このコードで星の封印を解こうとすると、偽の宇宙が展開されます。");
+            }
+        });
+
+        // パニック（自爆）コード設定
         bind('cp-btn-set-panic', () => {
-            const currentCode = localStorage.getItem('universe_panic_code') || '0000';
-            const newCode = prompt("ダミーパスワードを入力してください。\n（現在のコード: " + (currentCode === '0000' ? "未設定" : "****") + "）", "");
+            const currentCode = localStorage.getItem('universe_panic_code') || '';
+            const newCode = prompt("自爆（全データ消去）を引き起こすパスワードを入力してください。\n（現在のコード: " + (currentCode === '' ? "未設定" : "****") + "）", "");
             if (newCode !== null && newCode.trim() !== "") {
                 localStorage.setItem('universe_panic_code', newCode.trim());
-                alert("ダミーパスワードを暗黙裏に更新しました。");
+                alert("自爆コードを設定しました。取扱注意！");
             }
         });
 
@@ -533,7 +601,6 @@ export class UIManager {
         });
 
         bind('cp-btn-logout', () => { sessionStorage.clear(); localStorage.clear(); window.location.reload(); });
-        bind('cp-btn-reset', () => { if(confirm("【警告】現在の端末の宇宙を初期化します。よろしいですか？")){ localStorage.clear(); window.location.reload(); } });
         
         bind('cp-btn-inventory', () => { this.controlPanel.style.display='none'; this.showInventoryUI(); });
         bind('cp-btn-export', () => Singularity.export());
@@ -944,13 +1011,12 @@ export class UIManager {
 
         document.getElementById('m-ai').onclick = () => { if (checkDrag()) return; this.hideMenu(); ChaosGen.expand(node, this.app); };
         
-        // ★ 追加: カメラダイブの対象をOS全体に記録する（3D演出用）
         document.getElementById('m-dive').onclick = () => { 
             if (checkDrag()) return; 
             this.hideMenu(); 
             this.app.isZoomingIn = true; 
             this.app.targetUniverse = node.innerUniverse; 
-            this.app.diveTargetNode = node; // 3Dダイブ用に記録
+            this.app.diveTargetNode = node; 
             this.app.camera.zoomTo(node.x, node.y); 
             if(window.universeAudio) window.universeAudio.playWarp(); 
         };
