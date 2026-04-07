@@ -2,62 +2,52 @@
 
 export class WanderingEntities {
     static start() {
-        console.log("🤖 [WanderingEntities] 神託AI（Knowledge Weaver）待機中...");
+        console.log("👁️ [Knowledge Weaver] スタンバイ...");
     }
 
     static spawn(app) {
         const id = 'ai-entity-' + Date.now();
         
-        // 🔮 より未来的なホログラム・アイ（目）のデザイン
+        // 🤖絵文字を廃止。洗練された「光のコア」に変更
         const entity = document.createElement('div');
         entity.id = id;
         entity.style.cssText = `
             position: fixed;
-            width: 60px; height: 60px;
-            background: radial-gradient(circle, rgba(0,255,204,0.8) 10%, rgba(0,50,40,0.4) 60%, transparent 100%);
-            border: 2px dashed rgba(0, 255, 204, 0.6);
+            width: 50px; height: 50px;
             border-radius: 50%;
             display: flex; justify-content: center; align-items: center;
-            font-size: 20px;
-            box-shadow: 0 0 30px rgba(0, 255, 204, 0.5), inset 0 0 20px rgba(0, 255, 204, 0.5);
-            backdrop-filter: blur(5px);
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3), inset 0 0 15px rgba(0, 255, 204, 0.5);
+            backdrop-filter: blur(10px);
             z-index: 100000;
             pointer-events: auto;
             cursor: pointer;
-            user-select: none;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            animation: ai-float 3s ease-in-out infinite alternate;
+            transition: all 0.3s ease;
+            background: radial-gradient(circle, rgba(0,255,204,0.6) 0%, transparent 70%);
         `;
         
-        // 回転する内側のコア
-        const core = document.createElement('div');
-        core.style.cssText = `
-            position: absolute; width: 40px; height: 40px;
-            border: 2px solid transparent; border-top-color: #fff; border-bottom-color: #fff;
-            border-radius: 50%; animation: ai-spin 2s linear infinite;
+        // 回転する外殻
+        const ring = document.createElement('div');
+        ring.style.cssText = `
+            position: absolute; width: 100%; height: 100%;
+            border: 1px solid transparent; border-top-color: #00ffcc; border-bottom-color: #00ffcc;
+            border-radius: 50%;
+            animation: ai-ring-spin 3s linear infinite;
         `;
-        entity.appendChild(core);
+        entity.appendChild(ring);
 
-        // スタイル定義の追加
         if (!document.getElementById('ai-styles')) {
             const style = document.createElement('style');
             style.id = 'ai-styles';
-            style.innerHTML = `
-                @keyframes ai-float { 0% { transform: translateY(0px) scale(1); } 100% { transform: translateY(-15px) scale(1.05); } }
-                @keyframes ai-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                @keyframes ai-pulse { 0% { box-shadow: 0 0 30px #ff00ff, inset 0 0 20px #ff00ff; } 100% { box-shadow: 0 0 80px #ff00ff, inset 0 0 50px #ff00ff; } }
-            `;
+            style.innerHTML = `@keyframes ai-ring-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
             document.head.appendChild(style);
         }
         
         const speech = document.createElement('div');
         speech.style.cssText = `
-            position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
-            background: rgba(0, 15, 20, 0.95); color: #00ffcc;
-            border: 1px solid #00ffcc; padding: 10px 15px; border-radius: 8px;
-            font-size: 13px; font-weight: bold; white-space: nowrap;
-            opacity: 0; transition: opacity 0.3s; pointer-events: none;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); letter-spacing: 1px;
+            position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
+            color: #00ffcc; font-family: monospace; font-size: 11px; letter-spacing: 2px;
+            white-space: nowrap; opacity: 0; transition: opacity 0.3s;
+            text-shadow: 0 0 5px #00ffcc; pointer-events: none;
         `;
         entity.appendChild(speech);
         document.body.appendChild(entity);
@@ -67,87 +57,75 @@ export class WanderingEntities {
         const talk = (text, duration = 3000) => {
             speech.innerText = text;
             speech.style.opacity = '1';
-            if (duration > 0) {
-                setTimeout(() => { if (!isCommandMode) speech.style.opacity = '0'; }, duration);
-            }
+            if (duration > 0) setTimeout(() => { if (!isCommandMode) speech.style.opacity = '0'; }, duration);
         };
 
-        talk("「グローバル・ネットワーク、接続完了。」");
+        talk("SYSTEM ONLINE");
 
         entity.onclick = () => {
             if (isCommandMode) return;
             isCommandMode = true;
             
-            // 思考モードのUI変化
-            entity.style.animation = 'ai-pulse 0.5s infinite alternate';
-            entity.style.borderColor = '#ff00ff';
-            core.style.borderTopColor = '#ff00ff';
-            core.style.borderBottomColor = '#ff00ff';
-            core.style.animationDuration = '0.5s'; // 超高速回転
+            entity.style.boxShadow = '0 0 40px #ff00ff, inset 0 0 20px #ff00ff';
+            ring.style.borderTopColor = '#ff00ff'; ring.style.borderBottomColor = '#ff00ff';
+            ring.style.animationDuration = '0.8s';
             
-            talk("「対象の概念を入力してください。」", 0);
+            talk("QUERY REQ:", 0);
 
             const cmdInput = document.createElement('input');
             cmdInput.type = 'text';
-            cmdInput.placeholder = '例: 量子力学, ブラックホール, 織田信長...';
             cmdInput.style.cssText = `
-                position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
-                width: 220px; padding: 10px; background: rgba(0,0,0,0.9);
+                position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+                width: 200px; padding: 8px; background: rgba(0,0,0,0.8);
                 border: 1px solid #ff00ff; color: #ff00ff; outline: none;
-                font-size: 12px; border-radius: 6px; pointer-events: auto;
-                box-shadow: 0 0 15px rgba(255,0,255,0.4); text-align: center;
+                font-size: 12px; font-family: monospace; border-radius: 4px;
+                box-shadow: 0 0 10px rgba(255,0,255,0.3); text-align: center; pointer-events: auto;
             `;
             entity.appendChild(cmdInput);
             cmdInput.focus();
 
             cmdInput.onkeydown = (e) => {
+                // ★ 致命的だったバグの修正：日本語入力の「変換確定(Enter)」を弾く
+                if (e.isComposing || e.keyCode === 229) return;
+
                 if (e.key === 'Enter') {
                     const command = cmdInput.value.trim();
                     cmdInput.remove();
                     
-                    // UIを通常に戻す
-                    entity.style.animation = 'ai-float 3s ease-in-out infinite alternate';
-                    entity.style.borderColor = 'rgba(0, 255, 204, 0.6)';
-                    core.style.borderTopColor = '#fff';
-                    core.style.borderBottomColor = '#fff';
-                    core.style.animationDuration = '2s';
+                    entity.style.boxShadow = '0 0 20px rgba(0, 255, 204, 0.3), inset 0 0 15px rgba(0, 255, 204, 0.5)';
+                    ring.style.borderTopColor = '#00ffcc'; ring.style.borderBottomColor = '#00ffcc';
+                    ring.style.animationDuration = '3s';
                     isCommandMode = false;
                     
                     if (command) executeKnowledgeWeaver(command);
-                    else talk("「アクセスを中断しました。」");
+                    else talk("ABORT");
                 }
             };
         };
 
-        // 🌐 グローバルネット(Wikipedia API)から概念を抽出し、星の星座として具現化する関数
         const executeKnowledgeWeaver = async (query) => {
-            // システムコマンドの処理（掃除、整列など）
             if (query.includes('掃除') || query.includes('消して')) {
                 app.blackHole.push(...app.currentUniverse.nodes);
                 app.currentUniverse.nodes = []; app.currentUniverse.links = [];
-                talk("「空間の初期化を完了しました。」");
+                talk("PURGE COMPLETED");
                 if(window.universeAudio) window.universeAudio.playDelete();
-                app.autoSave(); return;
-            }
-            if (query.includes('整列')) {
-                Gravity.applyFormation(app.currentUniverse.nodes, 'circle');
-                talk("「データを円環に整列させました。」");
-                app.autoSave(); return;
+                
+                // ★ バグ修正：描画エンジンに強制反映
+                app.autoSave();
+                if(app.simulation) app.simulation.nodes([]).force("link").links([]);
+                if(app.update) app.update();
+                return;
             }
 
-            // 🔍 通常の言葉なら、Wikipediaから情報を抽出して「ナレッジグラフ」を構築
-            talk(`「『${query}』を検索中... グローバルネットにダイブします。」`, 0);
+            talk(`FETCHING: ${query}...`, 0);
             if (window.universeAudio) window.universeAudio.playWarp();
             
-            // 「〜について教えて」などの余分な言葉をカットして純粋なキーワードにする
             const keyword = query.replace(/(について教えて|とは|を調べて|を検索|教えて).*/, '').trim();
 
             try {
-                // WikipediaのREST API (認証不要) にアクセス
                 const res = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(keyword)}`);
-                
                 if (!res.ok) {
-                    talk("「該当するデータが見つかりませんでした。別の概念を指定してください。」");
+                    talk("ERR: NOT FOUND");
                     if (window.HapticEngine) window.HapticEngine.playError();
                     return;
                 }
@@ -156,52 +134,56 @@ export class WanderingEntities {
                 const cx = app.camera ? -app.camera.x : 0;
                 const cy = app.camera ? -app.camera.y : 0;
 
-                // 1. 中心の「親星」を生成
-                app.currentUniverse.addNode(data.title, cx, cy, 60, '#ff00ff', 'star');
+                app.currentUniverse.addNode(data.title, cx, cy, 50, '#ff00ff', 'star');
                 const centerNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
+                if (data.thumbnail && data.thumbnail.source) centerNode.iconUrl = data.thumbnail.source;
+                centerNode.note = `【${data.title}】\n${data.extract}`;
                 
-                // サムネイル画像があれば親星のアイコンに設定
-                if (data.thumbnail && data.thumbnail.source) {
-                    centerNode.iconUrl = data.thumbnail.source;
-                }
-                
-                // 本文をノートに記録
-                centerNode.note = `【${data.title}】\n${data.extract}\n\n[Source: Wikipedia Global Network]`;
-                
-                // 2. 本文を「。」で分割し、意味の断片（子星）を生成してリンクする
-                const sentences = data.extract.split('。').filter(s => s.length > 10).slice(0, 5); // 最大5つの子星
+                const sentences = data.extract.split('。').filter(s => s.length > 10).slice(0, 4);
                 
                 sentences.forEach((text, i) => {
                     const angle = (i / sentences.length) * Math.PI * 2;
-                    const dist = 180; // 親星からの距離
+                    const dist = 160;
                     const nx = cx + Math.cos(angle) * dist;
                     const ny = cy + Math.sin(angle) * dist;
                     
-                    app.currentUniverse.addNode(`断片 ${i+1}`, nx, ny, 20, '#00ffcc', 'star');
+                    app.currentUniverse.addNode(`DATA_FRAG_${i}`, nx, ny, 15, '#00ffcc', 'star');
                     const childNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
-                    childNode.note = text + "。"; // 断片ごとにノートを持たせる
-                    
-                    // 親星と子星をリンクで繋ぐ
+                    childNode.note = text + "。";
                     app.currentUniverse.links.push({ source: centerNode, target: childNode });
                 });
 
-                talk(`「構築完了。『${data.title}』のナレッジグラフを展開しました。」`);
+                talk(`GRAPH BUILT: ${data.title}`);
                 if (window.universeAudio) window.universeAudio.playSystemSound(600, 'square', 0.2);
                 
                 app.autoSave();
-                // 物理エンジンを再起動して、リンクされた星を綺麗に広げる
-                if (app.simulation) app.simulation.alpha(1).restart();
+                
+                // ★ バグ修正：D3.js等のシミュレーションにノードとリンクの追加を「確実に」伝える
+                if(app.simulation) {
+                    app.simulation.nodes(app.currentUniverse.nodes);
+                    app.simulation.force("link").links(app.currentUniverse.links);
+                    app.simulation.alpha(1).restart();
+                }
 
             } catch (error) {
-                talk("「通信エラー。グローバルネットへの接続が遮断されました。」");
-                console.error(error);
+                talk("ERR: NETWORK FAILED");
             }
         };
 
-        // 初期配置のランダム化
-        entity.style.left = `${window.innerWidth - 100}px`;
-        entity.style.top = `100px`;
-        
-        if (window.universeAudio) window.universeAudio.playSystemSound(800, 'sine', 0.2);
+        // ゆったりとした自律移動
+        let x = window.innerWidth - 100; let y = 100;
+        let vx = (Math.random() - 0.5) * 2; let vy = (Math.random() - 0.5) * 2;
+
+        const move = () => {
+            if (!document.getElementById(id)) return;
+            if (!isCommandMode) {
+                x += vx; y += vy;
+                if (x <= 0 || x >= window.innerWidth - 50) { vx *= -1; x = Math.max(0, Math.min(x, window.innerWidth - 50)); }
+                if (y <= 0 || y >= window.innerHeight - 50) { vy *= -1; y = Math.max(0, Math.min(y, window.innerHeight - 50)); }
+            }
+            entity.style.left = `${x}px`; entity.style.top = `${y}px`;
+            requestAnimationFrame(move);
+        };
+        requestAnimationFrame(move);
     }
 }
