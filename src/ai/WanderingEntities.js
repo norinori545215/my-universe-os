@@ -2,263 +2,204 @@
 
 export class WanderingEntities {
     static start() {
-        console.log("👁️ [Knowledge Weaver] スタンバイ...");
+        console.log("👁️ [Neural Oracle] システムに常駐しました");
     }
 
     static spawn(app) {
-        const id = 'ai-entity-' + Date.now();
-        
-        const entity = document.createElement('div');
-        entity.id = id;
-        // ★ 座標移動(left, top)のラグを無くすため、transitionの対象を限定しました
-        entity.style.cssText = `
-            position: fixed;
+        // 既に存在していれば消す（重複防止）
+        if (document.getElementById('oracle-core')) document.getElementById('oracle-core').remove();
+
+        // 1. 画面右上に常駐する洗練された「AIコア（HUD）」
+        const core = document.createElement('div');
+        core.id = 'oracle-core';
+        core.style.cssText = `
+            position: fixed; top: 20px; right: 20px;
             width: 50px; height: 50px;
             border-radius: 50%;
             display: flex; justify-content: center; align-items: center;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3), inset 0 0 15px rgba(0, 255, 204, 0.5);
+            background: rgba(0, 20, 30, 0.8);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.4), inset 0 0 20px rgba(0, 255, 204, 0.2);
+            border: 1px solid rgba(0, 255, 204, 0.5);
             backdrop-filter: blur(10px);
             z-index: 100000;
-            pointer-events: auto;
-            cursor: grab;
-            user-select: none;
-            transition: box-shadow 0.3s ease, transform 0.3s ease;
-            background: radial-gradient(circle, rgba(0,255,204,0.6) 0%, transparent 70%);
+            cursor: crosshair;
+            transition: all 0.3s ease;
         `;
-        
-        const ring = document.createElement('div');
-        ring.style.cssText = `
-            position: absolute; width: 100%; height: 100%;
-            border: 1px solid transparent; border-top-color: #00ffcc; border-bottom-color: #00ffcc;
-            border-radius: 50%;
-            animation: ai-ring-spin 3s linear infinite;
-        `;
-        entity.appendChild(ring);
 
-        if (!document.getElementById('ai-styles')) {
+        // コア内部の回転リング
+        const ring1 = document.createElement('div');
+        ring1.style.cssText = `position: absolute; width: 80%; height: 80%; border: 2px solid transparent; border-top-color: #00ffcc; border-bottom-color: #00ffcc; border-radius: 50%; animation: oracle-spin 4s linear infinite;`;
+        const ring2 = document.createElement('div');
+        ring2.style.cssText = `position: absolute; width: 50%; height: 50%; border: 2px solid transparent; border-left-color: #ff00ff; border-right-color: #ff00ff; border-radius: 50%; animation: oracle-spin-rev 2s linear infinite;`;
+        
+        core.appendChild(ring1); core.appendChild(ring2);
+        
+        // コア下部のラベル
+        const label = document.createElement('div');
+        label.innerText = 'ORACLE AI';
+        label.style.cssText = `position: absolute; bottom: -15px; font-size: 9px; color: #00ffcc; font-family: monospace; letter-spacing: 2px; text-shadow: 0 0 5px #00ffcc;`;
+        core.appendChild(label);
+        document.body.appendChild(core);
+
+        if (!document.getElementById('oracle-styles')) {
             const style = document.createElement('style');
-            style.id = 'ai-styles';
-            style.innerHTML = `@keyframes ai-ring-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+            style.id = 'oracle-styles';
+            style.innerHTML = `
+                @keyframes oracle-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                @keyframes oracle-spin-rev { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
+                @keyframes oracle-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+            `;
             document.head.appendChild(style);
         }
-        
-        const speech = document.createElement('div');
-        speech.style.cssText = `
-            position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
-            color: #00ffcc; font-family: monospace; font-size: 11px; letter-spacing: 2px;
-            white-space: nowrap; opacity: 0; transition: opacity 0.3s;
-            text-shadow: 0 0 5px #00ffcc; pointer-events: none;
+
+        // 2. コアをクリックした時に開く「フルスクリーン・ニューラルターミナル」
+        const terminal = document.createElement('div');
+        terminal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(0,20,30,0.95) 0%, rgba(0,0,0,0.98) 100%);
+            z-index: 100001; display: none; flex-direction: column; justify-content: center; align-items: center;
+            backdrop-filter: blur(15px); font-family: monospace;
         `;
-        entity.appendChild(speech);
-        document.body.appendChild(entity);
+        document.body.appendChild(terminal);
 
-        let isCommandMode = false;
-        let isDragging = false;
-        let hasMoved = false;
-        let startX = 0, startY = 0;
+        const promptText = document.createElement('div');
+        promptText.innerText = '>>> ENTER NEURAL QUERY <<<';
+        promptText.style.cssText = `color: #00ffcc; font-size: 14px; letter-spacing: 4px; margin-bottom: 20px; text-shadow: 0 0 10px #00ffcc; animation: oracle-blink 1.5s infinite;`;
+        terminal.appendChild(promptText);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Search Concept...';
+        input.style.cssText = `
+            width: 300px; padding: 15px; background: rgba(0,0,0,0.5);
+            border: 1px solid #00ffcc; border-radius: 4px; color: #fff;
+            font-size: 16px; text-align: center; outline: none;
+            box-shadow: 0 0 20px rgba(0,255,204,0.2); font-family: monospace;
+        `;
+        terminal.appendChild(input);
+
+        const logArea = document.createElement('div');
+        logArea.style.cssText = `margin-top: 20px; width: 300px; height: 100px; color: #00ffcc; font-size: 11px; overflow: hidden; text-align: left; opacity: 0.7;`;
+        terminal.appendChild(logArea);
+
+        // HUDホバー＆クリック制御
+        core.onmouseenter = () => { core.style.transform = 'scale(1.1)'; core.style.boxShadow = '0 0 25px rgba(0, 255, 204, 0.8)'; };
+        core.onmouseleave = () => { core.style.transform = 'scale(1)'; core.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.4)'; };
         
-        let x = window.innerWidth - 100; let y = 100;
-        let vx = (Math.random() - 0.5) * 2; let vy = (Math.random() - 0.5) * 2;
-
-        const talk = (text, duration = 3000) => {
-            speech.innerText = text;
-            speech.style.opacity = '1';
-            if (duration > 0) setTimeout(() => { if (!isCommandMode) speech.style.opacity = '0'; }, duration);
+        core.onclick = () => {
+            terminal.style.display = 'flex';
+            setTimeout(() => input.focus(), 100);
+            if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.2);
         };
 
-        talk("SYSTEM ONLINE");
-
-        // ★★★ ドラッグ＆ドロップ（＋投げ飛ばし）の処理 ★★★
-        const onDown = (e) => {
-            if (isCommandMode && e.target !== entity) return;
-            isDragging = true;
-            hasMoved = false;
-            entity.style.cursor = 'grabbing';
-            entity.style.transform = 'scale(0.9)'; // 掴んだ感触
-            
-            const ev = e.touches ? e.touches[0] : e;
-            startX = ev.clientX;
-            startY = ev.clientY;
-            
-            if (window.HapticEngine) window.HapticEngine.vibrate([10]);
+        const closeTerminal = () => {
+            terminal.style.display = 'none';
+            input.value = '';
+            logArea.innerHTML = '';
         };
 
-        const onMove = (e) => {
-            if (!isDragging) return;
-            const ev = e.touches ? e.touches[0] : e;
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            
-            // 5px以上動いたら「ドラッグ」と判定する（クリックと区別するため）
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+        terminal.onclick = (e) => { if(e.target === terminal) closeTerminal(); };
 
-            // マウスの動きに合わせて座標を更新
-            x = ev.clientX - 25; // 25はAIの半径
-            y = ev.clientY - 25;
-            
-            // マウスの移動量から「投げる速度（慣性）」を計算
-            vx = e.movementX ? e.movementX * 0.5 : dx * 0.2;
-            vy = e.movementY ? e.movementY * 0.5 : dy * 0.2;
-
-            startX = ev.clientX;
-            startY = ev.clientY;
+        // ログ出力用関数
+        const log = (msg, color = '#00ffcc') => {
+            logArea.innerHTML += `<div style="color:${color}; margin-bottom:4px;">> ${msg}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
         };
 
-        const onUp = (e) => {
-            if (!isDragging) return;
-            isDragging = false;
-            entity.style.cursor = 'grab';
-            entity.style.transform = 'scale(1)';
+        // 3. 圧倒的な未来を創る「ナレッジグラフ自動構築エンジン」
+        input.onkeydown = async (e) => {
+            if (e.isComposing || e.keyCode === 229) return; // 日本語入力中のEnterを無視
+            if (e.key === 'Escape') return closeTerminal();
+            if (e.key !== 'Enter') return;
 
-            // もしドラッグせずに指を離したなら「クリック」として扱う
-            if (!hasMoved) {
-                openCommandMode();
-            }
-        };
+            const query = input.value.trim();
+            if (!query) return;
 
-        entity.addEventListener('mousedown', onDown);
-        entity.addEventListener('touchstart', onDown, {passive: true});
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('touchmove', onMove, {passive: true});
-        window.addEventListener('mouseup', onUp);
-        window.addEventListener('touchend', onUp);
-
-        // ★★★ クリックされた時のコマンド入力モード ★★★
-        const openCommandMode = () => {
-            if (isCommandMode) return;
-            isCommandMode = true;
-            
-            entity.style.boxShadow = '0 0 40px #ff00ff, inset 0 0 20px #ff00ff';
-            ring.style.borderTopColor = '#ff00ff'; ring.style.borderBottomColor = '#ff00ff';
-            ring.style.animationDuration = '0.8s';
-            
-            talk("QUERY REQ:", 0);
-
-            const cmdInput = document.createElement('input');
-            cmdInput.type = 'text';
-            cmdInput.style.cssText = `
-                position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-                width: 200px; padding: 8px; background: rgba(0,0,0,0.8);
-                border: 1px solid #ff00ff; color: #ff00ff; outline: none;
-                font-size: 12px; font-family: monospace; border-radius: 4px;
-                box-shadow: 0 0 10px rgba(255,0,255,0.3); text-align: center; pointer-events: auto;
-            `;
-            entity.appendChild(cmdInput);
-            cmdInput.focus();
-
-            cmdInput.onkeydown = (e) => {
-                if (e.isComposing || e.keyCode === 229) return;
-
-                if (e.key === 'Enter') {
-                    const command = cmdInput.value.trim();
-                    cmdInput.remove();
-                    
-                    entity.style.boxShadow = '0 0 20px rgba(0, 255, 204, 0.3), inset 0 0 15px rgba(0, 255, 204, 0.5)';
-                    ring.style.borderTopColor = '#00ffcc'; ring.style.borderBottomColor = '#00ffcc';
-                    ring.style.animationDuration = '3s';
-                    isCommandMode = false;
-                    
-                    if (command) executeKnowledgeWeaver(command);
-                    else talk("ABORT");
-                }
-            };
-        };
-
-        const executeKnowledgeWeaver = async (query) => {
-            if (query.includes('掃除') || query.includes('消して')) {
-                app.blackHole.push(...app.currentUniverse.nodes);
-                app.currentUniverse.nodes = []; app.currentUniverse.links = [];
-                talk("PURGE COMPLETED");
-                if(window.universeAudio) window.universeAudio.playDelete();
-                app.autoSave();
-                if(app.simulation) app.simulation.nodes([]).force("link").links([]);
-                if(app.update) app.update();
-                return;
-            }
-
-            talk(`FETCHING: ${query}...`, 0);
-            if (window.universeAudio) window.universeAudio.playWarp();
-            
-            const keyword = query.replace(/(について教えて|とは|を調べて|を検索|教えて).*/, '').trim();
+            input.style.display = 'none'; // 入力を隠す
+            log(`INITIATING NEURAL DIVE: [${query}]...`);
+            if(window.universeAudio) window.universeAudio.playWarp();
 
             try {
-                const res = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(keyword)}`);
-                if (!res.ok) {
-                    talk("ERR: NOT FOUND");
-                    if (window.HapticEngine) window.HapticEngine.playError();
+                // STEP 1: 曖昧な検索ワードから「Wikipediaの正確な記事タイトル」を検索（空っぽ防止）
+                log('ACCESSING WIKIPEDIA DATABANKS...');
+                const searchRes = await fetch(`https://ja.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`);
+                const searchData = await searchRes.json();
+                
+                if (!searchData.query.search || searchData.query.search.length === 0) {
+                    log('ERROR: CONCEPT NOT FOUND IN GLOBAL NET.', '#ff4444');
+                    setTimeout(closeTerminal, 2000);
                     return;
                 }
+                const exactTitle = searchData.query.search[0].title;
+                log(`TARGET ACQUIRED: ${exactTitle}`);
 
-                const data = await res.json();
-                const cx = app.camera ? -app.camera.x : 0;
-                const cy = app.camera ? -app.camera.y : 0;
+                // STEP 2: 対象の「概要」と「画像」を取得
+                log('DOWNLOADING CORE DATA...');
+                const sumRes = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(exactTitle)}`);
+                const sumData = await sumRes.json();
 
-                app.currentUniverse.addNode(data.title, cx, cy, 50, '#ff00ff', 'star');
-                const centerNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
-                if (data.thumbnail && data.thumbnail.source) centerNode.iconUrl = data.thumbnail.source;
-                centerNode.note = `【${data.title}】\n${data.extract}`;
-                
-                const sentences = data.extract.split('。').filter(s => s.length > 10).slice(0, 4);
-                
-                sentences.forEach((text, i) => {
-                    const angle = (i / sentences.length) * Math.PI * 2;
-                    const dist = 160;
-                    const nx = cx + Math.cos(angle) * dist;
-                    const ny = cy + Math.sin(angle) * dist;
+                // STEP 3: 本物の関連用語（リンク）を取得（関係ないデータ・空っぽデータを撲滅）
+                log('EXTRACTING SEMANTIC LINKS...');
+                const linkRes = await fetch(`https://ja.wikipedia.org/w/api.php?action=query&prop=links&titles=${encodeURIComponent(exactTitle)}&pllimit=8&plnamespace=0&format=json&origin=*`);
+                const linkData = await linkRes.json();
+                const pages = linkData.query.pages;
+                const pageId = Object.keys(pages)[0];
+                const links = pages[pageId].links ? pages[pageId].links.map(l => l.title) : [];
+
+                log('DATA COMPILED. CONSTRUCTING CONSTELLATION...', '#ff00ff');
+
+                // STEP 4: カメラを中央にリセットし、OSに星を物理召喚する
+                setTimeout(() => {
+                    closeTerminal();
+                    input.style.display = 'block';
+
+                    // カメラ移動
+                    if(app.camera) app.camera.zoomTo(0, 0, 1);
                     
-                    app.currentUniverse.addNode(`DATA_FRAG_${i}`, nx, ny, 15, '#00ffcc', 'star');
-                    const childNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
-                    childNode.note = text + "。";
-                    app.currentUniverse.links.push({ source: centerNode, target: childNode });
-                });
+                    const cx = app.camera ? -app.camera.x : 0;
+                    const cy = app.camera ? -app.camera.y : 0;
 
-                talk(`GRAPH BUILT: ${data.title}`);
-                if (window.universeAudio) window.universeAudio.playSystemSound(600, 'square', 0.2);
-                
-                app.autoSave();
-                if(app.simulation) {
-                    app.simulation.nodes(app.currentUniverse.nodes);
-                    app.simulation.force("link").links(app.currentUniverse.links);
-                    app.simulation.alpha(1).restart();
-                }
+                    // 親星（コア概念）の生成
+                    app.currentUniverse.addNode(sumData.title, cx, cy, 60, '#ff00ff', 'galaxy');
+                    const centerNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
+                    if (sumData.thumbnail && sumData.thumbnail.source) centerNode.iconUrl = sumData.thumbnail.source;
+                    centerNode.note = `【${sumData.title}】\n${sumData.extract}\n\n[Data from Global Net]`;
+
+                    // 子星（関連用語）の生成とリンク結成
+                    const validLinks = links.filter(l => !l.includes('一覧') && !l.includes('曖昧さ回避')).slice(0, 6);
+                    
+                    validLinks.forEach((linkTitle, i) => {
+                        const angle = (i / validLinks.length) * Math.PI * 2;
+                        const dist = 180;
+                        const nx = cx + Math.cos(angle) * dist;
+                        const ny = cy + Math.sin(angle) * dist;
+                        
+                        app.currentUniverse.addNode(linkTitle, nx, ny, 25, '#00ffcc', 'star');
+                        const childNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
+                        childNode.note = `[Semantic Link to: ${sumData.title}]`;
+                        
+                        // 光の線（リンク）で結ぶ
+                        app.currentUniverse.links.push({ source: centerNode, target: childNode });
+                    });
+
+                    // システムへの強制反映
+                    app.autoSave();
+                    if(app.simulation) {
+                        app.simulation.nodes(app.currentUniverse.nodes);
+                        app.simulation.force("link").links(app.currentUniverse.links);
+                        app.simulation.alpha(1).restart();
+                    }
+                    if(window.universeAudio) window.universeAudio.playSpawn();
+                    
+                }, 1000);
 
             } catch (error) {
-                talk("ERR: NETWORK FAILED");
+                log('CRITICAL ERROR: CONNECTION FAILED', '#ff4444');
+                console.error(error);
+                setTimeout(closeTerminal, 2000);
             }
         };
 
-        // ★★★ 無限ループ描画（ドラッグ中は自動移動をストップ） ★★★
-        const move = () => {
-            if (!document.getElementById(id)) return;
-            
-            if (!isCommandMode && !isDragging) {
-                x += vx; y += vy;
-                
-                // 空気抵抗（勢いよく投げた後、だんだん減速する）
-                vx *= 0.99;
-                vy *= 0.99;
-
-                // スピードが落ちすぎたら、最低限のフワフワ移動を維持する
-                if (Math.abs(vx) < 0.5 && Math.random() < 0.05) vx += (Math.random() - 0.5) * 0.5;
-                if (Math.abs(vy) < 0.5 && Math.random() < 0.05) vy += (Math.random() - 0.5) * 0.5;
-
-                const size = 50;
-                if (x <= 0 || x >= window.innerWidth - size) { 
-                    vx *= -0.8; // 壁にぶつかると少し勢いが落ちて跳ね返る
-                    x = Math.max(0, Math.min(x, window.innerWidth - size)); 
-                }
-                if (y <= 0 || y >= window.innerHeight - size) { 
-                    vy *= -0.8; 
-                    y = Math.max(0, Math.min(y, window.innerHeight - size)); 
-                }
-            }
-            
-            // 実際のDOM要素の座標を更新
-            entity.style.left = `${x}px`; 
-            entity.style.top = `${y}px`;
-            
-            requestAnimationFrame(move);
-        };
-        requestAnimationFrame(move);
+        if (window.universeAudio) window.universeAudio.playSystemSound(400, 'square', 0.1);
     }
 }
