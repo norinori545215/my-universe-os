@@ -4,7 +4,7 @@ export class SpatialVision {
     static start(app) {
         if (document.getElementById('spatial-vision-hud')) return;
 
-        console.log("👁️‍🗨️ [Spatial Vision] 絶対駆動プロトコル起動");
+        console.log("👁️‍🗨️ [Spatial Vision] アニメーション強制上書きモード起動");
 
         const hud = document.createElement('div');
         hud.id = 'spatial-vision-hud';
@@ -29,7 +29,6 @@ export class SpatialVision {
         motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.1s ease-out;`;
         barContainer.appendChild(motionBar);
 
-        // ★ 爆発テストボタン
         const testBtn = document.createElement('button');
         testBtn.innerText = '💣 爆発テスト';
         testBtn.style.cssText = `position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: bold; background: #ff4444; color: #fff; border: 1px solid #fff; border-radius: 3px; cursor: pointer; z-index: 10; padding: 2px 4px;`;
@@ -142,7 +141,6 @@ export class SpatialVision {
                                          MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
                                          MathAbs(currentFrame[i+2] - prevFrame[i+2]);
                             
-                            // 超高感度
                             if (diff > 20) {
                                 changedPixels++;
                                 radarCtx.fillRect(canvas.width - x, y, step, step);
@@ -160,9 +158,8 @@ export class SpatialVision {
                     const barPercent = Math.min(100, motionRatio * 1500); 
                     motionBar.style.width = `${barPercent}%`;
 
-                    // 0.5%の動きで発動
                     if (motionRatio > 0.005) {
-                        if (now - lastTriggerTime > 1000) { // クールダウン1秒
+                        if (now - lastTriggerTime > 1000) { 
                             lastTriggerTime = now;
                             
                             motionBar.style.background = '#ff00ff';
@@ -181,16 +178,15 @@ export class SpatialVision {
             requestAnimationFrame(processFrame);
         };
 
+        // ★ 最重要修正：引力を無視して座標を乗っ取る「絶対アニメーション」
         const triggerShockwave = () => {
-            // ★ 絶対に動いていることを知らせるために、画面全体（ブラウザ）を揺らす
             document.body.style.transition = 'none';
             document.body.style.transform = 'scale(1.05) translate(15px, -15px)';
             setTimeout(() => {
-                document.body.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                document.body.style.transition = 'transform 0.3s ease-out';
                 document.body.style.transform = 'scale(1) translate(0px, 0px)';
             }, 80);
 
-            // 音とバイブレーション
             if (window.universeAudio) window.universeAudio.playSystemSound(50, 'sawtooth', 0.8);
             if (window.HapticEngine) window.HapticEngine.vibrate([50, 100, 50]);
 
@@ -199,28 +195,57 @@ export class SpatialVision {
             const cx = app.camera ? -app.camera.x : 0;
             const cy = app.camera ? -app.camera.y : 0;
 
+            // 星ごとの「最終目標地点（target）」を計算
             app.currentUniverse.nodes.forEach(node => {
-                const dx = node.x - cx;
-                const dy = node.y - cy;
-                const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                let dx = node.x - cx;
+                let dy = node.y - cy;
                 
-                // 爆発の飛距離（超強力）
-                const power = 500 + Math.random() * 500;
+                // もし完全に中心にいたらランダムな方向へ
+                if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+                    dx = Math.random() - 0.5; dy = Math.random() - 0.5;
+                }
 
-                // ★ 最重要：物理エンジンの引力を無視して「絶対座標(fx, fy)」にピン留めして吹き飛ばす
-                node.fx = node.x + (dx / dist) * power;
-                node.fy = node.y + (dy / dist) * power;
+                const angle = Math.atan2(dy, dx);
+                const power = 300 + Math.random() * 500; // 300〜800px吹き飛ばす
 
-                // 1秒後にピン留めを解除し、引力で戻るようにする
-                setTimeout(() => {
-                    node.fx = null;
-                    node.fy = null;
-                    if (app.simulation) app.simulation.alpha(0.5).restart();
-                }, 1000);
+                node.targetX = node.x + Math.cos(angle) * power;
+                node.targetY = node.y + Math.sin(angle) * power;
             });
 
-            // 物理エンジン再点火
-            if (app.simulation) app.simulation.alpha(1).restart();
+            // ★ 物理エンジンを乗っ取る30フレーム（約0.5秒）のループアニメーション
+            let frames = 0;
+            const blastAnim = () => {
+                frames++;
+                
+                app.currentUniverse.nodes.forEach(node => {
+                    // 目標地点に向かって滑らかに高速移動
+                    node.x += (node.targetX - node.x) * 0.2;
+                    node.y += (node.targetY - node.y) * 0.2;
+                    
+                    // 物理エンジンが勝手に座標を戻さないようにロック（絶対固定）する
+                    node.fx = node.x; 
+                    node.fy = node.y;
+                });
+
+                // エンジンに「今の座標で描画しろ」と毎フレーム強制命令
+                if (app.simulation) app.simulation.alpha(1).restart();
+                if (typeof app.update === 'function') app.update();
+
+                // 30フレーム（約0.5秒）間は引力を無効化して飛ばし続ける
+                if (frames < 30) {
+                    requestAnimationFrame(blastAnim);
+                } else {
+                    // 爆発が終わったらロックを解除し、元の引力に任せる
+                    app.currentUniverse.nodes.forEach(node => {
+                        node.fx = null;
+                        node.fy = null;
+                    });
+                    if (app.simulation) app.simulation.alpha(0.5).restart();
+                }
+            };
+
+            // アニメーション実行！
+            blastAnim();
         };
     }
 }
