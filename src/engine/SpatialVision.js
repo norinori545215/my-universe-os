@@ -4,7 +4,7 @@ export class SpatialVision {
     static start(app) {
         if (document.getElementById('spatial-vision-hud')) return;
 
-        console.log("👁️‍🗨️ [Spatial Vision] ステルス・キネティック・センサー起動（強制駆動モード）");
+        console.log("👁️‍🗨️ [Spatial Vision] フレーム同期型センサー起動");
 
         const hud = document.createElement('div');
         hud.id = 'spatial-vision-hud';
@@ -26,7 +26,7 @@ export class SpatialVision {
         hud.appendChild(barContainer);
 
         const motionBar = document.createElement('div');
-        motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.05s ease-out;`;
+        motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.1s ease-out;`;
         barContainer.appendChild(motionBar);
 
         document.body.appendChild(hud);
@@ -39,12 +39,13 @@ export class SpatialVision {
         let video, canvas, ctx;
         let prevFrame = null;
         let lastTriggerTime = 0;
+        let lastProcessTime = 0; // ★ フレームレート調整用のタイマー
 
         const initCamera = async () => {
             try {
                 title.innerText = 'CALIBRATING SENSOR...';
                 title.style.color = '#ffaa00';
-                
+
                 if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
                     throw new Error("SECURE_CONTEXT_REQUIRED");
                 }
@@ -56,7 +57,6 @@ export class SpatialVision {
                 video.autoplay = true;
                 video.playsInline = true;
                 video.muted = true; 
-                
                 video.style.cssText = `position: absolute; top: -100px; left: -100px; width: 1px; height: 1px; opacity: 0; pointer-events: none;`;
                 document.body.appendChild(video);
 
@@ -108,76 +108,83 @@ export class SpatialVision {
         const processFrame = () => {
             if (!isRunning) return;
 
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-            ctx.restore();
-
-            const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const now = Date.now();
             
-            if (prevFrame) {
-                let changedPixels = 0;
-                const step = 4;
-                
-                // ★ 修正1：カメラの実際の映像をうっすら暗く描画する（センサー生存確認用）
-                radarCtx.globalAlpha = 0.3;
-                radarCtx.drawImage(video, 0, 0, radarCanvas.width, radarCanvas.height);
-                radarCtx.globalAlpha = 1.0;
-                
-                radarCtx.fillStyle = '#ff00ff';
+            // ★ 超重要：カメラのFPS問題解決（100ミリ秒＝0.1秒間隔で処理する）
+            if (now - lastProcessTime >= 100) {
+                lastProcessTime = now;
 
-                for (let y = 0; y < canvas.height; y += step) {
-                    for (let x = 0; x < canvas.width; x += step) {
-                        const i = (y * canvas.width + x) * 4;
-                        
-                        const MathAbs = Math.abs;
-                        const diff = MathAbs(currentFrame[i] - prevFrame[i]) + 
-                                     MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
-                                     MathAbs(currentFrame[i+2] - prevFrame[i+2]);
-                        
-                        // ★ 修正2：超高感度化 (80 -> 25)
-                        if (diff > 25) {
-                            changedPixels++;
-                            radarCtx.fillRect(canvas.width - x, y, step, step); // 反転描画
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+                ctx.restore();
+
+                const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                
+                if (prevFrame) {
+                    let changedPixels = 0;
+                    const step = 4;
+                    
+                    // 背景にカメラ映像をうっすら描画
+                    radarCtx.globalAlpha = 0.3;
+                    radarCtx.drawImage(video, 0, 0, radarCanvas.width, radarCanvas.height);
+                    radarCtx.globalAlpha = 1.0;
+                    
+                    radarCtx.fillStyle = '#ff00ff';
+
+                    for (let y = 0; y < canvas.height; y += step) {
+                        for (let x = 0; x < canvas.width; x += step) {
+                            const i = (y * canvas.width + x) * 4;
+                            
+                            const MathAbs = Math.abs;
+                            const diff = MathAbs(currentFrame[i] - prevFrame[i]) + 
+                                         MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
+                                         MathAbs(currentFrame[i+2] - prevFrame[i+2]);
+                            
+                            // 差分が30以上なら反応
+                            if (diff > 30) {
+                                changedPixels++;
+                                radarCtx.fillRect(canvas.width - x, y, step, step);
+                            }
+                        }
+                    }
+
+                    hud.style.backgroundImage = `url(${radarCanvas.toDataURL()})`;
+                    hud.style.backgroundSize = 'cover';
+                    hud.style.backgroundPosition = 'center';
+
+                    const totalSampledPixels = (canvas.width * canvas.height) / (step * step);
+                    const motionRatio = changedPixels / totalSampledPixels;
+                    
+                    const barPercent = Math.min(100, motionRatio * 1500); 
+                    motionBar.style.width = `${barPercent}%`;
+
+                    // 発動条件：画面の1%に動きがあったら
+                    if (motionRatio > 0.01) {
+                        if (now - lastTriggerTime > 800) { // 連発防止（0.8秒）
+                            lastTriggerTime = now;
+                            
+                            motionBar.style.background = '#ff00ff';
+                            hud.style.boxShadow = '0 0 40px #ff00ff';
+                            setTimeout(() => {
+                                motionBar.style.background = '#00ffcc';
+                                hud.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.3)';
+                            }, 200);
+
+                            triggerShockwave();
                         }
                     }
                 }
 
-                hud.style.backgroundImage = `url(${radarCanvas.toDataURL()})`;
-                hud.style.backgroundSize = 'cover';
-                hud.style.backgroundPosition = 'center';
-
-                const totalSampledPixels = (canvas.width * canvas.height) / (step * step);
-                const motionRatio = changedPixels / totalSampledPixels;
-                
-                // バーの上がりやすさも調整
-                const barPercent = Math.min(100, motionRatio * 2000); 
-                motionBar.style.width = `${barPercent}%`;
-
-                // ★ 修正3：発動条件の緩和 (0.015 -> 0.005)
-                if (motionRatio > 0.005) {
-                    const now = Date.now();
-                    if (now - lastTriggerTime > 600) { // クールダウンも短縮
-                        lastTriggerTime = now;
-                        
-                        motionBar.style.background = '#ff00ff';
-                        hud.style.boxShadow = '0 0 40px #ff00ff';
-                        setTimeout(() => {
-                            motionBar.style.background = '#00ffcc';
-                            hud.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.3)';
-                        }, 200);
-
-                        triggerShockwave();
-                    }
-                }
+                prevFrame = new Uint8ClampedArray(currentFrame);
             }
-
-            prevFrame = new Uint8ClampedArray(currentFrame);
+            
+            // ループは最速で回し続ける
             requestAnimationFrame(processFrame);
         };
 
         const triggerShockwave = () => {
-            if (!app.currentUniverse || !app.currentUniverse.nodes) return;
+            if (!app || !app.currentUniverse || !app.currentUniverse.nodes) return;
 
             const cx = app.camera ? -app.camera.x : 0;
             const cy = app.camera ? -app.camera.y : 0;
@@ -188,21 +195,17 @@ export class SpatialVision {
                 
                 const angle = Math.atan2(node.y - cy, node.x - cx);
                 
-                // ★ 修正4：圧倒的なパワーで「強制的に」座標を書き換える
-                const force = 80;
+                // 強制的に吹き飛ばすパワー
+                const force = 120; 
 
-                // 物理エンジンへの速度加算
                 node.vx = (node.vx || 0) + Math.cos(angle) * force;
                 node.vy = (node.vy || 0) + Math.sin(angle) * force;
 
-                // 【超重要】物理エンジンが寝ている場合のための強制座標移動
-                node.x += Math.cos(angle) * (force * 0.5);
-                node.y += Math.sin(angle) * (force * 0.5);
+                node.x += Math.cos(angle) * 30;
+                node.y += Math.sin(angle) * 30;
             });
 
-            // エンジン強制再起動
             if (app.simulation) app.simulation.alpha(1).restart();
-            // 画面の強制再描画
             if (app.update) app.update();
             
             if (window.universeAudio) {
