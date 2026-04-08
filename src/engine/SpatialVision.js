@@ -4,12 +4,12 @@ export class SpatialVision {
     static start(app) {
         if (document.getElementById('spatial-vision-hud')) return;
 
-        console.log("👁️‍🗨️ [Spatial Vision] ステルス・キネティック・センサー起動");
+        console.log("👁️‍🗨️ [Spatial Vision] ステルス・キネティック・センサー起動（強制駆動モード）");
 
         const hud = document.createElement('div');
         hud.id = 'spatial-vision-hud';
         hud.style.cssText = `
-            position: fixed; bottom: 20px; left: 20px; width: 180px; height: 70px;
+            position: fixed; bottom: 20px; left: 20px; width: 180px; height: 80px;
             background: rgba(0, 10, 15, 0.9); border: 1px solid #00ffcc; border-radius: 4px;
             box-shadow: 0 0 15px rgba(0, 255, 204, 0.3); z-index: 99999;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -22,19 +22,18 @@ export class SpatialVision {
         hud.appendChild(title);
 
         const barContainer = document.createElement('div');
-        barContainer.style.cssText = `width: 90%; height: 6px; background: rgba(0,255,204,0.1); border: 1px solid rgba(0,255,204,0.3); border-radius: 2px; position: relative; overflow: hidden; z-index: 2;`;
+        barContainer.style.cssText = `width: 90%; height: 6px; background: rgba(0,255,204,0.1); border: 1px solid rgba(0,255,204,0.3); border-radius: 2px; position: absolute; bottom: 5px; left: 5%; z-index: 2; overflow: hidden;`;
         hud.appendChild(barContainer);
 
         const motionBar = document.createElement('div');
-        motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.1s ease-out;`;
+        motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.05s ease-out;`;
         barContainer.appendChild(motionBar);
 
         document.body.appendChild(hud);
 
-        // ★ 追加：動きを視覚化するための内部レーダーキャンバス
         const radarCanvas = document.createElement('canvas');
         radarCanvas.width = 160; radarCanvas.height = 120;
-        const radarCtx = radarCanvas.getContext('2d');
+        const radarCtx = radarCanvas.getContext('2d', { willReadFrequently: true });
 
         let isRunning = false;
         let video, canvas, ctx;
@@ -46,7 +45,6 @@ export class SpatialVision {
                 title.innerText = 'CALIBRATING SENSOR...';
                 title.style.color = '#ffaa00';
                 
-                // ★ 修正：localhostかHTTPSでないとカメラは起動しません
                 if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
                     throw new Error("SECURE_CONTEXT_REQUIRED");
                 }
@@ -57,9 +55,8 @@ export class SpatialVision {
                 video.srcObject = stream;
                 video.autoplay = true;
                 video.playsInline = true;
-                video.muted = true; // ★ 必須：自動再生ブロック回避
+                video.muted = true; 
                 
-                // ★ 修正：完全に消すのではなく「見えない位置に1pxで置く」ことで処理停止を防ぐ
                 video.style.cssText = `position: absolute; top: -100px; left: -100px; width: 1px; height: 1px; opacity: 0; pointer-events: none;`;
                 document.body.appendChild(video);
 
@@ -67,7 +64,6 @@ export class SpatialVision {
                 canvas.width = 160; canvas.height = 120;
                 ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-                // ★ 修正：映像が完全にロードされるのを待ってから開始する
                 video.onloadedmetadata = () => {
                     video.play().then(() => {
                         title.innerText = 'KINETIC RADAR : ACTIVE';
@@ -112,7 +108,6 @@ export class SpatialVision {
         const processFrame = () => {
             if (!isRunning) return;
 
-            // 映像を左右反転させて鏡のように取得
             ctx.save();
             ctx.scale(-1, 1);
             ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
@@ -124,10 +119,12 @@ export class SpatialVision {
                 let changedPixels = 0;
                 const step = 4;
                 
-                // レーダーの背景を少しずつ暗くする（残像効果）
-                radarCtx.fillStyle = 'rgba(0, 10, 15, 0.3)';
-                radarCtx.fillRect(0, 0, canvas.width, canvas.height);
-                radarCtx.fillStyle = '#ff00ff'; // 動きを検知したピクセルの色（紫）
+                // ★ 修正1：カメラの実際の映像をうっすら暗く描画する（センサー生存確認用）
+                radarCtx.globalAlpha = 0.3;
+                radarCtx.drawImage(video, 0, 0, radarCanvas.width, radarCanvas.height);
+                radarCtx.globalAlpha = 1.0;
+                
+                radarCtx.fillStyle = '#ff00ff';
 
                 for (let y = 0; y < canvas.height; y += step) {
                     for (let x = 0; x < canvas.width; x += step) {
@@ -138,16 +135,14 @@ export class SpatialVision {
                                      MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
                                      MathAbs(currentFrame[i+2] - prevFrame[i+2]);
                         
-                        // ★ 修正：検知の感度を調整（80以上で反応）
-                        if (diff > 80) {
+                        // ★ 修正2：超高感度化 (80 -> 25)
+                        if (diff > 25) {
                             changedPixels++;
-                            // ★ 追加：動いたピクセルをHUDの背景に描画
-                            radarCtx.fillRect(x, y, step, step);
+                            radarCtx.fillRect(canvas.width - x, y, step, step); // 反転描画
                         }
                     }
                 }
 
-                // 生成したレーダー画像をHUDの背景として貼り付け
                 hud.style.backgroundImage = `url(${radarCanvas.toDataURL()})`;
                 hud.style.backgroundSize = 'cover';
                 hud.style.backgroundPosition = 'center';
@@ -155,13 +150,14 @@ export class SpatialVision {
                 const totalSampledPixels = (canvas.width * canvas.height) / (step * step);
                 const motionRatio = changedPixels / totalSampledPixels;
                 
-                const barPercent = Math.min(100, motionRatio * 1000); 
+                // バーの上がりやすさも調整
+                const barPercent = Math.min(100, motionRatio * 2000); 
                 motionBar.style.width = `${barPercent}%`;
 
-                // ★ 修正：画面の 1.5% 以上が動いたら発動（感度アップ）
-                if (motionRatio > 0.015) {
+                // ★ 修正3：発動条件の緩和 (0.015 -> 0.005)
+                if (motionRatio > 0.005) {
                     const now = Date.now();
-                    if (now - lastTriggerTime > 800) {
+                    if (now - lastTriggerTime > 600) { // クールダウンも短縮
                         lastTriggerTime = now;
                         
                         motionBar.style.background = '#ff00ff';
@@ -169,7 +165,7 @@ export class SpatialVision {
                         setTimeout(() => {
                             motionBar.style.background = '#00ffcc';
                             hud.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.3)';
-                        }, 300);
+                        }, 200);
 
                         triggerShockwave();
                     }
@@ -191,22 +187,29 @@ export class SpatialVision {
                 node.fy = null;
                 
                 const angle = Math.atan2(node.y - cy, node.x - cx);
-                const distance = Math.sqrt(Math.pow(node.x - cx, 2) + Math.pow(node.y - cy, 2));
                 
-                // 遠くの星も吹き飛ぶようにパワーを調整
-                const power = Math.max(10, 50 - (distance * 0.05)); 
+                // ★ 修正4：圧倒的なパワーで「強制的に」座標を書き換える
+                const force = 80;
 
-                node.vx = (node.vx || 0) + Math.cos(angle) * power;
-                node.vy = (node.vy || 0) + Math.sin(angle) * power;
+                // 物理エンジンへの速度加算
+                node.vx = (node.vx || 0) + Math.cos(angle) * force;
+                node.vy = (node.vy || 0) + Math.sin(angle) * force;
+
+                // 【超重要】物理エンジンが寝ている場合のための強制座標移動
+                node.x += Math.cos(angle) * (force * 0.5);
+                node.y += Math.sin(angle) * (force * 0.5);
             });
 
+            // エンジン強制再起動
             if (app.simulation) app.simulation.alpha(1).restart();
+            // 画面の強制再描画
+            if (app.update) app.update();
             
             if (window.universeAudio) {
-                window.universeAudio.playSystemSound(100, 'sawtooth', 0.4);
+                window.universeAudio.playSystemSound(100, 'sawtooth', 0.5);
             }
             if (window.HapticEngine) {
-                window.HapticEngine.vibrate([20, 30, 20]);
+                window.HapticEngine.vibrate([30, 50, 30]);
             }
         };
     }
