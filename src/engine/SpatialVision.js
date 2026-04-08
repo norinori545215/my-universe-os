@@ -4,7 +4,7 @@ export class SpatialVision {
     static start(app) {
         if (document.getElementById('spatial-vision-hud')) return;
 
-        console.log("👁️‍🗨️ [Spatial Vision] ステルス・キネティック・センサー（完全版）起動");
+        console.log("👁️‍🗨️ [Spatial Vision] 重力アンカー切断モード起動");
 
         const hud = document.createElement('div');
         hud.id = 'spatial-vision-hud';
@@ -46,7 +46,7 @@ export class SpatialVision {
         const radarCtx = radarCanvas.getContext('2d', { willReadFrequently: true });
 
         let isRunning = false;
-        let sensorReady = false; // ★ 心臓バグ防止：起動直後のノイズを無視するフラグ
+        let sensorReady = false; 
         let video, canvas, ctx;
         let prevFrame = null;
         let lastTriggerTime = 0;
@@ -64,7 +64,6 @@ export class SpatialVision {
                 video.autoplay = true;
                 video.playsInline = true;
                 video.muted = true; 
-                
                 video.style.cssText = `position: fixed; top: -1000px; left: -1000px; width: 160px; height: 120px; opacity: 0.01; pointer-events: none; z-index: -10;`;
                 document.body.appendChild(video);
 
@@ -76,7 +75,6 @@ export class SpatialVision {
                     video.play().then(() => {
                         isRunning = true;
                         
-                        // ★ 心臓バグ解決：カメラの明るさ調整が終わるまで「2.5秒間」検知を無効化する
                         setTimeout(() => {
                             sensorReady = true;
                             title.innerText = 'KINETIC RADAR : ACTIVE';
@@ -114,10 +112,10 @@ export class SpatialVision {
 
         const processFrame = () => {
             if (!isRunning) return;
-            requestAnimationFrame(processFrame); // 最速でループを回し続ける
+            requestAnimationFrame(processFrame);
 
             const now = Date.now();
-            if (now - lastProcessTime < 100) return; // 100ms間隔で処理
+            if (now - lastProcessTime < 100) return; 
             lastProcessTime = now;
 
             ctx.save();
@@ -127,14 +125,13 @@ export class SpatialVision {
 
             const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
             
-            if (prevFrame && sensorReady) { // ★ ウォームアップ中は無視
+            if (prevFrame && sensorReady) {
                 let changedPixels = 0;
                 const step = 4;
                 
                 radarCtx.globalAlpha = 0.3;
                 radarCtx.drawImage(video, 0, 0, radarCanvas.width, radarCanvas.height);
                 radarCtx.globalAlpha = 1.0;
-                
                 radarCtx.fillStyle = '#ff00ff';
 
                 for (let y = 0; y < canvas.height; y += step) {
@@ -146,7 +143,6 @@ export class SpatialVision {
                                      MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
                                      MathAbs(currentFrame[i+2] - prevFrame[i+2]);
                         
-                        // ★ ノイズを拾わないように閾値を再調整（35以上）
                         if (diff > 35) {
                             changedPixels++;
                             radarCtx.fillRect(canvas.width - x, y, step, step);
@@ -164,9 +160,8 @@ export class SpatialVision {
                 const barPercent = Math.min(100, motionRatio * 800); 
                 motionBar.style.width = `${barPercent}%`;
 
-                // ★ 発動条件を「画面の4%が動いた時」に引き上げ、誤作動を完全に防ぐ
                 if (motionRatio > 0.04) {
-                    if (now - lastTriggerTime > 1200) { // クールダウン1.2秒
+                    if (now - lastTriggerTime > 1200) { 
                         lastTriggerTime = now;
                         triggerShockwave();
                     }
@@ -178,7 +173,6 @@ export class SpatialVision {
         const triggerShockwave = () => {
             if (!app || !app.currentUniverse) return;
 
-            // ★ HUDのフラッシュ演出
             motionBar.style.background = '#ff00ff';
             motionBar.style.width = '100%';
             hud.style.boxShadow = '0 0 40px #ff00ff';
@@ -188,15 +182,13 @@ export class SpatialVision {
                 motionBar.style.width = '0%';
             }, 300);
 
-            // ★ 気持ち悪い「心臓の揺れ（Bodyの揺れ）」を廃止し、キャンバス自体にサイバーなグリッチエフェクトをかける
+            // ★ 赤く点滅するダサいフィルターを削除。代わりにキャンバスが一瞬「ドンッ」と拡大するだけにする。
             const canvasEl = document.getElementById('universe-canvas');
             if (canvasEl) {
                 canvasEl.style.transition = 'none';
-                canvasEl.style.filter = 'brightness(2.5) contrast(1.5) hue-rotate(90deg)';
-                canvasEl.style.transform = 'scale(1.05)';
+                canvasEl.style.transform = 'scale(1.1)';
                 setTimeout(() => {
-                    canvasEl.style.transition = 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)';
-                    canvasEl.style.filter = 'none';
+                    canvasEl.style.transition = 'transform 0.5s ease-out';
                     canvasEl.style.transform = 'scale(1)';
                 }, 50);
             }
@@ -204,7 +196,7 @@ export class SpatialVision {
             if (window.universeAudio) window.universeAudio.playSystemSound(50, 'sawtooth', 0.8);
             if (window.HapticEngine) window.HapticEngine.vibrate([50, 100, 50]);
 
-            // ★ 星が1つも無い場合は、強制的に「破片」を生成して吹き飛ばす（これで絶対に動くのが見える）
+            // 星がない場合は虚空から召喚
             if (app.currentUniverse.nodes.length === 0) {
                 for (let i = 0; i < 20; i++) {
                     app.currentUniverse.addNode(`FRAGMENT_${i}`, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 15, '#00ffcc', 'star');
@@ -215,28 +207,39 @@ export class SpatialVision {
             const cy = app.camera ? -app.camera.y : 0;
 
             app.currentUniverse.nodes.forEach(node => {
-                // 重力システム(Gravity.js)のロックを強制解除
-                node.fx = null; 
-                node.fy = null;
-                
                 let dx = node.x - cx;
                 let dy = node.y - cy;
                 
-                // 中心にいる場合はランダムな方向へ
                 if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
                     dx = Math.random() - 0.5; dy = Math.random() - 0.5;
                 }
 
                 const angle = Math.atan2(dy, dx);
-                // ★ 超圧倒的なスピード（vx, vy）を与えて吹き飛ばす
-                const force = 300 + Math.random() * 400;
+                // 吹き飛ぶ距離
+                const force = 400 + Math.random() * 500;
 
-                node.vx = (node.vx || 0) + Math.cos(angle) * force;
-                node.vy = (node.vy || 0) + Math.sin(angle) * force;
+                const newX = node.x + Math.cos(angle) * force;
+                const newY = node.y + Math.sin(angle) * force;
+
+                // ★ 最大の敵「Gravity.js」の引き戻しを無力化する。
+                // 現在地だけでなく、引力の中心座標（baseX, baseY）ごと遠くへ移動させる！
+                node.x = newX;
+                node.y = newY;
+                node.baseX = newX;
+                node.baseY = newY;
+                
+                // 固定状態も解除
+                node.fx = null; 
+                node.fy = null;
+                
+                // さらに慣性を与える
+                node.vx = Math.cos(angle) * 50;
+                node.vy = Math.sin(angle) * 50;
             });
 
             // エンジン強制再起動（星を動かす）
             if (app.simulation) app.simulation.alpha(1).restart();
+            if (typeof app.autoSave === 'function') app.autoSave();
         };
     }
 }
