@@ -54,7 +54,6 @@ export class WanderingEntities {
         promptText.style.cssText = `color: #00ffcc; font-size: 16px; letter-spacing: 5px; margin-bottom: 30px; text-shadow: 0 0 15px #00ffcc;`;
         terminal.appendChild(promptText);
 
-        // ★ 日本語入力バグを完全に防ぐための form 要素
         const form = document.createElement('form');
         form.style.cssText = 'position: relative; z-index: 100002; display: flex; flex-direction: column; align-items: center;';
         
@@ -75,7 +74,6 @@ export class WanderingEntities {
         logArea.style.cssText = `margin-top: 30px; width: 320px; height: 120px; color: #00ffcc; font-size: 12px; overflow-y: hidden; text-align: left; opacity: 0.8; line-height: 1.6;`;
         terminal.appendChild(logArea);
 
-        // UI制御
         core.onmouseenter = () => { core.style.transform = 'scale(1.1)'; core.style.borderColor = '#ff00ff'; innerNode.style.background = '#ff00ff'; innerNode.style.boxShadow = '0 0 10px #ff00ff'; };
         core.onmouseleave = () => { core.style.transform = 'scale(1)'; core.style.borderColor = '#00ffcc'; innerNode.style.background = '#00ffcc'; innerNode.style.boxShadow = '0 0 10px #00ffcc'; };
         
@@ -94,7 +92,6 @@ export class WanderingEntities {
 
         terminal.onclick = (e) => { if(e.target === terminal) closeTerminal(); };
 
-        // タイピング風のログ出力関数
         const typeLog = async (msg, color = '#00ffcc') => {
             return new Promise(resolve => {
                 const line = document.createElement('div');
@@ -105,13 +102,13 @@ export class WanderingEntities {
                     line.innerText = '> ' + msg.substring(0, i);
                     i++;
                     if (i > msg.length) { clearInterval(type); logArea.scrollTop = logArea.scrollHeight; resolve(); }
-                }, 15); // タイピング速度
+                }, 15);
             });
         };
 
-        // 3. 未来的なマインドマップ構築エンジン
+        // 3. 未来的なマインドマップ構築エンジン（CORS完全回避版）
         form.onsubmit = async (e) => {
-            e.preventDefault(); // 画面リロードを防止
+            e.preventDefault();
             const query = input.value.trim();
             if (!query) return;
 
@@ -120,33 +117,37 @@ export class WanderingEntities {
             if(window.universeAudio) window.universeAudio.playWarp();
 
             try {
-                // STEP 1: メイン記事の概要を取得
+                // STEP 1: 曖昧検索（CORS対応の origin=* を付与）
                 await typeLog('ACCESSING GLOBAL DATABANKS...');
-                const sumRes = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
+                const searchRes = await fetch(`https://ja.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`);
                 
-                if (!sumRes.ok) {
-                    await typeLog('ERROR: CONCEPT NOT FOUND.', '#ff4444');
-                    if (window.HapticEngine) window.HapticEngine.playError();
+                if (!searchRes.ok) throw new Error("Network response was not ok");
+                const searchData = await searchRes.json();
+                
+                if (!searchData.query.search || searchData.query.search.length === 0) {
+                    await typeLog('ERROR: CONCEPT NOT FOUND IN GLOBAL NET.', '#ff4444');
                     setTimeout(closeTerminal, 2000);
                     return;
                 }
-                const mainData = await sumRes.json();
-                
-                if (mainData.type === 'disambiguation') {
-                    await typeLog('ERROR: AMBIGUOUS QUERY. PLEASE BE SPECIFIC.', '#ffaa00');
-                    setTimeout(closeTerminal, 2500);
-                    return;
-                }
+                const exactTitle = searchData.query.search[0].title;
+                await typeLog(`TARGET ACQUIRED: ${exactTitle}`);
 
-                await typeLog(`TARGET ACQUIRED: ${mainData.title}`);
-
-                // STEP 2: 「完全に関連する」ページ群を抽出（ゴミデータ撲滅）
+                // STEP 2: 概要、画像、関連リンクを「一度のAPI通信」で全て取得（CORSエラーを完全回避）
                 await typeLog('EXTRACTING SEMANTIC KNOWLEDGE...');
-                const relRes = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/related/${encodeURIComponent(mainData.title)}`);
-                const relData = await relRes.json();
+                const pageRes = await fetch(`https://ja.wikipedia.org/w/api.php?action=query&prop=extracts|links|pageimages&titles=${encodeURIComponent(exactTitle)}&exchars=150&explaintext=true&pllimit=20&plnamespace=0&piprop=thumbnail&pithumbsize=300&format=json&origin=*`);
                 
-                // 本物の関連用語（標準的な記事）だけを最大5つ厳選
-                const relatedPages = (relData.pages || []).filter(p => p.type === 'standard').slice(0, 5);
+                const pageData = await pageRes.json();
+                const pages = pageData.query.pages;
+                const pageId = Object.keys(pages)[0];
+                const pageInfo = pages[pageId];
+
+                // データの抽出
+                const extract = pageInfo.extract ? pageInfo.extract + "..." : "詳細データなし";
+                const thumbnail = pageInfo.thumbnail ? pageInfo.thumbnail.source : null;
+                const allLinks = pageInfo.links ? pageInfo.links.map(l => l.title) : [];
+
+                // ゴミデータ（一覧、歴史、曖昧さ回避など）を排除して5つに厳選
+                const validLinks = allLinks.filter(l => !l.includes('一覧') && !l.includes('曖昧さ回避') && !l.includes('歴史') && !l.includes(exactTitle)).slice(0, 5);
 
                 await typeLog('DATA COMPILED. CONSTRUCTING CONSTELLATION...', '#ff00ff');
 
@@ -159,31 +160,30 @@ export class WanderingEntities {
                     const cy = app.camera ? -app.camera.y : 0;
 
                     // まず中心の親星を召喚
-                    app.currentUniverse.addNode(mainData.title, cx, cy, 60, '#ff00ff', 'galaxy');
+                    app.currentUniverse.addNode(exactTitle, cx, cy, 60, '#ff00ff', 'galaxy');
                     const centerNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
-                    if (mainData.thumbnail && mainData.thumbnail.source) centerNode.iconUrl = mainData.thumbnail.source;
-                    centerNode.note = `【${mainData.title}】\n${mainData.extract}\n\n[Data from Global Net]`;
+                    if (thumbnail) centerNode.iconUrl = thumbnail;
+                    centerNode.note = `【${exactTitle}】\n${extract}\n\n[Data from Global Net]`;
                     
                     app.autoSave();
                     if(app.spawnRipple) app.spawnRipple(cx, cy, '#ff00ff');
                     if(window.universeAudio) window.universeAudio.playSpawn();
 
-                    // 子星を「時間差」で一つずつ召喚していく（未来的な演出）
-                    relatedPages.forEach((page, i) => {
+                    // 子星を「時間差」で一つずつ召喚していく
+                    validLinks.forEach((linkTitle, i) => {
                         setTimeout(() => {
-                            const angle = (i / relatedPages.length) * Math.PI * 2;
+                            const angle = (i / validLinks.length) * Math.PI * 2;
                             const dist = 220;
                             const nx = cx + Math.cos(angle) * dist;
                             const ny = cy + Math.sin(angle) * dist;
                             
-                            app.currentUniverse.addNode(page.title, nx, ny, 30, '#00ffcc', 'star');
+                            app.currentUniverse.addNode(linkTitle, nx, ny, 30, '#00ffcc', 'star');
                             const childNode = app.currentUniverse.nodes[app.currentUniverse.nodes.length - 1];
-                            if (page.thumbnail && page.thumbnail.source) childNode.iconUrl = page.thumbnail.source;
-                            childNode.note = `【${page.title}】\n${page.extract ? page.extract : "関連データ"}`;
+                            childNode.note = `[Semantic Link to: ${exactTitle}]`;
                             
                             app.currentUniverse.links.push({ source: centerNode, target: childNode });
                             
-                            // 描画エンジンに強制通知して動かす
+                            // 描画エンジンに強制通知
                             app.autoSave();
                             if(app.spawnRipple) app.spawnRipple(nx, ny, '#00ffcc');
                             if(window.universeAudio) window.universeAudio.playSpawn();
@@ -193,15 +193,15 @@ export class WanderingEntities {
                                 app.simulation.force("link").links(app.currentUniverse.links);
                                 app.simulation.alpha(0.3).restart();
                             }
-                        }, (i + 1) * 350); // 0.35秒間隔で次々と星が誕生する
+                        }, (i + 1) * 350); 
                     });
 
                 }, 1000);
 
             } catch (error) {
-                await typeLog('CRITICAL ERROR: CONNECTION FAILED', '#ff4444');
-                console.error(error);
-                setTimeout(closeTerminal, 2000);
+                await typeLog(`CRITICAL ERROR: ${error.message}`, '#ff4444');
+                console.error("Knowledge Weaver Error:", error);
+                setTimeout(closeTerminal, 3000);
             }
         };
 
