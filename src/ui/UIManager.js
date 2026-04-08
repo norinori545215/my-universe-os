@@ -17,7 +17,8 @@ import { NexusChatUI } from './NexusChatUI.js';
 import { Chronos } from '../core/Chronos.js'; 
 import { RealityBridge } from '../api/RealityBridge.js';
 import { WebXRDive } from './WebXRDive.js';
-import { WanderingEntities } from '../ai/WanderingEntities.js'; // ★ 追加
+import { WanderingEntities } from '../ai/WanderingEntities.js';
+import { SpatialVision } from '../engine/SpatialVision.js'; // ★ 追加：空間ジェスチャーモジュール
 
 export class UIManager {
     constructor(app) {
@@ -378,9 +379,10 @@ export class UIManager {
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
 
-                <!-- ★ AIエンティティ召喚ボタンを追加 -->
-                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI ENTITY</div>
-                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">🤖 自律型AIを宇宙に放つ</button>
+                <!-- ★ AIエンティティ & ジェスチャー召喚ボタンを追加 -->
+                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
+                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
+                <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
             `;
         } else if (this.state.activeTab === 'config') {
             const chronosCfg = Chronos.getConfig(); 
@@ -607,6 +609,12 @@ export class UIManager {
         // ★ 追加: AIエンティティの召喚イベント
         bind('cp-spawn-entity', () => {
             WanderingEntities.spawn(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
+        // ★ 追加: 空間ジェスチャーの起動イベント
+        bind('cp-spatial-vision', () => {
+            SpatialVision.start(this.app);
             this.controlPanel.style.display = 'none';
         });
 
