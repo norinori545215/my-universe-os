@@ -4,7 +4,7 @@ export class SpatialVision {
     static start(app) {
         if (document.getElementById('spatial-vision-hud')) return;
 
-        console.log("👁️‍🗨️ [Spatial Vision] エコモード無効化・強制プロトコル起動");
+        console.log("👁️‍🗨️ [Spatial Vision] 絶対駆動プロトコル起動");
 
         const hud = document.createElement('div');
         hud.id = 'spatial-vision-hud';
@@ -29,12 +29,12 @@ export class SpatialVision {
         motionBar.style.cssText = `width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.1s ease-out;`;
         barContainer.appendChild(motionBar);
 
-        // ★ デバッグ用：強制発動ボタン（クリックで直接衝撃波を撃つ）
+        // ★ 爆発テストボタン
         const testBtn = document.createElement('button');
-        testBtn.innerText = 'TEST';
+        testBtn.innerText = '💣 爆発テスト';
         testBtn.style.cssText = `position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: bold; background: #ff4444; color: #fff; border: 1px solid #fff; border-radius: 3px; cursor: pointer; z-index: 10; padding: 2px 4px;`;
         testBtn.onclick = (e) => {
-            e.stopPropagation(); // HUDのOFF判定を防ぐ
+            e.stopPropagation(); 
             motionBar.style.background = '#ff00ff';
             motionBar.style.width = '100%';
             setTimeout(() => { motionBar.style.background = '#00ffcc'; motionBar.style.width = '0%'; }, 300);
@@ -67,7 +67,6 @@ export class SpatialVision {
                 video.playsInline = true;
                 video.muted = true; 
                 
-                // ★ 最大の修正ポイント：ブラウザの最適化によるフリーズを防ぐため、透明度1%で通常サイズで配置
                 video.style.cssText = `position: fixed; top: -1000px; left: -1000px; width: 160px; height: 120px; opacity: 0.01; pointer-events: none; z-index: -10;`;
                 document.body.appendChild(video);
 
@@ -89,7 +88,7 @@ export class SpatialVision {
                 };
             } catch (err) {
                 console.error(err);
-                title.innerText = 'ERR: HARDWARE FAILURE';
+                title.innerText = 'ERR: CAMERA REJECTED';
                 title.style.color = '#ff4444';
             }
         };
@@ -114,7 +113,6 @@ export class SpatialVision {
 
             const now = Date.now();
             
-            // 100msごとに処理
             if (now - lastProcessTime >= 100) {
                 lastProcessTime = now;
 
@@ -144,7 +142,7 @@ export class SpatialVision {
                                          MathAbs(currentFrame[i+1] - prevFrame[i+1]) + 
                                          MathAbs(currentFrame[i+2] - prevFrame[i+2]);
                             
-                            // ★ 閾値をさらに下げて高感度に
+                            // 超高感度
                             if (diff > 20) {
                                 changedPixels++;
                                 radarCtx.fillRect(canvas.width - x, y, step, step);
@@ -162,9 +160,9 @@ export class SpatialVision {
                     const barPercent = Math.min(100, motionRatio * 1500); 
                     motionBar.style.width = `${barPercent}%`;
 
-                    // 画面の0.5%が動いたら発動
+                    // 0.5%の動きで発動
                     if (motionRatio > 0.005) {
-                        if (now - lastTriggerTime > 800) {
+                        if (now - lastTriggerTime > 1000) { // クールダウン1秒
                             lastTriggerTime = now;
                             
                             motionBar.style.background = '#ff00ff';
@@ -184,39 +182,45 @@ export class SpatialVision {
         };
 
         const triggerShockwave = () => {
-            if (!app || !app.currentUniverse || !app.currentUniverse.nodes) {
-                console.error("宇宙のデータ(app.currentUniverse)が見つかりません。");
-                return;
-            }
+            // ★ 絶対に動いていることを知らせるために、画面全体（ブラウザ）を揺らす
+            document.body.style.transition = 'none';
+            document.body.style.transform = 'scale(1.05) translate(15px, -15px)';
+            setTimeout(() => {
+                document.body.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                document.body.style.transform = 'scale(1) translate(0px, 0px)';
+            }, 80);
+
+            // 音とバイブレーション
+            if (window.universeAudio) window.universeAudio.playSystemSound(50, 'sawtooth', 0.8);
+            if (window.HapticEngine) window.HapticEngine.vibrate([50, 100, 50]);
+
+            if (!app || !app.currentUniverse || !app.currentUniverse.nodes) return;
 
             const cx = app.camera ? -app.camera.x : 0;
             const cy = app.camera ? -app.camera.y : 0;
 
-            let moved = false;
-
             app.currentUniverse.nodes.forEach(node => {
-                node.fx = null; 
-                node.fy = null;
+                const dx = node.x - cx;
+                const dy = node.y - cy;
+                const dist = Math.sqrt(dx*dx + dy*dy) || 1;
                 
-                const angle = Math.atan2(node.y - cy, node.x - cx);
-                const force = 150; // 強制吹き飛ばしパワー
+                // 爆発の飛距離（超強力）
+                const power = 500 + Math.random() * 500;
 
-                node.vx = (node.vx || 0) + Math.cos(angle) * force;
-                node.vy = (node.vy || 0) + Math.sin(angle) * force;
+                // ★ 最重要：物理エンジンの引力を無視して「絶対座標(fx, fy)」にピン留めして吹き飛ばす
+                node.fx = node.x + (dx / dist) * power;
+                node.fy = node.y + (dy / dist) * power;
 
-                node.x += Math.cos(angle) * 50;
-                node.y += Math.sin(angle) * 50;
-                moved = true;
+                // 1秒後にピン留めを解除し、引力で戻るようにする
+                setTimeout(() => {
+                    node.fx = null;
+                    node.fy = null;
+                    if (app.simulation) app.simulation.alpha(0.5).restart();
+                }, 1000);
             });
 
-            if (moved) {
-                if (app.simulation) app.simulation.alpha(1).restart();
-                if (app.update) app.update();
-                if (window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.5);
-                if (window.HapticEngine) window.HapticEngine.vibrate([30, 50, 30]);
-            } else {
-                console.warn("画面上に吹き飛ばす星がありません。");
-            }
+            // 物理エンジン再点火
+            if (app.simulation) app.simulation.alpha(1).restart();
         };
     }
 }
