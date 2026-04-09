@@ -846,6 +846,9 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
+        // ★ 追加: ワームホールに対するクリック（メニュー展開）を完全に無視する
+        if (node.isWormhole) return;
+
         if (this.state.isRapidDeleteMode) {
             this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
