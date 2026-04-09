@@ -29,7 +29,6 @@ export class CanvasBuilder {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // メニューからの移動モード用フラグ
         this.isMovingNode = false;
         this.nodeToMove = null;
 
@@ -69,20 +68,17 @@ export class CanvasBuilder {
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
                 
-                // ドラッグ＆ドロップで別の星に重ねて離した時の処理
                 if (this.hasMovedNode && this.grabbedNode) {
                     const gNode = this.grabbedNode;
-                    this.grabbedNode = null; // 自分自身を一旦隠して当たり判定を調べる
+                    this.grabbedNode = null; 
                     const targetNode = this.getNodeAt(this.mouseWorldX, this.mouseWorldY);
-                    this.grabbedNode = gNode; // 戻す
+                    this.grabbedNode = gNode; 
 
                     if (targetNode && targetNode !== this.grabbedNode && !targetNode.isGhost) {
                         if (confirm(`「${this.grabbedNode.name}」を「${targetNode.name}」の中に移動させますか？`)) {
-                            // 現在の宇宙から削除
                             this.currentUniverse.nodes = this.currentUniverse.nodes.filter(n => n !== this.grabbedNode && n.id !== this.grabbedNode.id);
                             this.currentUniverse.links = this.currentUniverse.links.filter(l => l.source !== this.grabbedNode && l.target !== this.grabbedNode && l.source.id !== this.grabbedNode.id && l.target.id !== this.grabbedNode.id);
                             
-                            // 対象の内部宇宙へ追加
                             this.grabbedNode.parentUniverse = targetNode.innerUniverse;
                             targetNode.innerUniverse.nodes.push(this.grabbedNode);
                             
@@ -488,7 +484,15 @@ export class CanvasBuilder {
         const bpm = 153;
         const msPerBeat = 60000 / (bpm / 2); 
         const beatPhase = (Date.now() % msPerBeat) / msPerBeat; 
-        const pulse = Math.pow(Math.sin(beatPhase * Math.PI), 2) * 0.3; 
+        
+        let audioPulse = 0;
+        let bassPulse = 0;
+        if (window.universeAudio && window.universeAudio.isMicActive) {
+            audioPulse = window.universeAudio.audioLevel * 1.5;
+            bassPulse = window.universeAudio.bassLevel * 3.0; 
+        }
+        
+        const pulse = (Math.pow(Math.sin(beatPhase * Math.PI), 2) * 0.3) + audioPulse + (bassPulse * 0.5); 
 
         this.camera.update(this.currentUniverse.nodes);
 
@@ -507,10 +511,17 @@ export class CanvasBuilder {
 
         this.ctx.save();
         this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+
+        if (bassPulse > 0.6) {
+            const shakeX = (Math.random() - 0.5) * bassPulse * 15;
+            const shakeY = (Math.random() - 0.5) * bassPulse * 15;
+            this.ctx.translate(shakeX, shakeY);
+        }
+
         this.ctx.scale(this.camera.scale, this.camera.scale);
         this.ctx.translate(this.camera.x, this.camera.y);
 
-        this.ctx.fillStyle = 'rgba(0, 255, 204, 0.2)';
+        this.ctx.fillStyle = `rgba(0, 255, 204, ${0.2 + audioPulse * 0.3})`;
         this.currentUniverse.particles.forEach(p => {
             this.ctx.beginPath();
             this.ctx.arc(p.x, p.y, Math.max(0.1, p.size + (pulse * 0.3)), 0, Math.PI * 2);
@@ -568,7 +579,7 @@ export class CanvasBuilder {
                     if (radius < 40) radius = 80;
 
                     const baseAngle = Math.atan2(dy, dx);
-                    const speed = 25 / Math.max(radius, 50);
+                    const speed = (25 / Math.max(radius, 50)) * (1 + audioPulse);
                     const currentAngle = baseAngle + (this.time * speed);
 
                     const orbitZ = Math.sin(currentAngle); 
@@ -669,10 +680,9 @@ export class CanvasBuilder {
             this.ctx.shadowBlur = isGrabbed ? 30 : (15 + (pulse * 15)) * (node.perspectiveScale || 1); 
             this.ctx.shadowColor = node.color;
 
-            // ★ 追加：形を描き分けるための内部ヘルパー関数
             const drawShapePath = () => {
                 this.ctx.beginPath();
-                const shape = node.shape || 'star'; // デフォルトは円(star)
+                const shape = node.shape || 'star';
                 if (shape === 'rect') {
                     this.ctx.rect(node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2);
                 } else if (shape === 'triangle') {
@@ -687,7 +697,6 @@ export class CanvasBuilder {
                     this.ctx.lineTo(node.x - drawSize, node.y);
                     this.ctx.closePath();
                 } else {
-                    // デフォルトの円
                     this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
                 }
             };
@@ -697,25 +706,22 @@ export class CanvasBuilder {
                 const img = this.imageCache[node.iconUrl];
                 if (img.complete && img.naturalHeight !== 0) {
                     this.ctx.save(); 
-                    // ★ 修正：画像の切り抜き（クリッピング）を新しい形で実行
                     drawShapePath();
                     this.ctx.clip(); 
                     this.ctx.fillStyle = '#111'; this.ctx.fill(); 
                     this.ctx.drawImage(img, node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2); 
                     this.ctx.restore();
                     this.ctx.strokeStyle = node.color; this.ctx.lineWidth = 2; 
-                    
-                    // ★ 修正：画像の枠線（ストローク）を新しい形で実行
                     drawShapePath();
                     this.ctx.stroke();
                 } else { 
                     this.ctx.fillStyle = node.color; 
-                    drawShapePath(); // ★ 修正：画像未読み込み時の塗りつぶし
+                    drawShapePath(); 
                     this.ctx.fill(); 
                 }
             } else { 
                 this.ctx.fillStyle = node.color; 
-                drawShapePath(); // ★ 修正：通常の塗りつぶし
+                drawShapePath(); 
                 this.ctx.fill(); 
             }
 

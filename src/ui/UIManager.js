@@ -379,10 +379,7 @@ export class UIManager {
                     <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:45px; height:45px; border:none; border-radius:8px; background:transparent; cursor:pointer;">
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
-
-                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
-                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
-                <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
+                <!-- ★ ここにあったジェスチャー等のボタンは削除し、カプセル（updateUIState）に移動しました -->
             `;
         } else if (this.state.activeTab === 'config') {
             const chronosCfg = Chronos.getConfig(); 
@@ -411,24 +408,24 @@ export class UIManager {
 
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-3d" ${localStorage.getItem('universe_ext_3d')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                        <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジンをスロットに追加</span>
+                        <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジン</span>
                     </label>
 
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                        <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザをスロットに追加</span>
+                        <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザ</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-time" ${localStorage.getItem('universe_ext_time')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
-                        <span style="color:#ffee66;">⏳ タイムマシンをスロットに追加</span>
+                        <span style="color:#ffee66;">⏳ タイムマシン</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        <span style="color:#00ffcc;">🤖 自動プレゼンをスロットに追加</span>
+                        <span style="color:#00ffcc;">🤖 自動プレゼン</span>
                     </label>
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        <span style="color:#00ffcc;">🖥️ ターミナルをスロットに追加</span>
+                        <span style="color:#00ffcc;">🖥️ ターミナル</span>
                     </label>
 
                     <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
@@ -441,9 +438,22 @@ export class UIManager {
                         <input type="checkbox" id="cp-ext-center-text" ${localStorage.getItem('universe_center_text')!=='false'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
                         🔤 中央透かし文字を表示
                     </label>
+
+                    <!-- ★ 追加: カプセルに入れる新しい機能のON/OFFスイッチ -->
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff88ff; font-weight:bold;">🎙️ 音響シンクロ (マイク)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-vision" ${localStorage.getItem('universe_ext_vision')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc; font-weight:bold;">✋ 空間ジェスチャー (カメラ)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-ai" ${localStorage.getItem('universe_ext_ai')==='true'?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
+                        <span style="color:#ffaa00; font-weight:bold;">🤖 自律AIエンティティ</span>
+                    </label>
                 </div>
 
-                <!-- ★ 追加: P2P通信ポータル -->
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
                 <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
 
@@ -580,6 +590,16 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
+        // ★ 新機能のチェックボックス処理
+        const extMic = document.getElementById('cp-ext-mic');
+        if(extMic) extMic.onchange = (e) => { localStorage.setItem('universe_ext_mic', e.target.checked); this.updateUIState(); };
+        
+        const extVision = document.getElementById('cp-ext-vision');
+        if(extVision) extVision.onchange = (e) => { localStorage.setItem('universe_ext_vision', e.target.checked); this.updateUIState(); };
+        
+        const extAI = document.getElementById('cp-ext-ai');
+        if(extAI) extAI.onchange = (e) => { localStorage.setItem('universe_ext_ai', e.target.checked); this.updateUIState(); };
+
         bind('cp-btn-set-dummy', () => {
             const currentCode = localStorage.getItem('universe_dummy_code') || '';
             const newCode = prompt("法的防壁（ダミー宇宙）を展開するパスワードを入力してください。\n（現在のコード: " + (currentCode === '' ? "未設定" : "****") + "）", "");
@@ -607,16 +627,6 @@ export class UIManager {
                 const n = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length-1];
                 this.showMenu(n, window.innerWidth/2, window.innerHeight/2);
             }
-            this.controlPanel.style.display = 'none';
-        });
-
-        bind('cp-spawn-entity', () => {
-            WanderingEntities.spawn(this.app);
-            this.controlPanel.style.display = 'none';
-        });
-
-        bind('cp-spatial-vision', () => {
-            SpatialVision.start(this.app);
             this.controlPanel.style.display = 'none';
         });
 
@@ -693,6 +703,7 @@ export class UIManager {
         this.renderCP(); 
     }
 
+    // ★ UIのアイコンを生成するカプセル更新ロジック
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
@@ -702,66 +713,70 @@ export class UIManager {
         const isAutoPilot = localStorage.getItem('universe_ext_autopilot') === 'true';
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
+        
+        // 追加した新機能のフラグ
+        const isMic = localStorage.getItem('universe_ext_mic') === 'true';
+        const isVision = localStorage.getItem('universe_ext_vision') === 'true';
+        const isAI = localStorage.getItem('universe_ext_ai') === 'true';
+
+        // 共通ボタン生成ヘルパー
+        const addCapsuleBtn = (icon, title, color, onClick) => {
+            const btn = document.createElement('div');
+            btn.innerText = icon;
+            btn.title = title;
+            btn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(${color},0.15); border:1px solid rgba(${color},0.5); color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(${color},0.2); font-size:14px;`;
+            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) onClick(); };
+            this.capsuleSlots.appendChild(btn);
+            return btn;
+        };
 
         if (is3D) {
-            const btn = document.createElement('div');
-            btn.innerText = this.is3DMode ? '🌌' : '🪐';
-            btn.title = this.is3DMode ? "Return to 2D" : "Enter 3D Space";
-            const color = this.is3DMode ? '0,255,204' : '255,0,255';
-            btn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(${color},0.15); border:1px solid rgba(${color},0.5); color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(${color},0.2); font-size:14px;`;
-            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) this.toggle3DMode(); };
-            this.capsuleSlots.appendChild(btn);
+            addCapsuleBtn(this.is3DMode ? '🌌' : '🪐', this.is3DMode ? "Return to 2D" : "Enter 3D Space", this.is3DMode ? '0,255,204' : '255,0,255', () => this.toggle3DMode());
+            if (this.is3DMode) addCapsuleBtn('🕶️', "Neural Dive (VR)", '0,255,204', () => WebXRDive.initiateDive(this.app, this.hyper3DInstance));
+        }
+        if (isSearch) addCapsuleBtn('👁️‍🗨️', "Singularity Search", '255,0,255', () => SingularitySearch.open());
+        if (isTime) addCapsuleBtn('⏳', "Time Machine", '255,204,0', () => this.toggleTimeMachine());
+        if (isAutoPilot) addCapsuleBtn('🤖', "Auto Presentation Mode", '0,255,204', () => {
+            if(this.app.autoPilot) { this.controlPanel.style.display = 'none'; this.app.autoPilot.start(); }
+        });
+        if (isLog) addCapsuleBtn('🖥️', "Terminal Log", '0,255,204', () => window.universeLogger?.toggle());
 
-            if (this.is3DMode) {
-                const vrBtn = document.createElement('div');
-                vrBtn.innerText = '🕶️';
-                vrBtn.title = "Neural Dive (VR)";
-                vrBtn.style.cssText = `display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.15); border:1px dashed #00ffcc; color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(0,255,204,0.4); font-size:14px; margin-left:5px;`;
-                vrBtn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) WebXRDive.initiateDive(this.app, this.hyper3DInstance); };
-                this.capsuleSlots.appendChild(vrBtn);
+        // ★ 新規追加機能のボタン
+        if (isMic) {
+            const micBtn = addCapsuleBtn('🎙️', "Audio Sync Matrix", '255,0,255', async () => {
+                if (window.universeAudio) {
+                    if (!window.universeAudio.isMicActive) {
+                        const success = await window.universeAudio.startMic();
+                        if (success) {
+                            micBtn.style.background = 'rgba(0,255,204,0.3)';
+                            micBtn.style.borderColor = '#00ffcc';
+                            micBtn.style.boxShadow = '0 0 15px #00ffcc';
+                            if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.2);
+                        } else {
+                            micBtn.style.background = 'rgba(255,0,0,0.3)';
+                            micBtn.style.borderColor = '#ff0000';
+                            alert("マイクへのアクセスが拒否されました。");
+                        }
+                    } else {
+                        // 既にアクティブなら停止（または警告）
+                        alert("音響シンクロは既に稼働しています。音楽を流すか声を出してみてください！");
+                    }
+                }
+            });
+            // 既に起動済みの場合は最初から緑色にしておく
+            if (window.universeAudio && window.universeAudio.isMicActive) {
+                micBtn.style.background = 'rgba(0,255,204,0.3)';
+                micBtn.style.borderColor = '#00ffcc';
+                micBtn.style.boxShadow = '0 0 15px #00ffcc';
             }
         }
-
-        if (isSearch) {
-            const btn = document.createElement('div');
-            btn.innerText = '👁️‍🗨️';
-            btn.title = "Singularity Search";
-            btn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(255,0,255,0.15); border:1px solid rgba(255,0,255,0.5); color:#ff00ff; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(255,0,255,0.2); font-size:14px;';
-            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) SingularitySearch.open(); };
-            this.capsuleSlots.appendChild(btn);
+        
+        if (isVision) {
+            addCapsuleBtn('✋', "Spatial Gesture Vision", '0,255,204', () => SpatialVision.start(this.app));
         }
 
-        if (isTime) {
-            const btn = document.createElement('div');
-            btn.innerText = '⏳';
-            btn.title = "Time Machine";
-            btn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(255,204,0,0.15); border:1px solid rgba(255,204,0,0.5); color:#ffcc00; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(255,204,0,0.2); font-size:14px;';
-            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) this.toggleTimeMachine(); };
-            this.capsuleSlots.appendChild(btn);
-        }
-
-        if (isAutoPilot) {
-            const btn = document.createElement('div');
-            btn.innerText = '🤖';
-            btn.title = "Auto Presentation Mode";
-            btn.style.cssText = 'display:flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.15); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; cursor:pointer; transition:0.2s; box-shadow:0 0 10px rgba(0,255,204,0.2); font-size:14px;';
-            btn.onclick = (e) => { 
-                e.stopPropagation(); 
-                if(!this.isCapsuleDragged() && this.app.autoPilot) {
-                    this.controlPanel.style.display = 'none';
-                    this.app.autoPilot.start();
-                }
-            };
-            this.capsuleSlots.appendChild(btn);
-        }
-
-        if (isLog) {
-            const btn = document.createElement('div');
-            btn.innerText = '🖥️'; 
-            btn.title = "Terminal Log";
-            btn.style.cssText = 'width:32px; height:32px; border-radius:50%; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.5); color:#00ffcc; display:flex; justify-content:center; align-items:center; cursor:pointer; transition:0.2s; font-size:14px;';
-            btn.onclick = (e) => { e.stopPropagation(); if(!this.isCapsuleDragged()) window.universeLogger?.toggle(); };
-            this.capsuleSlots.appendChild(btn);
+        if (isAI) {
+            addCapsuleBtn('🧠', "Spawn AI Entity", '255,170,0', () => WanderingEntities.spawn(this.app));
         }
 
         this.centerTextEl.style.opacity = isText ? '1' : '0';
@@ -845,7 +860,6 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // ワームホールに対するクリック（メニュー展開）を完全に無視する
         if (node.isWormhole) return;
 
         if (this.state.isRapidDeleteMode) {
@@ -911,10 +925,7 @@ export class UIManager {
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
-                    
-                    <!-- ★ フェーズ1追加: 実行可能ノードボタン -->
                     <button id="m-exec" style="${innerBtnStyle} color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
-                    
                     <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
                     
                     <div style="display:flex; gap:4px; margin-bottom:4px;">
@@ -971,7 +982,6 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
-        // ★ 追加: 実行可能ノードの処理
         const mExecBtn = document.getElementById('m-exec');
         if (mExecBtn) {
             mExecBtn.onclick = () => {
@@ -982,7 +992,6 @@ export class UIManager {
                     return;
                 }
                 try {
-                    // 星のノートに書かれたコードを実行。app(OSコア)とnode(自分自身)を操作可能にする
                     const executeCode = new Function('app', 'node', node.note);
                     executeCode(this.app, node);
                     
