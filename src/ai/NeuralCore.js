@@ -1,5 +1,4 @@
 // src/ai/NeuralCore.js
-import * as webllm from "https://esm.run/@mlc.ai/web-llm";
 
 export class NeuralCore {
     static engine = null;
@@ -36,6 +35,12 @@ export class NeuralCore {
         document.body.appendChild(progressUI);
 
         try {
+            progressUI.innerHTML = `📡 AIエンジン (Web-LLM) を CDNから取得中...`;
+            
+            // ★ 修正：一番上にあった import をここに移動（動的読み込み）
+            // これにより、起動時（ログイン時）のOSクラッシュを完全に防ぎます。
+            const webllm = await import("https://esm.run/@mlc.ai/web-llm");
+
             const initProgressCallback = (initProgress) => {
                 progressUI.innerHTML = `
                     🧠 脳髄データをGPUにダウンロード中... ${Math.round(initProgress.progress * 100)}%<br>
