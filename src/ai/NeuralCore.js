@@ -21,8 +21,8 @@ export class NeuralCore {
 
         this.isDownloading = true;
         
-        // 超軽量で高速なAIモデル（約600MB）を指定
-        const modelId = "TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC"; 
+        // ★ 最新の賢い軽量モデルに変更
+        const modelId = "Llama-3.2-1B-Instruct-q4f16_1-MLC"; 
         
         // プログレスバーUI生成
         const progressUI = document.createElement('div');
@@ -37,14 +37,13 @@ export class NeuralCore {
         try {
             progressUI.innerHTML = `📡 AIエンジン (Web-LLM) を CDNから取得中...`;
             
-            // ★ 修正：一番上にあった import をここに移動（動的読み込み）
-            // これにより、起動時（ログイン時）のOSクラッシュを完全に防ぎます。
-            const webllm = await import("https://esm.run/@mlc.ai/web-llm");
+            // ★ 修正：@mlc.ai ではなく @mlc-ai （ドットではなくハイフン！）
+            const webllm = await import("https://esm.run/@mlc-ai/web-llm");
 
             const initProgressCallback = (initProgress) => {
                 progressUI.innerHTML = `
                     🧠 脳髄データをGPUにダウンロード中... ${Math.round(initProgress.progress * 100)}%<br>
-                    <span style="font-size:10px; color:#aaa;">初回のみ約600MBの通信が発生します（次回から一瞬で起動します）</span><br>
+                    <span style="font-size:10px; color:#aaa;">初回のみ通信が発生します（次回からキャッシュで即起動します）</span><br>
                     <span style="font-size:10px; color:#888;">${initProgress.text}</span>
                 `;
             };
