@@ -643,7 +643,6 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ フェーズ4追加: 完全オフラインAI構築ボタン
         bind('cp-spawn-local-ai', () => {
             NeuralCore.boot(this.app);
             this.controlPanel.style.display = 'none';
@@ -887,7 +886,7 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
-    // ★ フェーズ4追加：ローカルAIとのチャットウィンドウを生成・表示
+    // ★ チャット画面生成＆ロック機能
     showLocalAIChat(node) {
         let chatUI = document.getElementById('local-ai-chat-ui');
         if (!chatUI) {
@@ -909,7 +908,7 @@ export class UIManager {
                 <div id="ai-chat-log" style="flex:1; overflow-y:auto; font-size:12px; line-height:1.5; display:flex; flex-direction:column; gap:8px; padding-right:5px; margin-bottom:10px;"></div>
                 <div style="display:flex; gap:5px;">
                     <input type="text" id="ai-chat-input" placeholder="メッセージを入力..." style="flex:1; background:rgba(255,255,255,0.1); border:1px solid #ff00ff; color:#fff; padding:10px; border-radius:6px; outline:none;">
-                    <button id="ai-chat-send" style="background:#ff00ff; color:#fff; border:none; padding:0 15px; border-radius:6px; cursor:pointer; font-weight:bold;">送信</button>
+                    <button id="ai-chat-send" style="background:#ff00ff; color:#fff; border:none; padding:0 15px; border-radius:6px; cursor:pointer; font-weight:bold; transition:0.2s;">送信</button>
                 </div>
             `;
             document.body.appendChild(chatUI);
@@ -935,10 +934,20 @@ export class UIManager {
         sendBtn.onclick = null;
         input.onkeypress = null;
 
+        // ★ 思考中に連打させないためのロック変数
+        this.isAIThinking = false;
+
         const handleSend = async () => {
+            if (this.isAIThinking) return; // 思考中なら無視
             const text = input.value.trim();
             if (!text) return;
+            
+            // ★ 入力欄とボタンをロック
+            this.isAIThinking = true;
             input.value = '';
+            input.disabled = true;
+            sendBtn.style.opacity = '0.5';
+            sendBtn.innerText = '思考中...';
             
             // ユーザー発言追加
             log.innerHTML += `<div style="background:rgba(0,255,204,0.2); padding:8px; border-radius:8px; align-self:flex-end; max-width:85%; border:1px solid rgba(0,255,204,0.5);">${text}</div>`;
@@ -946,7 +955,7 @@ export class UIManager {
             
             // ローディング表示
             const loadingId = 'loading-' + Date.now();
-            log.innerHTML += `<div id="${loadingId}" style="color:#ff00ff; font-style:italic; font-size:11px;">思考中...</div>`;
+            log.innerHTML += `<div id="${loadingId}" style="color:#ff00ff; font-style:italic; font-size:11px;">脳髄アクセス中...</div>`;
             log.scrollTop = log.scrollHeight;
             
             await NeuralCore.chat(node, text, (replyText) => {
@@ -957,6 +966,13 @@ export class UIManager {
                 // ノートに記憶として追記
                 node.note = (node.note || "") + `\nQ: ${text}\nA: ${replyText}`;
                 this.app.autoSave();
+                
+                // ★ 思考完了したらロック解除
+                this.isAIThinking = false;
+                input.disabled = false;
+                sendBtn.style.opacity = '1.0';
+                sendBtn.innerText = '送信';
+                setTimeout(() => input.focus(), 100);
             });
         };
         
@@ -1031,7 +1047,6 @@ export class UIManager {
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
                     
-                    <!-- ★ フェーズ4追加: AIノードなら「対話」ボタンを出す -->
                     ${node.isAI ? `<button id="m-ai-chat" style="${innerBtnStyle} color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : ''}
                     
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
@@ -1095,7 +1110,6 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
-        // ★ フェーズ4追加: AIチャットの起動イベント
         const mAiChat = document.getElementById('m-ai-chat');
         if (mAiChat) {
             mAiChat.onclick = () => {
