@@ -20,7 +20,8 @@ import { WebXRDive } from './WebXRDive.js';
 import { WanderingEntities } from '../ai/WanderingEntities.js';
 import { SpatialVision } from '../engine/SpatialVision.js';
 import { NexusP2P } from '../api/NexusP2P.js'; 
-import { FileSystemBridge } from '../api/FileSystemBridge.js'; // ★ フェーズ3追加：ファイルシステムブリッジ
+import { FileSystemBridge } from '../api/FileSystemBridge.js';
+import { NeuralCore } from '../ai/NeuralCore.js'; // ★ フェーズ4追加：ローカルAIコア
 
 export class UIManager {
     constructor(app) {
@@ -380,6 +381,14 @@ export class UIManager {
                     <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:45px; height:45px; border:none; border-radius:8px; background:transparent; cursor:pointer;">
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
+
+                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
+                
+                <!-- ★ フェーズ4追加: 完全オフラインAI起動ボタン -->
+                <button id="cp-spawn-local-ai" style="width:100%; padding:12px; background:rgba(255,0,255,0.2); color:#fff; border:1px solid #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px; box-shadow:0 0 10px rgba(255,0,255,0.4);">🧠 完全オフラインAIを構築 (WebGPU)</button>
+                
+                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,170,0,0.1); color:#ffaa00; border:1px solid rgba(255,170,0,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
+                <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
             `;
         } else if (this.state.activeTab === 'config') {
             const chronosCfg = Chronos.getConfig(); 
@@ -472,7 +481,6 @@ export class UIManager {
             `;
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
-                <!-- ★ フェーズ3追加: ローカルファイルシステム連携 -->
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#ffaa00; margin-bottom:10px; letter-spacing:1px;">LOCAL FILE SYSTEM</div>
                     <button id="cp-btn-fs" style="width:100%; padding:14px; background:#331100; color:#ffaa00; border:1px dashed #ffaa00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
@@ -635,12 +643,27 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
+        // ★ フェーズ4追加: 完全オフラインAI構築ボタン
+        bind('cp-spawn-local-ai', () => {
+            NeuralCore.boot(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
+        bind('cp-spawn-entity', () => {
+            WanderingEntities.spawn(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
+        bind('cp-spatial-vision', () => {
+            SpatialVision.start(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
         bind('cp-p2p-start', () => {
             NexusP2P.start(this.app);
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ フェーズ3追加: フォルダマッピング実行ボタン
         bind('cp-btn-fs', () => {
             FileSystemBridge.importDirectory(this.app);
             this.controlPanel.style.display = 'none';
@@ -864,6 +887,84 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
+    // ★ フェーズ4追加：ローカルAIとのチャットウィンドウを生成・表示
+    showLocalAIChat(node) {
+        let chatUI = document.getElementById('local-ai-chat-ui');
+        if (!chatUI) {
+            chatUI = document.createElement('div');
+            chatUI.id = 'local-ai-chat-ui';
+            chatUI.style.cssText = `
+                position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); 
+                width:340px; height:480px; background:rgba(20,0,30,0.95); 
+                border:1px solid #ff00ff; border-radius:12px; z-index:9600; 
+                display:flex; flex-direction:column; box-shadow:0 0 30px rgba(255,0,255,0.4); 
+                backdrop-filter:blur(10px); padding:10px; color:#fff;
+            `;
+            
+            chatUI.innerHTML = `
+                <div id="ai-chat-drag-handle" style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,0,255,0.5); padding-bottom:8px; margin-bottom:8px; cursor:move;">
+                    <div style="color:#ff00ff; font-weight:bold;">🧠 ローカルAIコア (完全オフライン)</div>
+                    <button id="ai-chat-close" style="background:transparent; border:none; color:#888; cursor:pointer; font-size:16px;">×</button>
+                </div>
+                <div id="ai-chat-log" style="flex:1; overflow-y:auto; font-size:12px; line-height:1.5; display:flex; flex-direction:column; gap:8px; padding-right:5px; margin-bottom:10px;"></div>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="ai-chat-input" placeholder="メッセージを入力..." style="flex:1; background:rgba(255,255,255,0.1); border:1px solid #ff00ff; color:#fff; padding:10px; border-radius:6px; outline:none;">
+                    <button id="ai-chat-send" style="background:#ff00ff; color:#fff; border:none; padding:0 15px; border-radius:6px; cursor:pointer; font-weight:bold;">送信</button>
+                </div>
+            `;
+            document.body.appendChild(chatUI);
+            this.protectUI(chatUI);
+            this.makeDraggable(chatUI, 'ai-chat-drag-handle');
+
+            document.getElementById('ai-chat-close').onclick = () => chatUI.style.display = 'none';
+        }
+        
+        chatUI.style.display = 'flex';
+        
+        const log = document.getElementById('ai-chat-log');
+        log.innerHTML = `<div style="color:#aaa; text-align:center;">--- 脳髄リンク確立 ---</div>`;
+        
+        if (node.note && node.note.length > 5) {
+            log.innerHTML += `<div style="background:rgba(255,0,255,0.1); padding:8px; border-radius:8px; align-self:flex-start; max-width:85%; border:1px solid rgba(255,0,255,0.3); color:#ffaa00;">${node.note}</div>`;
+        }
+        
+        const input = document.getElementById('ai-chat-input');
+        const sendBtn = document.getElementById('ai-chat-send');
+        
+        // 重複イベントを防ぐために一度クリア
+        sendBtn.onclick = null;
+        input.onkeypress = null;
+
+        const handleSend = async () => {
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            
+            // ユーザー発言追加
+            log.innerHTML += `<div style="background:rgba(0,255,204,0.2); padding:8px; border-radius:8px; align-self:flex-end; max-width:85%; border:1px solid rgba(0,255,204,0.5);">${text}</div>`;
+            log.scrollTop = log.scrollHeight;
+            
+            // ローディング表示
+            const loadingId = 'loading-' + Date.now();
+            log.innerHTML += `<div id="${loadingId}" style="color:#ff00ff; font-style:italic; font-size:11px;">思考中...</div>`;
+            log.scrollTop = log.scrollHeight;
+            
+            await NeuralCore.chat(node, text, (replyText) => {
+                document.getElementById(loadingId)?.remove();
+                log.innerHTML += `<div style="background:rgba(255,0,255,0.2); padding:8px; border-radius:8px; align-self:flex-start; max-width:85%; border:1px solid rgba(255,0,255,0.5); white-space:pre-wrap;">${replyText}</div>`;
+                log.scrollTop = log.scrollHeight;
+                
+                // ノートに記憶として追記
+                node.note = (node.note || "") + `\nQ: ${text}\nA: ${replyText}`;
+                this.app.autoSave();
+            });
+        };
+        
+        sendBtn.onclick = handleSend;
+        input.onkeypress = (e) => { if(e.key === 'Enter') handleSend(); };
+        setTimeout(() => input.focus(), 100);
+    }
+
     showMenu(node, screenX, screenY) {
         if (node.isWormhole) return;
 
@@ -929,10 +1030,13 @@ export class UIManager {
             <details class="nx-accordion" style="${detailsStyle}">
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
+                    
+                    <!-- ★ フェーズ4追加: AIノードなら「対話」ボタンを出す -->
+                    ${node.isAI ? `<button id="m-ai-chat" style="${innerBtnStyle} color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : ''}
+                    
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
                     <button id="m-exec" style="${innerBtnStyle} color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
                     
-                    <!-- ★ フェーズ3追加: 現実ファイルへの上書き保存ボタン（リンクされている星のみ出現） -->
                     ${node.fileHandle ? `<button id="m-fs-save" style="${innerBtnStyle} color:#ffaa00; font-weight:bold; border:1px dashed #ffaa00;">💾 現実のPCに上書き保存</button>` : ''}
                     
                     <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
@@ -991,7 +1095,16 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
-        // ★ フェーズ3追加: 上書き保存ボタンのイベント処理
+        // ★ フェーズ4追加: AIチャットの起動イベント
+        const mAiChat = document.getElementById('m-ai-chat');
+        if (mAiChat) {
+            mAiChat.onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                this.showLocalAIChat(node);
+            };
+        }
+
         const mFsSave = document.getElementById('m-fs-save');
         if (mFsSave) {
             mFsSave.onclick = async () => {
