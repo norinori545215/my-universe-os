@@ -18,7 +18,8 @@ import { Chronos } from '../core/Chronos.js';
 import { RealityBridge } from '../api/RealityBridge.js';
 import { WebXRDive } from './WebXRDive.js';
 import { WanderingEntities } from '../ai/WanderingEntities.js';
-import { SpatialVision } from '../engine/SpatialVision.js'; // ★ 追加：空間ジェスチャーモジュール
+import { SpatialVision } from '../engine/SpatialVision.js';
+import { NexusP2P } from '../api/NexusP2P.js'; // ★ 追加：P2P通信モジュール
 
 export class UIManager {
     constructor(app) {
@@ -379,7 +380,6 @@ export class UIManager {
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
 
-                <!-- ★ AIエンティティ & ジェスチャー召喚ボタンを追加 -->
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
                 <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px solid rgba(255,0,255,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
                 <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
@@ -442,6 +442,10 @@ export class UIManager {
                         🔤 中央透かし文字を表示
                     </label>
                 </div>
+
+                <!-- ★ 追加: P2P通信ポータル -->
+                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
+                <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
 
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
@@ -606,15 +610,19 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ 追加: AIエンティティの召喚イベント
         bind('cp-spawn-entity', () => {
             WanderingEntities.spawn(this.app);
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ 追加: 空間ジェスチャーの起動イベント
         bind('cp-spatial-vision', () => {
             SpatialVision.start(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
+        // ★ 追加: P2P通信の起動イベント
+        bind('cp-p2p-start', () => {
+            NexusP2P.start(this.app);
             this.controlPanel.style.display = 'none';
         });
 
@@ -892,6 +900,8 @@ export class UIManager {
                 <div style="${contentStyle}">
                     <button id="m-vault" style="${innerBtnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
                     <button id="m-nexus" style="${innerBtnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold;">📡 QRセキュア通信</button>
+                    <!-- ★ 追加: P2P送信ボタン -->
+                    <button id="m-p2p-send" style="${innerBtnStyle} color:#ff88ff; border:1px dashed rgba(255,0,255,0.5); font-weight:bold;">🚀 相手の宇宙へ密輸 (P2P)</button>
                     <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
                 </div>
             </details>
@@ -990,6 +1000,20 @@ export class UIManager {
         };
 
         document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
+
+        // ★ 追加: メニューからのP2P送信処理
+        const p2pSendBtn = document.getElementById('m-p2p-send');
+        if (p2pSendBtn) {
+            p2pSendBtn.onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                if (NexusP2P && NexusP2P.connection) {
+                    NexusP2P.sendNode(node);
+                } else {
+                    alert("⚠️ ターゲットとリンクしていません。\nコントロールパネルの「拡張・防壁」タブからP2Pポータルを開き、通信を確立してください。");
+                }
+            };
+        }
 
         if (vaultUpload) {
             vaultUpload.onchange = async (e) => {
