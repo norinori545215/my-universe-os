@@ -19,7 +19,7 @@ import { RealityBridge } from '../api/RealityBridge.js';
 import { WebXRDive } from './WebXRDive.js';
 import { WanderingEntities } from '../ai/WanderingEntities.js';
 import { SpatialVision } from '../engine/SpatialVision.js';
-import { NexusP2P } from '../api/NexusP2P.js'; // ★ 追加：P2P通信モジュール
+import { NexusP2P } from '../api/NexusP2P.js'; 
 
 export class UIManager {
     constructor(app) {
@@ -620,7 +620,6 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ 追加: P2P通信の起動イベント
         bind('cp-p2p-start', () => {
             NexusP2P.start(this.app);
             this.controlPanel.style.display = 'none';
@@ -846,7 +845,7 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // ★ 追加: ワームホールに対するクリック（メニュー展開）を完全に無視する
+        // ワームホールに対するクリック（メニュー展開）を完全に無視する
         if (node.isWormhole) return;
 
         if (this.state.isRapidDeleteMode) {
@@ -903,7 +902,6 @@ export class UIManager {
                 <div style="${contentStyle}">
                     <button id="m-vault" style="${innerBtnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
                     <button id="m-nexus" style="${innerBtnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold;">📡 QRセキュア通信</button>
-                    <!-- ★ 追加: P2P送信ボタン -->
                     <button id="m-p2p-send" style="${innerBtnStyle} color:#ff88ff; border:1px dashed rgba(255,0,255,0.5); font-weight:bold;">🚀 相手の宇宙へ密輸 (P2P)</button>
                     <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
                 </div>
@@ -914,6 +912,13 @@ export class UIManager {
                 <div style="${contentStyle}">
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
                     <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
+                    
+                    <!-- ★ 追加: 色と形の変更UI -->
+                    <div style="display:flex; gap:4px; margin-bottom:4px;">
+                        <input type="color" id="m-color-picker" value="${node.color || '#00ffcc'}" style="width:40px; height:32px; border:none; border-radius:6px; background:transparent; cursor:pointer; padding:0; flex-shrink:0;" title="色を変更">
+                        <button id="m-shape" style="${innerBtnStyle} flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>
+                    </div>
+
                     <button id="m-set-icon" style="${innerBtnStyle} color:#ffaa00;">🖼 画像設定</button>
                     <button id="m-link" style="${innerBtnStyle} color:#aaaaff;">📱 URL登録</button>
                 </div>
@@ -963,6 +968,34 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
+        // ★ 追加: カラーピッカーと形変更ボタンのイベント処理
+        const mColorPicker = document.getElementById('m-color-picker');
+        if (mColorPicker) {
+            mColorPicker.oninput = (e) => {
+                node.color = e.target.value;
+                if(typeof this.app.update === 'function') this.app.update();
+            };
+            mColorPicker.onchange = (e) => {
+                node.color = e.target.value;
+                this.app.autoSave();
+            };
+        }
+
+        const mShapeBtn = document.getElementById('m-shape');
+        if (mShapeBtn) {
+            const shapes = ['star', 'circle', 'rect', 'triangle', 'diamond'];
+            mShapeBtn.onclick = (e) => {
+                if (checkDrag()) return;
+                const currentShape = node.shape || 'star';
+                const nextIdx = (shapes.indexOf(currentShape) + 1) % shapes.length;
+                node.shape = shapes[nextIdx];
+                e.target.innerText = `💠 形: ${node.shape}`;
+                this.app.autoSave();
+                if(typeof this.app.update === 'function') this.app.update();
+                if(this.app.simulation) this.app.simulation.alpha(0.1).restart();
+            };
+        }
+
         const moveNodeBtn = document.getElementById('m-move-node');
         if (moveNodeBtn) {
             moveNodeBtn.onclick = () => {
@@ -1004,7 +1037,6 @@ export class UIManager {
 
         document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
 
-        // ★ 追加: メニューからのP2P送信処理
         const p2pSendBtn = document.getElementById('m-p2p-send');
         if (p2pSendBtn) {
             p2pSendBtn.onclick = () => {
