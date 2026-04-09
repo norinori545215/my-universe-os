@@ -7,7 +7,7 @@ import { TimeMachine } from '../core/TimeMachine.js';
 import { AutoPilot } from './AutoPilot.js';
 
 export class CanvasBuilder {
-constructor(canvasId) {
+    constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         
@@ -29,7 +29,7 @@ constructor(canvasId) {
         this.mouseWorldX = 0; this.mouseWorldY = 0;
         this.appMode = 'RUN'; 
 
-        // ★ 追加：メニューからの移動モード用フラグ
+        // メニューからの移動モード用フラグ
         this.isMovingNode = false;
         this.nodeToMove = null;
 
@@ -69,7 +69,7 @@ constructor(canvasId) {
             onNodeGrabEnd: () => { 
                 if (this.pressTimer) clearTimeout(this.pressTimer);
                 
-                // ★ 追加：ドラッグ＆ドロップで別の星に重ねて離した時の処理
+                // ドラッグ＆ドロップで別の星に重ねて離した時の処理
                 if (this.hasMovedNode && this.grabbedNode) {
                     const gNode = this.grabbedNode;
                     this.grabbedNode = null; // 自分自身を一旦隠して当たり判定を調べる
@@ -364,22 +364,19 @@ constructor(canvasId) {
         this.spawnRipple(-this.camera.x, -this.camera.y, '#ffffff', true);
     }
 
-handleNodeClick(worldX, worldY, event) {
+    handleNodeClick(worldX, worldY, event) {
         if (this.pressTimer) clearTimeout(this.pressTimer);
         if (this.isLongPressed) { this.isLongPressed = false; this.grabbedNode = null; return; }
         
         const target = this.grabbedNode || this.getNodeAt(worldX, worldY);
         this.grabbedNode = null; 
 
-        // ★ 追加：メニューから「別の星へ移動」モードに入っている時
         if (this.isMovingNode) {
             if (target && target !== this.nodeToMove && !target.isGhost) {
                 if (confirm(`「${this.nodeToMove.name}」を「${target.name}」の中に移動させますか？`)) {
-                    // 元の場所から削除
                     this.currentUniverse.nodes = this.currentUniverse.nodes.filter(n => n !== this.nodeToMove && n.id !== this.nodeToMove.id);
                     this.currentUniverse.links = this.currentUniverse.links.filter(l => l.source !== this.nodeToMove && l.target !== this.nodeToMove && l.source.id !== this.nodeToMove.id && l.target.id !== this.nodeToMove.id);
                     
-                    // 移動先へ追加
                     this.nodeToMove.parentUniverse = target.innerUniverse;
                     target.innerUniverse.nodes.push(this.nodeToMove);
                     
@@ -391,7 +388,7 @@ handleNodeClick(worldX, worldY, event) {
             }
             this.isMovingNode = false;
             this.nodeToMove = null;
-            this.spawnRipple(worldX, worldY, '#ff0000'); // キャンセルor完了のエフェクト
+            this.spawnRipple(worldX, worldY, '#ff0000');
             return;
         }
 
@@ -485,7 +482,7 @@ handleNodeClick(worldX, worldY, event) {
         if (window.universeAudio) window.universeAudio.playSystemSound(400, 'triangle', 0.2, 200);
     }
 
-animate() {
+    animate() {
         this.time += 0.02;
 
         const bpm = 153;
@@ -513,7 +510,6 @@ animate() {
         this.ctx.scale(this.camera.scale, this.camera.scale);
         this.ctx.translate(this.camera.x, this.camera.y);
 
-        // 背景のダスト（少し奥にあるように見せる）
         this.ctx.fillStyle = 'rgba(0, 255, 204, 0.2)';
         this.currentUniverse.particles.forEach(p => {
             this.ctx.beginPath();
@@ -542,7 +538,6 @@ animate() {
             }
         });
 
-        // ★ 3D座標の計算（X, Y, Z深度）
         this.currentUniverse.nodes.forEach(node => {
             if (node.baseX === undefined) node.baseX = node.x || 0;
             if (node.baseY === undefined) node.baseY = node.y || 0;
@@ -550,7 +545,7 @@ animate() {
             const parent = orbitingNodes.get(node);
 
             if (!parent) {
-                node.pseudoZ = 0; // 親星は基準（Z=0）
+                node.pseudoZ = 0;
                 node.perspectiveScale = 1;
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
@@ -561,7 +556,7 @@ animate() {
             } else {
                 if (node === this.grabbedNode) {
                     node.x = node.baseX; node.y = node.baseY;
-                    node.pseudoZ = 1; // 掴んでいる時は一番手前
+                    node.pseudoZ = 1; 
                     node.perspectiveScale = 1.2;
                 } else {
                     if (parent.baseX === undefined) parent.baseX = parent.x || 0;
@@ -576,19 +571,16 @@ animate() {
                     const speed = 25 / Math.max(radius, 50);
                     const currentAngle = baseAngle + (this.time * speed);
 
-                    // ★ 奥行き（Z軸）の計算：サイン波で-1(奥) 〜 1(手前) を取得
                     const orbitZ = Math.sin(currentAngle); 
-                    node.pseudoZ = orbitZ; // 描画順に使用
-                    node.perspectiveScale = 1 + (orbitZ * 0.25); // 奥は縮小(0.75倍)、手前は拡大(1.25倍)
+                    node.pseudoZ = orbitZ; 
+                    node.perspectiveScale = 1 + (orbitZ * 0.25); 
 
-                    // ★ 楕円軌道（斜め上からの視点：Y軸を0.35倍に圧縮）
                     node.x = parent.x + Math.cos(currentAngle) * radius;
                     node.y = parent.y + Math.sin(currentAngle) * radius * 0.35; 
                 }
             }
         });
 
-        // ワームホールの描画
         this.ctx.lineWidth = 3;
         this.wormholes.forEach(wh => {
             const realSource = findRealNode(wh.source);
@@ -608,7 +600,6 @@ animate() {
             }
         });
 
-        // 立体的な軌道リングとテザーの描画
         this.currentUniverse.links.forEach(link => {
             const realSource = findRealNode(link.source);
             const realTarget = findRealNode(link.target);
@@ -621,10 +612,9 @@ animate() {
                 let radius = Math.hypot(dx, dy);
                 if (radius < 40) radius = 80;
 
-                // ★ リングの空間を斜めに傾ける（Y軸を圧縮）
                 this.ctx.save();
                 this.ctx.translate(realSource.x, realSource.y);
-                this.ctx.scale(1, 0.35); // これで完全な楕円（3Dパース）になる
+                this.ctx.scale(1, 0.35);
                 this.ctx.rotate(this.time * 0.1);
                 
                 this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.15 + (pulse * 0.1)})`;
@@ -642,7 +632,6 @@ animate() {
                 this.ctx.stroke();
                 this.ctx.restore();
 
-                // テザー（ライン）
                 const grad = this.ctx.createLinearGradient(realSource.x, realSource.y, realTarget.x, realTarget.y);
                 grad.addColorStop(0, `rgba(0, 255, 204, ${0.5 + pulse})`);
                 grad.addColorStop(1, `rgba(0, 255, 204, 0)`);
@@ -658,8 +647,6 @@ animate() {
             }
         });
 
-        // ★★★ 星のZ深度（奥から手前）ソート ★★★
-        // 描画順を「Z軸の奥（マイナス）」から「手前（プラス）」に並び替える
         const sortedNodes = [...this.currentUniverse.nodes].sort((a, b) => (a.pseudoZ || 0) - (b.pseudoZ || 0));
 
         sortedNodes.forEach(node => {
@@ -671,12 +658,10 @@ animate() {
                 baseAlpha = 1.0 - (distToCenter / visibleRadius);
             }
 
-            // 奥に行くほど暗く、手前に来るほど鮮やかにする
             const depthDarkness = 0.5 + ((node.perspectiveScale || 1) * 0.5);
             this.ctx.globalAlpha = baseAlpha * depthDarkness;
 
             const isGrabbed = (node === this.grabbedNode);
-            // ★ サイズに遠近法（perspectiveScale）を掛ける
             let drawSize = (node.size + (isGrabbed ? 3 : 0)) * (node.perspectiveScale || 1);
             drawSize += Math.sin(this.time * 2 + (node.baseX || 0)) * 1.5; 
             drawSize += pulse * 2.0; 
@@ -684,15 +669,55 @@ animate() {
             this.ctx.shadowBlur = isGrabbed ? 30 : (15 + (pulse * 15)) * (node.perspectiveScale || 1); 
             this.ctx.shadowColor = node.color;
 
+            // ★ 追加：形を描き分けるための内部ヘルパー関数
+            const drawShapePath = () => {
+                this.ctx.beginPath();
+                const shape = node.shape || 'star'; // デフォルトは円(star)
+                if (shape === 'rect') {
+                    this.ctx.rect(node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2);
+                } else if (shape === 'triangle') {
+                    this.ctx.moveTo(node.x, node.y - drawSize);
+                    this.ctx.lineTo(node.x + drawSize, node.y + drawSize);
+                    this.ctx.lineTo(node.x - drawSize, node.y + drawSize);
+                    this.ctx.closePath();
+                } else if (shape === 'diamond') {
+                    this.ctx.moveTo(node.x, node.y - drawSize);
+                    this.ctx.lineTo(node.x + drawSize, node.y);
+                    this.ctx.lineTo(node.x, node.y + drawSize);
+                    this.ctx.lineTo(node.x - drawSize, node.y);
+                    this.ctx.closePath();
+                } else {
+                    // デフォルトの円
+                    this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2);
+                }
+            };
+
             if (node.iconUrl) {
                 if (!this.imageCache[node.iconUrl]) { const img = new Image(); img.src = node.iconUrl; this.imageCache[node.iconUrl] = img; }
                 const img = this.imageCache[node.iconUrl];
                 if (img.complete && img.naturalHeight !== 0) {
-                    this.ctx.save(); this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.closePath(); this.ctx.clip(); 
-                    this.ctx.fillStyle = '#111'; this.ctx.fill(); this.ctx.drawImage(img, node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2); this.ctx.restore();
-                    this.ctx.strokeStyle = node.color; this.ctx.lineWidth = 2; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.stroke();
-                } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
-            } else { this.ctx.fillStyle = node.color; this.ctx.beginPath(); this.ctx.arc(node.x, node.y, drawSize, 0, Math.PI * 2); this.ctx.fill(); }
+                    this.ctx.save(); 
+                    // ★ 修正：画像の切り抜き（クリッピング）を新しい形で実行
+                    drawShapePath();
+                    this.ctx.clip(); 
+                    this.ctx.fillStyle = '#111'; this.ctx.fill(); 
+                    this.ctx.drawImage(img, node.x - drawSize, node.y - drawSize, drawSize * 2, drawSize * 2); 
+                    this.ctx.restore();
+                    this.ctx.strokeStyle = node.color; this.ctx.lineWidth = 2; 
+                    
+                    // ★ 修正：画像の枠線（ストローク）を新しい形で実行
+                    drawShapePath();
+                    this.ctx.stroke();
+                } else { 
+                    this.ctx.fillStyle = node.color; 
+                    drawShapePath(); // ★ 修正：画像未読み込み時の塗りつぶし
+                    this.ctx.fill(); 
+                }
+            } else { 
+                this.ctx.fillStyle = node.color; 
+                drawShapePath(); // ★ 修正：通常の塗りつぶし
+                this.ctx.fill(); 
+            }
 
             this.ctx.shadowBlur = 0; 
 
