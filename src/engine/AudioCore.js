@@ -1,5 +1,5 @@
 // src/engine/AudioCore.js
-import { HapticEngine } from './HapticEngine.js'; // ★ 追加：触覚エンジンのインポート
+import { HapticEngine } from './HapticEngine.js'; // ★ 触覚エンジン
 
 export class AudioCore {
     constructor() {
@@ -9,6 +9,13 @@ export class AudioCore {
         this.isMuted = true;
         this.heartbeatTimer = null;
         this.bpm = 153; // あなたの指定した鼓動のリズム！
+
+        // ★ フェーズ2追加：音響解析用プロパティ
+        this.analyser = null;
+        this.dataArray = null;
+        this.audioLevel = 0; 
+        this.bassLevel = 0;
+        this.isMicActive = false;
     }
 
     // ユーザーがスイッチを入れた時にオーディオを起動する
@@ -22,7 +29,7 @@ export class AudioCore {
             }
             this.startHeartbeat();
             this.playSystemSound(440, 'sine', 0.1); // 起動音（ピコン！）
-            HapticEngine.playTap(); // ★ 追加：起動時のスイッチ感触
+            if (window.HapticEngine) HapticEngine.playTap(); // 起動時のスイッチ感触
         } else {
             this.stopHeartbeat();
         }
@@ -36,8 +43,8 @@ export class AudioCore {
         this.heartbeatTimer = setInterval(() => {
             if (this.isMuted) return;
             
-            // ★ 追加：153bpmの物理的な鼓動（スマホがトクン…と震える）
-            HapticEngine.playPulse();
+            // 153bpmの物理的な鼓動（スマホがトクン…と震える）
+            if (window.HapticEngine) HapticEngine.playPulse();
 
             // ズンッ…という重低音のキックドラムを生成
             const osc = this.ctx.createOscillator();
@@ -70,40 +77,86 @@ export class AudioCore {
     playSpawn() {
         if (this.isMuted) return;
         this.playSystemSound(880, 'sine', 0.15, 1760);
-        HapticEngine.playSpawn(); // ★ 追加：生成時のトトッという感触
+        if (window.HapticEngine) HapticEngine.playSpawn(); // 生成時のトトッという感触
     }
 
     // 🎒 星を消した時・亜空間へ送った時の音（低く吸い込まれる音）
     playDelete() {
         if (this.isMuted) return;
         this.playSystemSound(200, 'sawtooth', 0.2, 50);
-        HapticEngine.playDelete(); // ★ 追加：消去時のズンッという重い感触
+        if (window.HapticEngine) HapticEngine.playDelete(); // 消去時のズンッという重い感触
     }
 
     // 🌌 ワープ（階層移動）した時の音
     playWarp() {
         if (this.isMuted) return;
         this.playSystemSound(400, 'triangle', 0.3, 800);
-        HapticEngine.playWarp(); // ★ 追加：ワープ時のダダダダッという感触
+        if (window.HapticEngine) HapticEngine.playWarp(); // ワープ時のダダダダッという感触
     }
 
     // 汎用的なシンセサイザー発音機
-    playSystemSound(startFreq, type, duration, endFreq = null) {
+    playSystemSound(startFreq, type, durationSec, endFreq = null) {
+        // durationがミリ秒で渡された場合の安全策
+        const dur = durationSec > 10 ? durationSec / 1000 : durationSec;
+
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = type;
         
         osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
         if (endFreq) {
-            osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + duration);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + dur);
         }
         
         gain.gain.setValueAtTime(0.1, this.ctx.currentTime); // 全体的なボリューム
-        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
         
         osc.connect(gain);
         gain.connect(this.ctx.destination);
         osc.start();
-        osc.stop(this.ctx.currentTime + duration);
+        osc.stop(this.ctx.currentTime + dur);
+    }
+
+    // ★ フェーズ2追加：マイク・スピーカーの音響を取り込む特異点プロトコル
+    async startMic() {
+        if (this.isMicActive) return true;
+        try {
+            if (this.ctx.state === 'suspended') await this.ctx.resume();
+            
+            // マイク（またはシステム音声）のストリームを取得
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            const source = this.ctx.createMediaStreamSource(stream);
+            
+            // 周波数解析ノードの作成
+            this.analyser = this.ctx.createAnalyser();
+            this.analyser.fftSize = 128; // 低音〜高音の解像度
+            source.connect(this.analyser);
+            
+            this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+            this.isMicActive = true;
+            this.updateAudioLevel();
+            
+            console.log("🎙️ [AudioCore] 環境音響シンクロ・マトリクス起動");
+            return true;
+        } catch (err) {
+            console.error("Mic access denied:", err);
+            return false;
+        }
+    }
+
+    updateAudioLevel() {
+        if (!this.analyser) return;
+        requestAnimationFrame(() => this.updateAudioLevel());
+        this.analyser.getByteFrequencyData(this.dataArray);
+        
+        // 全体の音量レベルを計算
+        let sum = 0;
+        for(let i = 0; i < this.dataArray.length; i++) sum += this.dataArray[i];
+        this.audioLevel = (sum / this.dataArray.length) / 255.0; 
+
+        // 低音域（キックドラムや声の響き）だけを抽出して衝撃波にする
+        let bassSum = 0;
+        for(let i = 0; i < 4; i++) bassSum += this.dataArray[i];
+        this.bassLevel = (bassSum / 4) / 255.0;
     }
 }

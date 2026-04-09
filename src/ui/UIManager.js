@@ -20,6 +20,7 @@ import { WebXRDive } from './WebXRDive.js';
 import { WanderingEntities } from '../ai/WanderingEntities.js';
 import { SpatialVision } from '../engine/SpatialVision.js';
 import { NexusP2P } from '../api/NexusP2P.js'; 
+import { FileSystemBridge } from '../api/FileSystemBridge.js'; // ★ フェーズ3追加：ファイルシステムブリッジ
 
 export class UIManager {
     constructor(app) {
@@ -379,7 +380,6 @@ export class UIManager {
                     <input type="color" id="cp-spawn-color" value="#00ffcc" style="width:45px; height:45px; border:none; border-radius:8px; background:transparent; cursor:pointer;">
                     <button id="cp-spawn-btn" style="flex:1; background:#114433; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; font-weight:bold; font-size:13px;">🎯 中央に星を創る</button>
                 </div>
-                <!-- ★ ここにあったジェスチャー等のボタンは削除し、カプセル（updateUIState）に移動しました -->
             `;
         } else if (this.state.activeTab === 'config') {
             const chronosCfg = Chronos.getConfig(); 
@@ -410,7 +410,6 @@ export class UIManager {
                         <input type="checkbox" id="cp-ext-3d" ${localStorage.getItem('universe_ext_3d')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジン</span>
                     </label>
-
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザ</span>
@@ -439,7 +438,6 @@ export class UIManager {
                         🔤 中央透かし文字を表示
                     </label>
 
-                    <!-- ★ 追加: カプセルに入れる新しい機能のON/OFFスイッチ -->
                     <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                         <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                         <span style="color:#ff88ff; font-weight:bold;">🎙️ 音響シンクロ (マイク)</span>
@@ -474,6 +472,14 @@ export class UIManager {
             `;
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
+                <!-- ★ フェーズ3追加: ローカルファイルシステム連携 -->
+                <div style="margin-bottom:25px;">
+                    <div style="font-size:11px; color:#ffaa00; margin-bottom:10px; letter-spacing:1px;">LOCAL FILE SYSTEM</div>
+                    <button id="cp-btn-fs" style="width:100%; padding:14px; background:#331100; color:#ffaa00; border:1px dashed #ffaa00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
+                        📂 現実のPCフォルダを宇宙に接続する
+                    </button>
+                </div>
+
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">REALITY BRIDGE (現実同期)</div>
                     <button id="cp-btn-reality" style="width:100%; padding:14px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
@@ -590,7 +596,6 @@ export class UIManager {
         const extAudio = document.getElementById('cp-ext-audio');
         if(extAudio) extAudio.onchange = (e) => window.universeAudio?.toggle(e.target.checked);
 
-        // ★ 新機能のチェックボックス処理
         const extMic = document.getElementById('cp-ext-mic');
         if(extMic) extMic.onchange = (e) => { localStorage.setItem('universe_ext_mic', e.target.checked); this.updateUIState(); };
         
@@ -632,6 +637,12 @@ export class UIManager {
 
         bind('cp-p2p-start', () => {
             NexusP2P.start(this.app);
+            this.controlPanel.style.display = 'none';
+        });
+
+        // ★ フェーズ3追加: フォルダマッピング実行ボタン
+        bind('cp-btn-fs', () => {
+            FileSystemBridge.importDirectory(this.app);
             this.controlPanel.style.display = 'none';
         });
 
@@ -703,7 +714,6 @@ export class UIManager {
         this.renderCP(); 
     }
 
-    // ★ UIのアイコンを生成するカプセル更新ロジック
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
@@ -714,12 +724,10 @@ export class UIManager {
         const isLog = localStorage.getItem('universe_ext_logger') === 'true';
         const isText = localStorage.getItem('universe_center_text') !== 'false';
         
-        // 追加した新機能のフラグ
         const isMic = localStorage.getItem('universe_ext_mic') === 'true';
         const isVision = localStorage.getItem('universe_ext_vision') === 'true';
         const isAI = localStorage.getItem('universe_ext_ai') === 'true';
 
-        // 共通ボタン生成ヘルパー
         const addCapsuleBtn = (icon, title, color, onClick) => {
             const btn = document.createElement('div');
             btn.innerText = icon;
@@ -741,7 +749,6 @@ export class UIManager {
         });
         if (isLog) addCapsuleBtn('🖥️', "Terminal Log", '0,255,204', () => window.universeLogger?.toggle());
 
-        // ★ 新規追加機能のボタン
         if (isMic) {
             const micBtn = addCapsuleBtn('🎙️', "Audio Sync Matrix", '255,0,255', async () => {
                 if (window.universeAudio) {
@@ -758,12 +765,10 @@ export class UIManager {
                             alert("マイクへのアクセスが拒否されました。");
                         }
                     } else {
-                        // 既にアクティブなら停止（または警告）
                         alert("音響シンクロは既に稼働しています。音楽を流すか声を出してみてください！");
                     }
                 }
             });
-            // 既に起動済みの場合は最初から緑色にしておく
             if (window.universeAudio && window.universeAudio.isMicActive) {
                 micBtn.style.background = 'rgba(0,255,204,0.3)';
                 micBtn.style.borderColor = '#00ffcc';
@@ -926,6 +931,10 @@ export class UIManager {
                 <div style="${contentStyle}">
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
                     <button id="m-exec" style="${innerBtnStyle} color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
+                    
+                    <!-- ★ フェーズ3追加: 現実ファイルへの上書き保存ボタン（リンクされている星のみ出現） -->
+                    ${node.fileHandle ? `<button id="m-fs-save" style="${innerBtnStyle} color:#ffaa00; font-weight:bold; border:1px dashed #ffaa00;">💾 現実のPCに上書き保存</button>` : ''}
+                    
                     <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
                     
                     <div style="display:flex; gap:4px; margin-bottom:4px;">
@@ -981,6 +990,20 @@ export class UIManager {
         });
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
+
+        // ★ フェーズ3追加: 上書き保存ボタンのイベント処理
+        const mFsSave = document.getElementById('m-fs-save');
+        if (mFsSave) {
+            mFsSave.onclick = async () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                const success = await FileSystemBridge.saveToFile(node);
+                if (success) {
+                    this.spawnRipple(node.x, node.y, '#ffaa00', true);
+                    alert("💾 現実のPCのファイルを上書き保存しました！");
+                }
+            };
+        }
 
         const mExecBtn = document.getElementById('m-exec');
         if (mExecBtn) {
