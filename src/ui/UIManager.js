@@ -911,9 +911,12 @@ export class UIManager {
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
                     <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
+                    
+                    <!-- ★ フェーズ1追加: 実行可能ノードボタン -->
+                    <button id="m-exec" style="${innerBtnStyle} color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
+                    
                     <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
                     
-                    <!-- ★ 追加: 色と形の変更UI -->
                     <div style="display:flex; gap:4px; margin-bottom:4px;">
                         <input type="color" id="m-color-picker" value="${node.color || '#00ffcc'}" style="width:40px; height:32px; border:none; border-radius:6px; background:transparent; cursor:pointer; padding:0; flex-shrink:0;" title="色を変更">
                         <button id="m-shape" style="${innerBtnStyle} flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>
@@ -968,7 +971,37 @@ export class UIManager {
 
         const checkDrag = () => this.isActionMenuDragged && this.isActionMenuDragged();
 
-        // ★ 追加: カラーピッカーと形変更ボタンのイベント処理
+        // ★ 追加: 実行可能ノードの処理
+        const mExecBtn = document.getElementById('m-exec');
+        if (mExecBtn) {
+            mExecBtn.onclick = () => {
+                if (checkDrag()) return;
+                this.hideMenu();
+                if (!node.note || node.note.trim() === "") {
+                    alert("⚠️ 星の記憶（ノート）が空です。\n実行したいJavaScriptコードを「記憶を編集」から記述してください。\n\n【API例（赤い星を召喚するコード）】\napp.currentUniverse.addNode('Hack', 0, 0, 50, '#ff0000', 'star');\napp.autoSave();");
+                    return;
+                }
+                try {
+                    // 星のノートに書かれたコードを実行。app(OSコア)とnode(自分自身)を操作可能にする
+                    const executeCode = new Function('app', 'node', node.note);
+                    executeCode(this.app, node);
+                    
+                    if(window.universeAudio) window.universeAudio.playSystemSound(800, 'square', 0.3);
+                    const canvasEl = document.getElementById('universe-canvas');
+                    if (canvasEl) {
+                        canvasEl.style.transition = 'none';
+                        canvasEl.style.filter = 'brightness(2) hue-rotate(180deg)';
+                        setTimeout(() => {
+                            canvasEl.style.transition = 'all 0.3s ease';
+                            canvasEl.style.filter = 'none';
+                        }, 100);
+                    }
+                } catch (err) {
+                    alert(`🚨 実行エラー:\n${err.message}`);
+                }
+            };
+        }
+
         const mColorPicker = document.getElementById('m-color-picker');
         if (mColorPicker) {
             mColorPicker.oninput = (e) => {
