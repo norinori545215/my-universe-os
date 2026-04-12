@@ -108,7 +108,7 @@ export class NexusP2P {
         this.isHost = true;
         this.expectedPassword = password;
         const statusElement = document.getElementById('p2p-status');
-        statusElement.innerText = 'STATUS: INITIALIZING...';
+        if(statusElement) statusElement.innerText = 'STATUS: INITIALIZING...';
 
         if (this.peer) this.peer.destroy();
         
@@ -120,12 +120,15 @@ export class NexusP2P {
         });
 
         this.peer.on('open', (id) => {
-            statusElement.innerText = 'STATUS: WAITING FOR DIVER...';
-            statusElement.style.color = '#00ffcc';
+            if(statusElement) {
+                statusElement.innerText = 'STATUS: WAITING FOR DIVER...';
+                statusElement.style.color = '#00ffcc';
+            }
             if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.2);
             
-            // ★ ホストが起動した時点で、自分の宇宙にワームホールを出現させる
             this.spawnWormhole(roomId, password);
+            const ui = document.getElementById('p2p-portal-ui');
+            if(ui) ui.remove(); // 成功したらUIを消す
             alert(`🌌 共有宇宙 [ ${roomId} ] のワームホールを生成しました。\nワームホールを開いて中に入り、ゲストを待機してください。`);
         });
 
@@ -150,8 +153,10 @@ export class NexusP2P {
 
         this.peer.on('error', (err) => {
             console.error(err);
-            statusElement.innerText = 'STATUS: ID CONFLICT / ERROR';
-            statusElement.style.color = '#ff4444';
+            if(statusElement) {
+                statusElement.innerText = 'STATUS: ID CONFLICT / ERROR';
+                statusElement.style.color = '#ff4444';
+            }
             if (err.type === 'unavailable-id') {
                 alert(`🚨 エラー: ルーム名「${roomId}」は現在他の誰かが使用中です。`);
             } else {
@@ -163,7 +168,7 @@ export class NexusP2P {
     static initJoin(roomId, password) {
         this.isHost = false;
         const statusElement = document.getElementById('p2p-status');
-        statusElement.innerText = 'STATUS: CONNECTING...';
+        if(statusElement) statusElement.innerText = 'STATUS: CONNECTING...';
 
         if (this.peer) this.peer.destroy();
         this.peer = new Peer({
@@ -185,13 +190,18 @@ export class NexusP2P {
                     if(window.universeAudio) window.universeAudio.playWarp();
                     this.hostConnection = conn;
                     
-                    // ★ 接続に成功した時点で、自分の宇宙にワームホールを出現させる
                     this.spawnWormhole(roomId, password);
                     this.setupConnection(conn, roomId);
+                    
+                    const ui = document.getElementById('p2p-portal-ui');
+                    if(ui) ui.remove(); // 成功したらUIを消す
+                    
                     alert("✅ 認証成功！ワームホールが生成されました。\nワームホールを開いて共有空間へダイブしてください。");
                 } else if (data.type === 'AUTH_FAIL') {
-                    statusElement.innerText = 'STATUS: AUTH FAILED';
-                    statusElement.style.color = '#ff4444';
+                    if(statusElement) {
+                        statusElement.innerText = 'STATUS: AUTH FAILED';
+                        statusElement.style.color = '#ff4444';
+                    }
                     alert("❌ パスワードが違います！通信を切断されました。");
                     conn.close();
                 } else {
@@ -202,8 +212,10 @@ export class NexusP2P {
 
         this.peer.on('error', (err) => {
             console.error(err);
-            statusElement.innerText = 'STATUS: ROOM NOT FOUND';
-            statusElement.style.color = '#ff4444';
+            if(statusElement) {
+                statusElement.innerText = 'STATUS: ROOM NOT FOUND';
+                statusElement.style.color = '#ff4444';
+            }
             if (err.type === 'peer-unavailable') {
                 alert(`🚨 エラー: ルーム「${roomId}」が見つかりません。\nHost側が「空間を創る」を押して完了するまで待ってからJoinしてください。`);
             } else {
@@ -235,12 +247,14 @@ export class NexusP2P {
 
         conn.on('close', () => {
             this.appendChat('SYSTEM', '⚠️ 相手との通信が切断されました。', '#ff4444');
-            if (this.isHost) this.connections = this.connections.filter(c => c !== conn);
-            else this.hostConnection = null;
+            if (this.isHost) {
+                this.connections = this.connections.filter(c => c !== conn);
+            } else {
+                this.hostConnection = null;
+            }
         });
     }
 
-    // ★ 今いる宇宙空間にワームホール（扉）を出現させる
     static spawnWormhole(roomId, password) {
         if (!this.app || !this.app.currentUniverse) return;
 
@@ -259,7 +273,6 @@ export class NexusP2P {
             this.wormholeNode.p2pRoomId = roomId;
             this.wormholeNode.p2pPassword = password;
             
-            // ★ ワームホールの内側を「共有空間」として設定
             this.wormholeNode.innerUniverse.isShared = true;
             this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${roomId}`;
             
@@ -268,13 +281,11 @@ export class NexusP2P {
 
         if (this.app.simulation) this.app.simulation.alpha(0.5).restart();
 
-        // 密輸用ドラッグ＆ドロップ判定（常時監視）
         if (this.checkCollisionTimer) cancelAnimationFrame(this.checkCollisionTimer);
         const checkCollision = () => {
             const isConnected = (this.isHost && this.connections.length > 0) || (!this.isHost && this.hostConnection && this.hostConnection.open);
             if (!isConnected || !this.wormholeNode) return;
 
-            // 自分がワームホールの外側にいる時だけ密輸判定
             if (this.app.currentUniverse !== this.wormholeNode.innerUniverse) {
                 this.app.currentUniverse.nodes.forEach(node => {
                     if (node.isWormhole) return;
@@ -355,13 +366,14 @@ export class NexusP2P {
                 alert("通信を切断しました。");
             };
         } else {
+            // ★ 修正：直接関数を呼んで再接続する（不要なUIを出さない）
             document.getElementById('wh-host').onclick = () => {
                 ui.remove();
-                this.showPortalUI(node.p2pRoomId, node.p2pPassword);
+                this.initHost(node.p2pRoomId, node.p2pPassword);
             };
             document.getElementById('wh-join').onclick = () => {
                 ui.remove();
-                this.showPortalUI(node.p2pRoomId, node.p2pPassword);
+                this.initJoin(node.p2pRoomId, node.p2pPassword);
             };
         }
 
@@ -379,14 +391,12 @@ export class NexusP2P {
         document.getElementById('wh-close').onclick = () => ui.remove();
     }
 
-    // ★ 共有空間の中身だけを同期する
     static startSyncLoop() {
         if (this.syncTimer) clearInterval(this.syncTimer);
         this.syncTimer = setInterval(() => {
             const isConnected = (this.isHost && this.connections.length > 0) || (!this.isHost && this.hostConnection && this.hostConnection.open);
             if (!isConnected || !this.wormholeNode) return;
 
-            // 同期対象は「ワームホールの内部宇宙（共有空間）」のみ
             let shared = this.wormholeNode.innerUniverse;
             if (!shared) return;
 
@@ -401,9 +411,8 @@ export class NexusP2P {
                 };
                 this.broadcast({ type: 'SYNC_STATE', state });
             } else {
-                // ゲストは、自分が「共有空間の中」にいて星を掴んでいる時だけ座標を送る
-                if (this.app.currentUniverse === shared && this.app.grabbedNode) {
-                    const n = this.app.grabbedNode;
+                if (this.app.currentUniverse === shared && this.app.canvasBuilder && this.app.canvasBuilder.grabbedNode) {
+                    const n = this.app.canvasBuilder.grabbedNode;
                     if (n.id && shared.nodes.includes(n)) {
                         this.broadcast({ type: 'SYNC_ACTION', action: 'UPDATE_NODE', node: { id: n.id, x: n.x, y: n.y, baseX: n.baseX, baseY: n.baseY }});
                     }
@@ -422,7 +431,6 @@ export class NexusP2P {
 
     static onNodeAdded(node) {
         if (!node.id) node.id = 'node_' + Math.random().toString(36).substr(2);
-        // 自分が共有空間内にいる時だけ送信
         if (this.wormholeNode && this.app.currentUniverse === this.wormholeNode.innerUniverse && !this.isHost) {
             this.broadcast({ type: 'SYNC_ACTION', action: 'ADD_NODE', node: this.serializeNode(node) });
         }
@@ -461,7 +469,8 @@ export class NexusP2P {
                     ln = { ...rn, isGhost: false };
                     shared.nodes.push(ln);
                 } else {
-                    if (this.app.grabbedNode !== ln) Object.assign(ln, rn); 
+                    const isGrabbed = this.app.canvasBuilder && this.app.canvasBuilder.grabbedNode === ln;
+                    if (!isGrabbed) Object.assign(ln, rn); 
                 }
             });
             shared.nodes = shared.nodes.filter(ln => data.state.nodes.some(rn => rn.id === ln.id));
@@ -482,7 +491,10 @@ export class NexusP2P {
                 if (!shared.nodes.find(n => n.id === data.node.id)) shared.nodes.push({ ...data.node, isGhost: false });
             } else if (data.action === 'UPDATE_NODE') {
                 let ln = shared.nodes.find(n => n.id === data.node.id);
-                if (ln && this.app.grabbedNode !== ln) Object.assign(ln, data.node); 
+                if (ln) {
+                    const isGrabbed = this.app.canvasBuilder && this.app.canvasBuilder.grabbedNode === ln;
+                    if (!isGrabbed) Object.assign(ln, data.node);
+                }
             } else if (data.action === 'DELETE_NODE') {
                 shared.nodes = shared.nodes.filter(n => n.id !== data.id);
                 shared.links = shared.links.filter(l => l.source.id !== data.id && l.target.id !== data.id);
