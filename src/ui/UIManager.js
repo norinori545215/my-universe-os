@@ -634,7 +634,6 @@ export class UIManager {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             
-            // ★ 作成した星にIDを付与してP2P共有に同期
             const newNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             newNode.id = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
             
@@ -848,7 +847,6 @@ export class UIManager {
             const color = document.getElementById('cp-spawn-color')?.value || "#00ffcc";
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
             
-            // ★ 作成した星にIDを付与してP2P共有に同期
             const newNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             newNode.id = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 
@@ -970,7 +968,6 @@ export class UIManager {
                 node.note = (node.note || "") + `\nQ: ${text}\nA: ${replyText}`;
                 this.app.autoSave();
 
-                // ★ AIが思考した内容もP2Pの相手に同期させる
                 if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
                 
                 this.isAIThinking = false;
@@ -987,18 +984,33 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        if (node.isWormhole) return;
+        // ★ ワームホールの場合は専用メニューを開くか、ゴミ箱モードなら削除する
+        if (node.isWormhole) {
+            if (this.state.isRapidDeleteMode) {
+                const idx = this.app.currentUniverse.nodes.indexOf(node);
+                if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
+                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
+                this.app.autoSave();
+                if(window.universeAudio) window.universeAudio.playDelete();
+                return;
+            }
+            this.hideQuickNote();
+            this.hideMenu();
+            if (NexusP2P && NexusP2P.openWormholeMenu) {
+                NexusP2P.openWormholeMenu(node, this);
+            }
+            return;
+        }
 
-        // ★ 削除バグを完璧に修正（確実に配列から取り除く）
+        // 通常の星の削除処理
         if (this.state.isRapidDeleteMode) {
             const idx = this.app.currentUniverse.nodes.indexOf(node);
             if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
-            
             this.app.blackHole.push(node);
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playDelete();
-            if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node);
+            if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
             return;
         }
 
@@ -1214,7 +1226,6 @@ export class UIManager {
                 this.hideMenu();
                 const parentUni = this.app.universeHistory[this.app.universeHistory.length - 1];
                 if (confirm(`「${node.name}」を外の空間（${parentUni.name}）へ移動しますか？`)) {
-                    // ★ 削除バグ完全修正
                     const idx = this.app.currentUniverse.nodes.indexOf(node);
                     if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
                     this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
@@ -1248,7 +1259,7 @@ export class UIManager {
                 if (checkDrag()) return;
                 this.hideMenu();
                 if (NexusP2P && (NexusP2P.connection || NexusP2P.hostConnection)) {
-                    NexusP2P.sendNode(node); // ★ 密輸機能（そのまま）
+                    NexusP2P.sendSmuggleNode(node); // ★ 密輸機能
                 } else {
                     alert("⚠️ ターゲットとリンクしていません。\nコントロールパネルの「拡張・防壁」タブからP2Pポータルを開き、通信を確立してください。");
                 }
