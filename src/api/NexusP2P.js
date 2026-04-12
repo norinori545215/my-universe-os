@@ -13,12 +13,8 @@ export class NexusP2P {
     static checkCollisionTimer = null;
     static unreadCount = 0;
 
-    static async start(appRef) {
-        if (document.getElementById('nexus-p2p-hud')) return;
-        this.app = appRef;
-
-        console.log("🌐 [Nexus P2P] 量子トンネル開通シークエンス開始...");
-
+    // ★ 追加：リロード後にワームホールをタップした時、PeerJSがないとエラーになるのを防ぐ
+    static async ensurePeerJS() {
         if (!window.Peer) {
             await new Promise((resolve, reject) => {
                 const script = document.createElement('script');
@@ -28,7 +24,14 @@ export class NexusP2P {
                 document.head.appendChild(script);
             });
         }
+    }
 
+    static async start(appRef) {
+        if (document.getElementById('nexus-p2p-hud')) return;
+        this.app = appRef;
+
+        console.log("🌐 [Nexus P2P] 量子トンネル開通シークエンス開始...");
+        await this.ensurePeerJS();
         this.showPortalUI();
     }
 
@@ -105,7 +108,8 @@ export class NexusP2P {
         }
     }
 
-    static initHost(roomId, password) {
+    static async initHost(roomId, password) {
+        await this.ensurePeerJS();
         this.isHost = true;
         this.expectedPassword = password;
         const statusElement = document.getElementById('p2p-status');
@@ -166,7 +170,8 @@ export class NexusP2P {
         });
     }
 
-    static initJoin(roomId, password) {
+    static async initJoin(roomId, password) {
+        await this.ensurePeerJS();
         this.isHost = false;
         const statusElement = document.getElementById('p2p-status');
         if(statusElement) statusElement.innerText = 'STATUS: CONNECTING...';
@@ -259,11 +264,14 @@ export class NexusP2P {
     static spawnWormhole(roomId, password) {
         if (!this.app || !this.app.currentUniverse) return;
 
-        let existing = this.app.currentUniverse.nodes.find(n => n.isWormhole && n.p2pRoomId === roomId);
+        // ★ リロード時にURLから復活したワームホールを探す
+        let existing = this.wormholeNode || this.app.currentUniverse.nodes.find(n => n.url === `p2p://${roomId}:${password}`);
         
         if (existing) {
             this.wormholeNode = existing;
-            // URLにパスワード等をハックして埋め込み（リロード対策）
+            this.wormholeNode.isWormhole = true;
+            this.wormholeNode.p2pRoomId = roomId;
+            this.wormholeNode.p2pPassword = password;
             this.wormholeNode.url = `p2p://${roomId}:${password}`;
         } else {
             const cx = this.app.camera ? -this.app.camera.x : 0;
@@ -275,14 +283,17 @@ export class NexusP2P {
             this.wormholeNode.isWormhole = true;
             this.wormholeNode.p2pRoomId = roomId;
             this.wormholeNode.p2pPassword = password;
-            // ★ リロード後もログインできるようにURLパラメータにID/PWを偽装して保存
-            this.wormholeNode.url = `p2p://${roomId}:${password}`;
-            
-            this.wormholeNode.innerUniverse.isShared = true;
-            this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${roomId}`;
+            this.wormholeNode.url = `p2p://${roomId}:${password}`; // URLに埋め込んで保存
             
             this.app.autoSave();
         }
+
+        // 内側を共有空間として整備
+        if (!this.wormholeNode.innerUniverse) {
+             this.wormholeNode.innerUniverse = new this.app.currentUniverse.constructor(`🌌 SHARED: ${roomId}`, 'space');
+        }
+        this.wormholeNode.innerUniverse.isShared = true;
+        this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${roomId}`;
 
         if (this.app.simulation) this.app.simulation.alpha(0.5).restart();
 
@@ -317,9 +328,12 @@ export class NexusP2P {
         this.checkCollisionTimer = requestAnimationFrame(checkCollision);
     }
 
-    static openWormholeMenu(node, uiManager) {
-        // ★ リロード後もログインできるように、URLからIDとPWを復元するハック
-        if (node.isWormhole && node.url && node.url.startsWith('p2p://')) {
+    // ★ UIManager から呼ばれる、ワームホールの専用メニュー
+    static async openWormholeMenu(node, uiManager) {
+        await this.ensurePeerJS();
+
+        // リロードから復帰した星の場合、URLからIDとPWを取り出す
+        if (node.url && node.url.startsWith('p2p://')) {
             const parts = node.url.replace('p2p://', '').split(':');
             node.p2pRoomId = parts[0];
             node.p2pPassword = parts[1];
@@ -376,16 +390,20 @@ export class NexusP2P {
                 if (this.peer) this.peer.destroy();
                 this.isHost = false; this.connections = []; this.hostConnection = null;
                 const capsule = document.getElementById('p2p-chat-capsule');
+                const win = document.getElementById('p2p-chat-window');
                 if (capsule) capsule.remove();
+                if (win) win.remove();
                 alert("通信を切断しました。");
             };
         } else {
             document.getElementById('wh-host').onclick = () => {
                 ui.remove();
+                this.wormholeNode = node; // 再接続のためにロック
                 this.initHost(node.p2pRoomId, node.p2pPassword);
             };
             document.getElementById('wh-join').onclick = () => {
                 ui.remove();
+                this.wormholeNode = node; // 再接続のためにロック
                 this.initJoin(node.p2pRoomId, node.p2pPassword);
             };
         }
@@ -572,11 +590,9 @@ export class NexusP2P {
         };
     }
 
-    // ★ 独立した「カプセル型」のチャットUIを生成
     static showChatUI(roomId) {
         if (document.getElementById('p2p-chat-capsule')) return;
 
-        // 右下に常駐する小さなカプセルボタン
         const capsule = document.createElement('div');
         capsule.id = 'p2p-chat-capsule';
         capsule.style.cssText = `
@@ -589,7 +605,6 @@ export class NexusP2P {
         capsule.innerHTML = `<span style="font-size:16px;">🛰️</span> <span>LINK ACTIVE</span> <span id="p2p-unread" style="background:#ff00ff; color:#fff; padding:2px 6px; border-radius:10px; font-size:10px; display:none;">0</span>`;
         document.body.appendChild(capsule);
 
-        // クリックで開閉するチャットウィンドウ本体
         const windowUi = document.createElement('div');
         windowUi.id = 'p2p-chat-window';
         windowUi.style.cssText = `
@@ -615,7 +630,6 @@ export class NexusP2P {
         this.chatLogEl = document.getElementById('p2p-chat-log');
         this.unreadCount = 0;
 
-        // カプセルの開閉アクション
         capsule.onclick = () => {
             if (windowUi.style.display === 'none') {
                 windowUi.style.display = 'flex';
@@ -661,7 +675,6 @@ export class NexusP2P {
         this.chatLogEl.appendChild(msgDiv);
         this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
 
-        // ★ ウィンドウが閉じている時にメッセージが来たら赤いバッジを出す
         const w = document.getElementById('p2p-chat-window');
         if (w && w.style.display === 'none' && sender !== 'YOU' && sender !== 'SYSTEM') {
             this.unreadCount++;

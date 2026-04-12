@@ -984,8 +984,17 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // ★ ワームホールの場合は専用メニューを開くか、ゴミ箱モードなら削除する
-        if (node.isWormhole) {
+        // ★ 修正：リロード時のワームホール記憶喪失バグを完全に防ぐ
+        if (node.isWormhole || node.name === '🌐 P2P WORMHOLE' || (node.url && node.url.startsWith('p2p://'))) {
+            node.isWormhole = true; // フラグを強制復元
+
+            // URLからIDとPWを復元
+            if (node.url && node.url.startsWith('p2p://')) {
+                const parts = node.url.replace('p2p://', '').split(':');
+                node.p2pRoomId = parts[0];
+                node.p2pPassword = parts[1];
+            }
+
             if (this.state.isRapidDeleteMode) {
                 const idx = this.app.currentUniverse.nodes.indexOf(node);
                 if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
@@ -994,15 +1003,17 @@ export class UIManager {
                 if(window.universeAudio) window.universeAudio.playDelete();
                 return;
             }
+
             this.hideQuickNote();
             this.hideMenu();
             if (NexusP2P && NexusP2P.openWormholeMenu) {
+                NexusP2P.app = this.app; // アプリの参照を確実に渡す
                 NexusP2P.openWormholeMenu(node, this);
             }
             return;
         }
 
-        // 通常の星の削除処理
+        // --- 以下は通常の星の処理 ---
         if (this.state.isRapidDeleteMode) {
             const idx = this.app.currentUniverse.nodes.indexOf(node);
             if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
@@ -1385,7 +1396,6 @@ export class UIManager {
             }, 100);
         };
 
-        // ★ 削除バグ完全修正
         document.getElementById('m-del').onclick = () => { 
             if (checkDrag()) return;
             if(confirm("収納しますか？")){ 
