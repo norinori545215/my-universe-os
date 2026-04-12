@@ -21,7 +21,7 @@ import { WanderingEntities } from '../ai/WanderingEntities.js';
 import { SpatialVision } from '../engine/SpatialVision.js';
 import { NexusP2P } from '../api/NexusP2P.js'; 
 import { FileSystemBridge } from '../api/FileSystemBridge.js';
-import { NeuralCore } from '../ai/NeuralCore.js'; // ★ フェーズ4追加：ローカルAIコア
+import { NeuralCore } from '../ai/NeuralCore.js'; 
 
 export class UIManager {
     constructor(app) {
@@ -384,7 +384,6 @@ export class UIManager {
 
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
                 
-                <!-- ★ フェーズ4追加: 完全オフラインAI起動ボタン -->
                 <button id="cp-spawn-local-ai" style="width:100%; padding:12px; background:rgba(255,0,255,0.2); color:#fff; border:1px solid #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px; box-shadow:0 0 10px rgba(255,0,255,0.4);">🧠 完全オフラインAIを構築 (WebGPU)</button>
                 
                 <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,170,0,0.1); color:#ffaa00; border:1px solid rgba(255,170,0,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
@@ -634,11 +633,17 @@ export class UIManager {
         bind('cp-spawn-btn', () => {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
+            
+            // ★ 作成した星にIDを付与してP2P共有に同期
+            const newNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
+            newNode.id = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+            
             this.app.autoSave(); 
             if(window.universeAudio) window.universeAudio.playSpawn();
+            if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(newNode);
+
             if(this.state.isMobileMode || document.getElementById('cp-auto-menu')?.checked) {
-                const n = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length-1];
-                this.showMenu(n, window.innerWidth/2, window.innerHeight/2);
+                this.showMenu(newNode, window.innerWidth/2, window.innerHeight/2);
             }
             this.controlPanel.style.display = 'none';
         });
@@ -842,14 +847,19 @@ export class UIManager {
 
             const color = document.getElementById('cp-spawn-color')?.value || "#00ffcc";
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
+            
+            // ★ 作成した星にIDを付与してP2P共有に同期
+            const newNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
+            newNode.id = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+
             this.app.autoSave();
 
             if (window.universeAudio) window.universeAudio.playSpawn();
             if (window.universeLogger) window.universeLogger.log("RAPID_SPAWN", { color });
+            if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(newNode);
 
             if (this.state.isMobileMode || localStorage.getItem('universe_auto_menu') === 'true') {
-                const node = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
-                setTimeout(() => this.showMenu(node, ev.clientX, ev.clientY), 50);
+                setTimeout(() => this.showMenu(newNode, ev.clientX, ev.clientY), 50);
             }
         };
 
@@ -886,7 +896,6 @@ export class UIManager {
         search(this.app.universeHistory.length > 0 ? this.app.universeHistory[0] : this.app.currentUniverse);
     }
 
-    // ★ チャット画面生成＆ロック機能
     showLocalAIChat(node) {
         let chatUI = document.getElementById('local-ai-chat-ui');
         if (!chatUI) {
@@ -930,30 +939,25 @@ export class UIManager {
         const input = document.getElementById('ai-chat-input');
         const sendBtn = document.getElementById('ai-chat-send');
         
-        // 重複イベントを防ぐために一度クリア
         sendBtn.onclick = null;
         input.onkeypress = null;
 
-        // ★ 思考中に連打させないためのロック変数
         this.isAIThinking = false;
 
         const handleSend = async () => {
-            if (this.isAIThinking) return; // 思考中なら無視
+            if (this.isAIThinking) return; 
             const text = input.value.trim();
             if (!text) return;
             
-            // ★ 入力欄とボタンをロック
             this.isAIThinking = true;
             input.value = '';
             input.disabled = true;
             sendBtn.style.opacity = '0.5';
             sendBtn.innerText = '思考中...';
             
-            // ユーザー発言追加
             log.innerHTML += `<div style="background:rgba(0,255,204,0.2); padding:8px; border-radius:8px; align-self:flex-end; max-width:85%; border:1px solid rgba(0,255,204,0.5);">${text}</div>`;
             log.scrollTop = log.scrollHeight;
             
-            // ローディング表示
             const loadingId = 'loading-' + Date.now();
             log.innerHTML += `<div id="${loadingId}" style="color:#ff00ff; font-style:italic; font-size:11px;">脳髄アクセス中...</div>`;
             log.scrollTop = log.scrollHeight;
@@ -963,11 +967,12 @@ export class UIManager {
                 log.innerHTML += `<div style="background:rgba(255,0,255,0.2); padding:8px; border-radius:8px; align-self:flex-start; max-width:85%; border:1px solid rgba(255,0,255,0.5); white-space:pre-wrap;">${replyText}</div>`;
                 log.scrollTop = log.scrollHeight;
                 
-                // ノートに記憶として追記
                 node.note = (node.note || "") + `\nQ: ${text}\nA: ${replyText}`;
                 this.app.autoSave();
+
+                // ★ AIが思考した内容もP2Pの相手に同期させる
+                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
                 
-                // ★ 思考完了したらロック解除
                 this.isAIThinking = false;
                 input.disabled = false;
                 sendBtn.style.opacity = '1.0';
@@ -984,12 +989,16 @@ export class UIManager {
     showMenu(node, screenX, screenY) {
         if (node.isWormhole) return;
 
+        // ★ 削除バグを完璧に修正（確実に配列から取り除く）
         if (this.state.isRapidDeleteMode) {
-            this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
-            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+            const idx = this.app.currentUniverse.nodes.indexOf(node);
+            if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
+            this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
+            
             this.app.blackHole.push(node);
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playDelete();
+            if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node);
             return;
         }
 
@@ -1009,15 +1018,12 @@ export class UIManager {
         this.actionMenu.style.display = 'flex';
         
         const btnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:12px; cursor:pointer; text-align:left; border-radius:8px; font-size:13px; margin-bottom:4px; width:100%; transition:background 0.2s;';
-        
         const openUrlBtn = node.url ? `<button id="m-open" style="${btnStyle} color:#00ffff; border:1px solid rgba(0,255,255,0.4); font-weight:bold; box-shadow:0 0 10px rgba(0,255,255,0.2);">🌐 リンクを開く</button>` : '';
 
         const lockBtnText = node.isLocked ? "🔓 封印を完全に解く" : "🔒 この星を封印する";
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
-        
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
-
         const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
         const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
         
@@ -1170,6 +1176,7 @@ export class UIManager {
             mColorPicker.onchange = (e) => {
                 node.color = e.target.value;
                 this.app.autoSave();
+                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
             };
         }
 
@@ -1185,6 +1192,7 @@ export class UIManager {
                 this.app.autoSave();
                 if(typeof this.app.update === 'function') this.app.update();
                 if(this.app.simulation) this.app.simulation.alpha(0.1).restart();
+                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
             };
         }
 
@@ -1206,12 +1214,17 @@ export class UIManager {
                 this.hideMenu();
                 const parentUni = this.app.universeHistory[this.app.universeHistory.length - 1];
                 if (confirm(`「${node.name}」を外の空間（${parentUni.name}）へ移動しますか？`)) {
-                    this.app.currentUniverse.removeNode(node);
+                    // ★ 削除バグ完全修正
+                    const idx = this.app.currentUniverse.nodes.indexOf(node);
+                    if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
+                    this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
+
                     node.parentUniverse = parentUni;
                     parentUni.nodes.push(node);
                     node.baseX = -this.app.camera.x; node.baseY = -this.app.camera.y;
                     this.app.autoSave();
                     if(window.universeAudio) window.universeAudio.playWarp();
+                    if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
                 }
             };
         }
@@ -1234,8 +1247,8 @@ export class UIManager {
             p2pSendBtn.onclick = () => {
                 if (checkDrag()) return;
                 this.hideMenu();
-                if (NexusP2P && NexusP2P.connection) {
-                    NexusP2P.sendNode(node);
+                if (NexusP2P && (NexusP2P.connection || NexusP2P.hostConnection)) {
+                    NexusP2P.sendNode(node); // ★ 密輸機能（そのまま）
                 } else {
                     alert("⚠️ ターゲットとリンクしていません。\nコントロールパネルの「拡張・防壁」タブからP2Pポータルを開き、通信を確立してください。");
                 }
@@ -1283,6 +1296,7 @@ export class UIManager {
             node.isGhost = !node.isGhost;
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playWarp();
+            if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
         };
 
         document.getElementById('m-lock').onclick = () => {
@@ -1294,6 +1308,7 @@ export class UIManager {
                     delete node.password; 
                     node.isTempUnlocked = false;
                     this.app.autoSave();
+                    if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
                 }
             } else {
                 this.lockUI.openForSet(node);
@@ -1313,10 +1328,23 @@ export class UIManager {
         };
 
         document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
-        document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); };
-        document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); };
-        document.getElementById('m-ren').onclick = () => { if (checkDrag()) return; const n = prompt("新しい名前:", node.name); if(n){node.name=n; this.app.autoSave();} this.hideMenu(); };
-        document.getElementById('m-set-icon').onclick = () => { if (checkDrag()) return; const url = prompt("画像URL:", node.iconUrl || ""); if(url !== null){ node.iconUrl = url; this.app.autoSave(); } this.hideMenu(); };
+        document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); };
+        document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); };
+        
+        document.getElementById('m-ren').onclick = () => { 
+            if (checkDrag()) return; 
+            const n = prompt("新しい名前:", node.name); 
+            if(n) { node.name = n; this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); } 
+            this.hideMenu(); 
+        };
+        
+        document.getElementById('m-set-icon').onclick = () => { 
+            if (checkDrag()) return; 
+            const url = prompt("画像URL:", node.iconUrl || ""); 
+            if(url !== null) { node.iconUrl = url; this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); } 
+            this.hideMenu(); 
+        };
+        
         document.getElementById('m-link').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
         
         document.getElementById('m-connect').onclick = () => {
@@ -1346,14 +1374,18 @@ export class UIManager {
             }, 100);
         };
 
+        // ★ 削除バグ完全修正
         document.getElementById('m-del').onclick = () => { 
             if (checkDrag()) return;
             if(confirm("収納しますか？")){ 
-                this.app.currentUniverse.nodes = this.app.currentUniverse.nodes.filter(n => n !== node && n.id !== node.id);
-                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node && l.source.id !== node.id && l.target.id !== node.id);
+                const idx = this.app.currentUniverse.nodes.indexOf(node);
+                if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
+                this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
+                
                 this.app.blackHole.push(node); 
                 this.app.autoSave(); 
                 if(window.universeAudio) window.universeAudio.playDelete(); 
+                if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
             } 
             this.hideMenu(); 
         };
@@ -1402,10 +1434,10 @@ export class UIManager {
         html += `<button id="lib-close" style="width:100%; padding:10px; background:transparent; border:1px solid #444; color:#888; border-radius:6px;">Cancel</button>`;
         this.appLibraryModal.innerHTML = html; this.appLibraryModal.style.display = 'block';
         
-        this.app.appPresets.forEach((app, i) => { document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; }; });
+        this.app.appPresets.forEach((app, i) => { document.getElementById(`preset-${i}`).onclick = () => { node.name = app.name; node.url = app.url; node.iconUrl = app.icon; this.app.autoSave(); this.appLibraryModal.style.display='none'; if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); }; });
         document.getElementById('custom-url-btn').onclick = () => {
             this.appLibraryModal.style.display='none'; const url = prompt("URL:", node.url);
-            if(url) { node.url = url; if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){ try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; } } this.app.autoSave(); }
+            if(url) { node.url = url; if(url.startsWith('http') && confirm("アイコン(Favicon)を自動取得しますか？")){ try { node.iconUrl = `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { node.iconUrl = `https://www.google.com/s2/favicons?domain=${url}&sz=128`; } } this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); }
         };
 
         if (node.url) {
@@ -1415,6 +1447,7 @@ export class UIManager {
                     node.iconUrl = ""; 
                     this.app.autoSave();
                     this.appLibraryModal.style.display = 'none';
+                    if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
                 }
             };
         }
@@ -1475,6 +1508,7 @@ export class UIManager {
                 this.app.autoSave(); 
                 this.showInventoryUI(); 
                 if(window.universeAudio) window.universeAudio.playSpawn(); 
+                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); // ★ 同期
             };
             document.getElementById(`inv-del-${i}`).onclick = () => { 
                 if(confirm("完全に消去しますか？(元に戻せません)")){ 
@@ -1495,6 +1529,7 @@ export class UIManager {
                 node.x = -this.app.camera.x + (Math.random() * 40 - 20); 
                 node.y = -this.app.camera.y + (Math.random() * 40 - 20);
                 this.app.currentUniverse.nodes.push(node);
+                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); // ★ 同期
             });
             this.app.autoSave();
             this.showInventoryUI();
