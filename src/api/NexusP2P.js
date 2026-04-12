@@ -11,6 +11,7 @@ export class NexusP2P {
     static isHost = false;
     static syncTimer = null;
     static checkCollisionTimer = null;
+    static unreadCount = 0;
 
     static async start(appRef) {
         if (document.getElementById('nexus-p2p-hud')) return;
@@ -128,7 +129,7 @@ export class NexusP2P {
             
             this.spawnWormhole(roomId, password);
             const ui = document.getElementById('p2p-portal-ui');
-            if(ui) ui.remove(); // 成功したらUIを消す
+            if(ui) ui.remove(); 
             alert(`🌌 共有宇宙 [ ${roomId} ] のワームホールを生成しました。\nワームホールを開いて中に入り、ゲストを待機してください。`);
         });
 
@@ -194,7 +195,7 @@ export class NexusP2P {
                     this.setupConnection(conn, roomId);
                     
                     const ui = document.getElementById('p2p-portal-ui');
-                    if(ui) ui.remove(); // 成功したらUIを消す
+                    if(ui) ui.remove(); 
                     
                     alert("✅ 認証成功！ワームホールが生成されました。\nワームホールを開いて共有空間へダイブしてください。");
                 } else if (data.type === 'AUTH_FAIL') {
@@ -262,6 +263,8 @@ export class NexusP2P {
         
         if (existing) {
             this.wormholeNode = existing;
+            // URLにパスワード等をハックして埋め込み（リロード対策）
+            this.wormholeNode.url = `p2p://${roomId}:${password}`;
         } else {
             const cx = this.app.camera ? -this.app.camera.x : 0;
             const cy = this.app.camera ? -this.app.camera.y : 0;
@@ -272,6 +275,8 @@ export class NexusP2P {
             this.wormholeNode.isWormhole = true;
             this.wormholeNode.p2pRoomId = roomId;
             this.wormholeNode.p2pPassword = password;
+            // ★ リロード後もログインできるようにURLパラメータにID/PWを偽装して保存
+            this.wormholeNode.url = `p2p://${roomId}:${password}`;
             
             this.wormholeNode.innerUniverse.isShared = true;
             this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${roomId}`;
@@ -313,6 +318,13 @@ export class NexusP2P {
     }
 
     static openWormholeMenu(node, uiManager) {
+        // ★ リロード後もログインできるように、URLからIDとPWを復元するハック
+        if (node.isWormhole && node.url && node.url.startsWith('p2p://')) {
+            const parts = node.url.replace('p2p://', '').split(':');
+            node.p2pRoomId = parts[0];
+            node.p2pPassword = parts[1];
+        }
+
         const portalId = 'p2p-wormhole-menu';
         if (document.getElementById(portalId)) document.getElementById(portalId).remove();
 
@@ -326,7 +338,7 @@ export class NexusP2P {
             font-family: monospace; display: flex; flex-direction: column; gap: 10px;
         `;
 
-        const isOnline = (this.isHost && this.connections.length > 0) || (!this.isHost && this.hostConnection && this.hostConnection.open);
+        const isOnline = (this.isHost && this.peer && !this.peer.destroyed) || (!this.isHost && this.hostConnection && this.hostConnection.open);
 
         ui.innerHTML = `
             <div style="color:#ff00ff; font-weight:bold; border-bottom:1px dashed #ff00ff; padding-bottom:5px; text-align:center;">
@@ -363,10 +375,11 @@ export class NexusP2P {
                 ui.remove();
                 if (this.peer) this.peer.destroy();
                 this.isHost = false; this.connections = []; this.hostConnection = null;
+                const capsule = document.getElementById('p2p-chat-capsule');
+                if (capsule) capsule.remove();
                 alert("通信を切断しました。");
             };
         } else {
-            // ★ 修正：直接関数を呼んで再接続する（不要なUIを出さない）
             document.getElementById('wh-host').onclick = () => {
                 ui.remove();
                 this.initHost(node.p2pRoomId, node.p2pPassword);
@@ -491,9 +504,8 @@ export class NexusP2P {
                 if (!shared.nodes.find(n => n.id === data.node.id)) shared.nodes.push({ ...data.node, isGhost: false });
             } else if (data.action === 'UPDATE_NODE') {
                 let ln = shared.nodes.find(n => n.id === data.node.id);
-                if (ln) {
-                    const isGrabbed = this.app.canvasBuilder && this.app.canvasBuilder.grabbedNode === ln;
-                    if (!isGrabbed) Object.assign(ln, data.node);
+                if (ln && (!this.app.canvasBuilder || this.app.canvasBuilder.grabbedNode !== ln)) {
+                    Object.assign(ln, data.node); 
                 }
             } else if (data.action === 'DELETE_NODE') {
                 shared.nodes = shared.nodes.filter(n => n.id !== data.id);
@@ -560,33 +572,64 @@ export class NexusP2P {
         };
     }
 
+    // ★ 独立した「カプセル型」のチャットUIを生成
     static showChatUI(roomId) {
-        if (document.getElementById('p2p-chat-ui')) return;
+        if (document.getElementById('p2p-chat-capsule')) return;
 
-        const ui = document.createElement('div');
-        ui.id = 'p2p-chat-ui';
-        ui.style.cssText = `
-            position: fixed; bottom: 20px; right: 20px; width: 300px; height: 350px;
-            background: rgba(0, 10, 20, 0.85); border: 1px solid #00ffcc; border-radius: 8px;
-            display: flex; flex-direction: column; z-index: 9900;
+        // 右下に常駐する小さなカプセルボタン
+        const capsule = document.createElement('div');
+        capsule.id = 'p2p-chat-capsule';
+        capsule.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; background: rgba(10,0,20,0.9);
+            border: 1px solid #00ffcc; border-radius: 30px; padding: 10px 20px;
+            color: #00ffcc; font-weight: bold; font-family: sans-serif; cursor: pointer;
+            box-shadow: 0 0 15px rgba(0,255,204,0.3); z-index: 9900; backdrop-filter: blur(10px);
+            display: flex; align-items: center; gap: 10px; transition: 0.3s;
+        `;
+        capsule.innerHTML = `<span style="font-size:16px;">🛰️</span> <span>LINK ACTIVE</span> <span id="p2p-unread" style="background:#ff00ff; color:#fff; padding:2px 6px; border-radius:10px; font-size:10px; display:none;">0</span>`;
+        document.body.appendChild(capsule);
+
+        // クリックで開閉するチャットウィンドウ本体
+        const windowUi = document.createElement('div');
+        windowUi.id = 'p2p-chat-window';
+        windowUi.style.cssText = `
+            position: fixed; bottom: 70px; right: 20px; width: 300px; height: 350px;
+            background: rgba(0, 10, 20, 0.85); border: 1px solid #00ffcc; border-radius: 12px;
+            display: none; flex-direction: column; z-index: 9900;
             box-shadow: 0 0 20px rgba(0, 255, 204, 0.2); backdrop-filter: blur(10px);
-            font-family: sans-serif;
+            font-family: sans-serif; overflow: hidden;
         `;
 
-        ui.innerHTML = `
-            <div style="background: rgba(0, 255, 204, 0.2); padding: 10px; font-weight: bold; color: #00ffcc; border-bottom: 1px solid #00ffcc; border-radius: 8px 8px 0 0; display:flex; justify-content:space-between;">
+        windowUi.innerHTML = `
+            <div style="background: rgba(0, 255, 204, 0.2); padding: 10px; font-weight: bold; color: #00ffcc; border-bottom: 1px solid #00ffcc; display:flex; justify-content:space-between; align-items:center;">
                 <span>🛰️ MULTIVERSE CHAT</span>
-                <span style="font-size:10px; color:#aaa; cursor:pointer;" onclick="document.getElementById('p2p-chat-ui').remove()">❌</span>
+                <span id="p2p-chat-close" style="font-size:12px; color:#aaa; cursor:pointer; padding:5px;">▼ 閉じる</span>
             </div>
             <div id="p2p-chat-log" style="flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #fff;"></div>
-            <div style="padding: 10px; border-top: 1px dashed #00ffcc; display: flex; gap: 5px;">
-                <input type="text" id="p2p-chat-input" placeholder="メッセージ..." style="flex: 1; background: transparent; border: 1px solid #00ffcc; color: #fff; padding: 5px; border-radius: 4px; outline: none;">
-                <button id="p2p-chat-send" style="background: #00ffcc; color: #000; border: none; padding: 0 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">送信</button>
+            <div style="padding: 10px; border-top: 1px dashed #00ffcc; display: flex; gap: 5px; background:rgba(0,0,0,0.5);">
+                <input type="text" id="p2p-chat-input" placeholder="メッセージ..." style="flex: 1; background: transparent; border: 1px solid #00ffcc; color: #fff; padding: 8px; border-radius: 6px; outline: none;">
+                <button id="p2p-chat-send" style="background: #00ffcc; color: #000; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">送信</button>
             </div>
         `;
-
-        document.body.appendChild(ui);
+        document.body.appendChild(windowUi);
         this.chatLogEl = document.getElementById('p2p-chat-log');
+        this.unreadCount = 0;
+
+        // カプセルの開閉アクション
+        capsule.onclick = () => {
+            if (windowUi.style.display === 'none') {
+                windowUi.style.display = 'flex';
+                document.getElementById('p2p-unread').style.display = 'none';
+                this.unreadCount = 0;
+                document.getElementById('p2p-chat-input').focus();
+            } else {
+                windowUi.style.display = 'none';
+            }
+        };
+
+        document.getElementById('p2p-chat-close').onclick = () => {
+            windowUi.style.display = 'none';
+        };
 
         const sendBtn = document.getElementById('p2p-chat-send');
         const inputEl = document.getElementById('p2p-chat-input');
@@ -617,5 +660,16 @@ export class NexusP2P {
         msgDiv.innerHTML = `<div style="font-size:9px; color:${color}; margin-bottom:2px;">[${sender}]</div><div>${message}</div>`;
         this.chatLogEl.appendChild(msgDiv);
         this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
+
+        // ★ ウィンドウが閉じている時にメッセージが来たら赤いバッジを出す
+        const w = document.getElementById('p2p-chat-window');
+        if (w && w.style.display === 'none' && sender !== 'YOU' && sender !== 'SYSTEM') {
+            this.unreadCount++;
+            const badge = document.getElementById('p2p-unread');
+            if (badge) {
+                badge.innerText = this.unreadCount;
+                badge.style.display = 'inline-block';
+            }
+        }
     }
 }
