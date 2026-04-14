@@ -10,36 +10,36 @@ export class ChaosGen {
     static async expand(node, app) {
         if (!node || !node.name) return;
 
-        // ★ AIエンジンが起動しているかチェック
+        // AIエンジンが起動しているかチェック
         if (!NeuralCore.isReady) {
             alert("⚠️ 脳髄（AIコア）が起動していません。\nコントロールパネルの「創造」タブから「完全オフラインAIを構築」を実行してください。");
             return;
         }
 
         const originalName = node.name;
+        const originalColor = node.color;
         
         // 演出：AIが思考中のステータスに変更
         node.name = "🧠 解析・分岐中...";
-        const originalColor = node.color;
         node.color = "#ff00ff";
         app.autoSave();
         
         if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
         this.showToast(`🧠 「${originalName}」の可能性をAIが演算中...`, '#ff00ff');
 
-        // AIへの命令プロンプト（JSON形式で返すように厳しく指定）
+        // ★ AIへの命令をさらに厳格化
         const prompt = `
-        あなたは天才的なアイデア発想AIです。
-        以下の「元のデータ」から連想される【新しいアイデア】や【もしもの展開（IF分岐）】を、全く異なる視点から「3つ」考えてください。
-
-        【元のデータ】
+        あなたはアイデア発想AIです。以下のデータから連想される【新しいアイデア】や【IF展開】を「3つ」考えてください。
+        
+        【データ】
         タイトル: ${originalName}
-        詳細な記憶: ${node.note || 'なし'}
+        詳細: ${node.note || 'なし'}
 
-        【絶対のルール】
-        以下のJSONフォーマットの配列のみを出力してください。挨拶や説明など、JSON以外の文章は絶対に書かないでください。
+        【重要ルール】
+        必ず以下のJSON配列フォーマット「のみ」を出力してください。
+        マークダウン（\`\`\`json など）や説明文は絶対に書かないでください。
         [
-          { "name": "短い単語やタイトル", "note": "そのアイデアの詳しい説明や具体的な展開" },
+          { "name": "短い単語やタイトル", "note": "詳しい説明や展開" },
           { "name": "...", "note": "..." },
           { "name": "...", "note": "..." }
         ]
@@ -47,7 +47,7 @@ export class ChaosGen {
 
         try {
             const messages = [
-                { role: "system", content: "あなたはJSONフォーマットのみを出力するシステムプログラムです。" },
+                { role: "system", content: "あなたはJSON配列のみを出力するシステムです。説明文やマークダウンは一切出力しません。" },
                 { role: "user", content: prompt }
             ];
 
@@ -59,13 +59,33 @@ export class ChaosGen {
             });
 
             let answer = reply.choices[0].message.content;
-            
-            // ローカルLLM特有の「余計な文章」を取り除き、JSON部分だけを抽出するハック
-            const jsonMatch = answer.match(/\[[\s\S]*\]/);
-            if (!jsonMatch) throw new Error("AIの思考が乱れました（JSONフォーマットエラー）。");
-            
-            const generatedTerms = JSON.parse(jsonMatch[0]);
+            console.log("🤖 AI Raw Output:", answer); // デバッグ用：AIの生の返答をコンソールに出力
 
+            // ★ 強力なJSONクレンジング処理
+            // AIが勝手に付けた ```json などのマークダウンを取り除く
+            answer = answer.replace(/```json/gi, "").replace(/```/g, "").trim();
+            
+            // 最初の [ から 最後の ] までを強制的に切り抜く
+            const startIndex = answer.indexOf('[');
+            const endIndex = answer.lastIndexOf(']');
+            
+            if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
+                throw new Error("AIが配列フォーマット( [ ] )を返しませんでした。");
+            }
+            
+            const jsonString = answer.substring(startIndex, endIndex + 1);
+            
+            let generatedTerms;
+            try {
+                // 切り抜いた文字列をJavaScriptのデータに変換
+                generatedTerms = JSON.parse(jsonString);
+            } catch (parseError) {
+                console.error("Parse Error Detail:", parseError, "Target String:", jsonString);
+                throw new Error("AIの返答に文法エラーが含まれています。");
+            }
+
+            // --- ここから下は成功時の処理 ---
+            
             // 親星の名前と色を元に戻し、拡張完了の証としてゴールドにする
             node.name = originalName;
             node.color = "#ffcc00"; 
@@ -108,10 +128,11 @@ export class ChaosGen {
 
         } catch (err) {
             console.error(err);
-            node.name = originalName; // エラー時は名前を元に戻す
+            // エラー時は元の名前に戻す
+            node.name = originalName; 
             node.color = originalColor;
             app.autoSave();
-            alert(`🚨 思考拡張エラー:\n${err.message}\n（※AIがJSON形式で返答しなかった可能性があります。もう一度試してください）`);
+            alert(`🚨 思考拡張エラー:\n${err.message}\n（※AIの出力が乱れました。もう一度ボタンを押すと成功しやすいです！）`);
         }
     }
 
