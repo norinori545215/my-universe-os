@@ -88,6 +88,12 @@ export class Hyper3D {
         this.resizeHandler = () => this.resize();
         window.addEventListener('resize', this.resizeHandler);
         
+        // ★ 修正箇所：関数をクラス(this)に紐付ける（バインド）
+        // これがなかったため、クリックしてもonPointerDownが発動していませんでした！
+        this.pointerDown = this.onPointerDown.bind(this);
+        this.pointerMove = this.onPointerMove.bind(this);
+        this.pointerUp = this.onPointerUp.bind(this);
+
         this.canvas.addEventListener('pointerdown', this.pointerDown);
         window.addEventListener('pointermove', this.pointerMove);
         window.addEventListener('pointerup', this.pointerUp);
