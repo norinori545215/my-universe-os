@@ -3,9 +3,10 @@ import { BioAuth } from '../security/BioAuth.js';
 
 export class VIPInvite {
     // ★ 開発者（あなた）だけが知るマスターキー。
-    // この鍵で署名されたチケットだけをOSは「本物」と認識します。
-    // （※本来は .env 等で管理しますが、デモとして強力な乱数文字列を定義）
     static MASTER_SECRET = "CYBER-NEXUS-OS-GOD-KEY-999-ULTIMATE";
+    
+    // ★ 開発者の特権Email
+    static ADMIN_EMAIL = "tokimogulife_0313@yahoo.co.jp";
 
     /**
      * 【開発者用】指定した権限と日数の暗号化チケットを生成する
@@ -52,13 +53,25 @@ export class VIPInvite {
             return;
         }
 
-        const code = prompt("【機密アクセス】招待コードを入力してください：\n（※開発者専用コンソールを開くにはマスターキーを入力）");
+        const code = prompt("【機密アクセス】招待コードを入力してください：\n（※開発者専用コンソールを開くにはマスターコマンドを入力）");
         if (!code) return;
 
-        // ★ 隠しコマンド：マスターキーを直接入力した時だけ、開発者用コンソール（GOD MODE）を開く
+        // ★ 隠しコマンド：マスターキーまたはGODと入力した場合
         if (code === this.MASTER_SECRET || code === "GOD") {
-            const { AdminUI } = await import('../ui/AdminUI.js');
-            AdminUI.open(app);
+            if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+            
+            // ★ Emailによる特権IDチェックを追加
+            const email = prompt("👁️ [GOD AUTHENTICATION]\n開発者権限を要求します。\nAdmin Emailを入力してください:");
+            
+            if (email === this.ADMIN_EMAIL) {
+                // Emailが一致した場合のみコンソールを開く
+                const { AdminUI } = await import('../ui/AdminUI.js');
+                AdminUI.open(app);
+            } else {
+                // 一致しない場合は強制排除
+                if (window.universeAudio) window.universeAudio.playSystemSound(100, 'sawtooth', 0.5);
+                alert("❌ 認証失敗: 創造主のID（Email）と一致しません。アクセスを拒否しました。");
+            }
             return;
         }
 
