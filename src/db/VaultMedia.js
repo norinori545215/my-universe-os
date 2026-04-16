@@ -3,6 +3,15 @@
 export class VaultMedia {
     static dbName = 'MyUniverse_Vault';
     static storeName = 'EncryptedMedia';
+    static worker = null;
+
+    // Workerの初期化（シングルトン）
+    static getWorker() {
+        if (!this.worker) {
+            this.worker = new Worker(new URL('./VaultWorker.js', import.meta.url), { type: 'module' });
+        }
+        return this.worker;
+    }
 
     static async initDB() {
         return new Promise((resolve, reject) => {
@@ -18,61 +27,45 @@ export class VaultMedia {
         });
     }
 
-    static async generateKey() {
-        return await crypto.subtle.generateKey(
-            { name: "AES-GCM", length: 256 },
-            true,
-            ["encrypt", "decrypt"]
-        );
-    }
-
     static async storeMedia(file, node) {
-        const db = await this.initDB();
-        const arrayBuffer = await file.arrayBuffer();
-        
-        const key = await this.generateKey();
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        
-        const encryptedData = await crypto.subtle.encrypt(
-            { name: "AES-GCM", iv: iv },
-            key,
-            arrayBuffer
-        );
-
-        const exportedKey = await crypto.subtle.exportKey("jwk", key);
+        const worker = this.getWorker();
         const mediaId = 'media_' + crypto.randomUUID();
 
         return new Promise((resolve, reject) => {
-            const transaction = db.transaction(this.storeName, 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-            
-            // ★ ArrayBufferのまま安全にIndexedDBへ秘匿保存
-            const request = store.put({
-                id: mediaId,
-                data: encryptedData,
-                iv: iv,
-                mimeType: file.type
-            });
-
-            request.onsuccess = () => {
-                if (!node.vault) node.vault = [];
-                // ★ V2拡張：ファイル名と種類、サイズも星に記憶させる
-                node.vault.push({
-                    id: mediaId,
-                    key: exportedKey,
-                    name: file.name,
-                    type: file.type || 'application/octet-stream',
-                    size: file.size
-                });
-                resolve(mediaId);
+            // Workerからの返答を待つ
+            const handleMessage = (e) => {
+                if (e.data.mediaId !== mediaId) return; // 別のタスクの返答なら無視
+                
+                if (e.data.status === 'SUCCESS') {
+                    if (!node.vault) node.vault = [];
+                    // 重いデータはDBに入ったので、星には「鍵とメタデータ」だけを持たせる
+                    node.vault.push({
+                        id: mediaId,
+                        key: e.data.exportedKey,
+                        name: file.name,
+                        type: file.type || 'application/octet-stream',
+                        size: file.size
+                    });
+                    worker.removeEventListener('message', handleMessage);
+                    resolve(mediaId);
+                } else {
+                    worker.removeEventListener('message', handleMessage);
+                    reject(new Error(e.data.error));
+                }
             };
-            request.onerror = () => reject(request.error);
+
+            worker.addEventListener('message', handleMessage);
+
+            // Workerへファイルをぶん投げる（UIフリーズ回避）
+            worker.postMessage({ action: 'ENCRYPT_AND_STORE', file, mediaId });
         });
     }
 
+    // retrieveMedia と purgeMedia, deleteMedia はIndexedDBからの読み取り・削除なので
+    // 現状の VaultMedia.js のコード（前回のもの）をそのまま残してください。
+    
     static async retrieveMedia(mediaMeta) {
         const db = await this.initDB();
-        
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(this.storeName, 'readonly');
             const store = transaction.objectStore(this.storeName);
@@ -81,25 +74,14 @@ export class VaultMedia {
             request.onsuccess = async () => {
                 const record = request.result;
                 if (!record) return resolve(null);
-
                 try {
                     const key = await crypto.subtle.importKey(
-                        "jwk",
-                        mediaMeta.key,
-                        { name: "AES-GCM" },
-                        true,
-                        ["decrypt"]
+                        "jwk", mediaMeta.key, { name: "AES-GCM" }, true, ["decrypt"]
                     );
-
                     const decryptedData = await crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv: record.iv },
-                        key,
-                        record.data
+                        { name: "AES-GCM", iv: record.iv }, key, record.data
                     );
-
                     const blob = new Blob([decryptedData], { type: record.mimeType || mediaMeta.type });
-                    
-                    // ★ V2拡張：URLだけでなく、メタデータも一緒に返す
                     resolve({
                         url: URL.createObjectURL(blob),
                         name: mediaMeta.name || 'encrypted_data.bin',
@@ -119,12 +101,10 @@ export class VaultMedia {
         const db = await this.initDB();
         const transaction = db.transaction(this.storeName, 'readwrite');
         const store = transaction.objectStore(this.storeName);
-        
         node.vault.forEach(meta => store.delete(meta.id));
         node.vault = [];
     }
 
-    // ★ 追加：特定のメディア実体をIndexedDBから完全に物理消去する
     static async deleteMedia(mediaId) {
         const db = await this.initDB();
         return new Promise((resolve, reject) => {

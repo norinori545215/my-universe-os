@@ -22,6 +22,7 @@ import { SpatialVision } from '../engine/SpatialVision.js';
 import { NexusP2P } from '../api/NexusP2P.js'; 
 import { FileSystemBridge } from '../api/FileSystemBridge.js';
 import { NeuralCore } from '../ai/NeuralCore.js'; 
+import { PanicWipe } from '../security/PanicWipe.js'; // ★ 追加：パニックプロトコル
 
 export class UIManager {
     constructor(app) {
@@ -30,7 +31,7 @@ export class UIManager {
         
         this.lockUI = new LockUI(app, (type) => {
             if (type === 'panic') {
-                this.triggerPanic();
+                this.triggerPanic(); // パスワードによる手動パージ
             } else if (type === 'dummy') {
                 this.triggerDummyUniverse();
             }
@@ -73,6 +74,11 @@ export class UIManager {
         
         window.addEventListener('click', () => Chronos.updatePulse(), { passive: true });
         window.addEventListener('keydown', () => Chronos.updatePulse(), { passive: true });
+
+        // ★ 起動時にパニックプロトコルがONになっていれば再武装
+        if (localStorage.getItem('universe_panic_armed') === 'true') {
+            setTimeout(() => PanicWipe.arm(this.app), 1000);
+        }
 
         setTimeout(() => {
             const oldLogout = document.getElementById('btn-logout');
@@ -264,6 +270,7 @@ export class UIManager {
         }
     }
 
+    // パスワードによる手動パージ
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -290,6 +297,11 @@ export class UIManager {
         
         this.app.autoSave();
         this.updateBreadcrumbs();
+        
+        // RAMパージしてGoogleへ飛ぶ処理
+        sessionStorage.clear();
+        localStorage.removeItem('my_universe_save_data');
+        window.location.replace("https://www.google.com");
     }
 
     triggerDummyUniverse() {
@@ -408,7 +420,15 @@ export class UIManager {
                         </div>
                     </div>
 
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                    <div style="border: 1px solid rgba(255, 0, 0, 0.3); padding: 10px; border-radius: 8px; background: rgba(255,0,0,0.05);">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ff4444;">
+                            <input type="checkbox" id="cp-panic-armed" ${localStorage.getItem('universe_panic_armed') === 'true' ? 'checked' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
+                            <b>🚨 物理パニック (振ると自爆)</b>
+                        </label>
+                        <div style="font-size:10px; color:#ff8888; margin: 8px 0 0 26px;">ONにすると、スマホやPCを激しく振った瞬間に全データをパージしてGoogleへ強制遷移します。</div>
+                    </div>
+
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; margin-top:10px;">
                         <input type="checkbox" id="cp-ext-mobile" ${this.state.isMobileMode?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
                         <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
                     </label>
@@ -463,11 +483,11 @@ export class UIManager {
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
                 <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
 
-                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 自爆)</div>
+                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                     <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
                     <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
-                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">自爆コード (Panic) を設定</button>
+                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">手動自爆コード (Panic) を設定</button>
                 </div>
                 
                 <div style="margin-top:30px;">
@@ -574,6 +594,20 @@ export class UIManager {
             chronosDays.oninput = updateChronos;
         }
         
+        // ★ パニック武装のスイッチ連動
+        const panicArmed = document.getElementById('cp-panic-armed');
+        if (panicArmed) {
+            panicArmed.onchange = (e) => {
+                const isArmed = e.target.checked;
+                localStorage.setItem('universe_panic_armed', isArmed);
+                if (isArmed) {
+                    PanicWipe.arm(this.app);
+                } else {
+                    PanicWipe.disarm();
+                }
+            };
+        }
+
         const extMobile = document.getElementById('cp-ext-mobile');
         if(extMobile) extMobile.onchange = (e) => { 
             localStorage.setItem('universe_mobile_mode', e.target.checked); 
@@ -984,11 +1018,9 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // ★ 修正：リロード時のワームホール記憶喪失バグを完全に防ぐ
         if (node.isWormhole || node.name === '🌐 P2P WORMHOLE' || (node.url && node.url.startsWith('p2p://'))) {
-            node.isWormhole = true; // フラグを強制復元
+            node.isWormhole = true; 
 
-            // URLからIDとPWを復元
             if (node.url && node.url.startsWith('p2p://')) {
                 const parts = node.url.replace('p2p://', '').split(':');
                 node.p2pRoomId = parts[0];
@@ -1007,13 +1039,12 @@ export class UIManager {
             this.hideQuickNote();
             this.hideMenu();
             if (NexusP2P && NexusP2P.openWormholeMenu) {
-                NexusP2P.app = this.app; // アプリの参照を確実に渡す
+                NexusP2P.app = this.app; 
                 NexusP2P.openWormholeMenu(node, this);
             }
             return;
         }
 
-        // --- 以下は通常の星の処理 ---
         if (this.state.isRapidDeleteMode) {
             const idx = this.app.currentUniverse.nodes.indexOf(node);
             if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
@@ -1021,7 +1052,7 @@ export class UIManager {
             this.app.blackHole.push(node);
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playDelete();
-            if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
+            if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); 
             return;
         }
 
