@@ -10,32 +10,28 @@ import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/fireba
 import { LoginGateway } from './security/LoginGateway.js';
 
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log("マルチバース・システム初期化...");
+    console.log("システム初期化...");
 
-    // ★ ステップ1：ログインゲートウェイを起動して認証を待つ
+    // ★ ここでログイン画面を立ち上げ、ユーザーが認証を突破するまで進行を止める
     try {
-        // ここでパスワード＆生体認証のUIが立ち上がり、成功するまで進行が止まる
         const userRole = await LoginGateway.boot();
-        console.log(`[ACCESS GRANTED] Role: ${userRole}`);
+        console.log(`[ACCESS GRANTED] 権限: ${userRole}`);
     } catch (e) {
-        console.error("認証フローが中断されました", e);
-        return; // 認証失敗・キャンセルの場合は起動させない
+        console.error("認証キャンセル", e);
+        return; // 認証に失敗したらOSは起動させない
     }
 
-    // ★ ステップ2：認証成功後、OSエンジンを起動する
+    // --- 認証突破後、はじめてOS（宇宙）を描画する ---
     console.log("マルチバース・エンジン起動...");
     
-    // new CanvasBuilder を変数 app に格納
     const app = new CanvasBuilder('universe-canvas'); 
     
     new CognitiveShield(); 
     GlitchEngine.toggleCRT(true); 
     
-    // バックグラウンドでAIエンティティの思考ループを開始
     WanderingEntities.start(app); 
 });
 
-// ★ どこからでも呼び出せる「完全消去魔法（ビッグバン）」
 window.resetUniverseData = async () => {
     const confirmReset = confirm("本当に宇宙を完全に初期化しますか？\n（クラウドの星もすべて消え去り、元には戻せません！）");
     if (!confirmReset) return;
@@ -44,12 +40,9 @@ window.resetUniverseData = async () => {
         const user = auth.currentUser;
         if (user) {
             await deleteDoc(doc(db, "universes", user.uid));
-            console.log("☁️ クラウドデータを消去しました");
         }
 
         localStorage.clear();
-        console.log("💻 ローカルデータを消去しました");
-
         alert("宇宙の初期化が完了しました。新たなビッグバンを起こします！");
         window.location.reload();
     } catch (error) {
