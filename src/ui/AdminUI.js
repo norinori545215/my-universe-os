@@ -2,7 +2,7 @@
 import { VIPInvite } from '../billing/VIPInvite.js';
 
 export class AdminUI {
-    static open(app) {
+    static open() {
         if (document.getElementById('admin-console-ui')) return;
 
         const ui = document.createElement('div');
@@ -68,7 +68,6 @@ export class AdminUI {
             const tier = document.querySelector('input[name="admin-tier"]:checked').value;
             const days = parseInt(document.getElementById('admin-days').value, 10);
             
-            // VIPInviteの暗号化ジェネレーターを呼び出す
             const ticketCode = await VIPInvite.generateTicket(tier, days);
             
             const outContainer = document.getElementById('admin-output-container');

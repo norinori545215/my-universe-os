@@ -31,7 +31,7 @@ export class UIManager {
         
         this.lockUI = new LockUI(app, (type) => {
             if (type === 'panic') {
-                this.triggerPanic();
+                this.triggerPanic(); // パスワードによる手動パージ
             } else if (type === 'dummy') {
                 this.triggerDummyUniverse();
             }
@@ -75,6 +75,7 @@ export class UIManager {
         window.addEventListener('click', () => Chronos.updatePulse(), { passive: true });
         window.addEventListener('keydown', () => Chronos.updatePulse(), { passive: true });
 
+        // ★ 起動時にパニックプロトコルがONになっていれば再武装
         if (localStorage.getItem('universe_panic_armed') === 'true') {
             setTimeout(() => PanicWipe.arm(this.app), 1000);
         }
@@ -269,6 +270,7 @@ export class UIManager {
         }
     }
 
+    // パスワードによる手動パージ
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -296,6 +298,7 @@ export class UIManager {
         this.app.autoSave();
         this.updateBreadcrumbs();
         
+        // RAMパージしてGoogleへ飛ぶ処理
         sessionStorage.clear();
         localStorage.removeItem('my_universe_save_data');
         window.location.replace("https://www.google.com");
@@ -334,9 +337,9 @@ export class UIManager {
     }
 
     renderCP() {
-        // ★ VIPInviteの機能を使って、現在の権限（PRO/NORMAL/GUEST）を取得
-        const currentTier = localStorage.getItem('universe_vip_tier') || 'GUEST';
-        const isPro = currentTier === 'PRO';
+        // ★ Gateway等で設定された現在の権限（PRO/NORMAL/GUEST/ADMIN）を取得
+        const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN';
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -344,7 +347,7 @@ export class UIManager {
         this.controlPanel.innerHTML = `
             <div style="display:flex; justify-content:space-between; padding: 10px; background:#111; border-bottom:1px solid #333;">
                 <div style="font-size:10px; color:${isPro ? '#ff4444' : '#888'}; font-weight:bold;">
-                    LICENSE: ${currentTier}
+                    LICENSE: ${currentRole}
                 </div>
                 <button id="cp-close" style="background:transparent; border:none; color:#ff4444; font-size:16px; cursor:pointer; line-height:1;">×</button>
             </div>
@@ -408,6 +411,7 @@ export class UIManager {
                 <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
             `;
         } else if (this.state.activeTab === 'config') {
+            
             const chronosCfg = Chronos.getConfig(); 
 
             // ★ PRO権限がない場合はロック画面を表示する！
@@ -425,7 +429,7 @@ export class UIManager {
                     </div>
                 `;
             } else {
-                content.innerHTML = `
+                let html = `
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
                     <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                         
@@ -509,7 +513,17 @@ export class UIManager {
                         <div style="font-size:11px; color:#ff88ff; margin-bottom:10px;">招待コードをこの端末の指紋/顔認証と物理的に紐付けます。</div>
                         <button id="cp-btn-vip" style="width:100%; padding:10px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer;">🔑 VIPコードを入力して生体バインド</button>
                     </div>
+                `;
 
+                // ★ ADMIN（開発者）だった場合だけ、このボタンを追記する
+                if (currentRole === 'ADMIN') {
+                    html += `
+                    <div style="margin-top:20px; font-size:11px; color:#ff0000; margin-bottom:10px; letter-spacing:1px;">👁️ GOD MODE (開発者専用)</div>
+                    <button id="cp-btn-admin-console" style="width:100%; padding:12px; background:#440000; color:#ff4444; border:1px solid #ff0000; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🩸 VIPチケット発行コンソールを開く</button>
+                    `;
+                }
+
+                html += `
                     <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
                     <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                         <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
@@ -525,6 +539,7 @@ export class UIManager {
                         </div>
                     </div>
                 `;
+                content.innerHTML = html;
             }
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
@@ -706,6 +721,15 @@ export class UIManager {
             btnVip.onclick = async () => {
                 const { VIPInvite } = await import('../billing/VIPInvite.js');
                 await VIPInvite.processInvite(this.app);
+            };
+        }
+
+        // ★ ADMIN（開発者）専用のGOD CONSOLE
+        const adminBtn = document.getElementById('cp-btn-admin-console');
+        if (adminBtn) {
+            adminBtn.onclick = async () => {
+                const { AdminUI } = await import('./AdminUI.js');
+                AdminUI.open(this.app);
             };
         }
 
