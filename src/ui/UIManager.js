@@ -483,6 +483,12 @@ export class UIManager {
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
                 <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
 
+                <div style="margin-top:20px; font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px;">🧬 ACCESS & BINDING (WebAuthn)</div>
+                <div style="background:rgba(255,0,255,0.05); border:1px dashed rgba(255,0,255,0.3); padding:15px; border-radius:10px;">
+                    <div style="font-size:11px; color:#ff88ff; margin-bottom:10px;">招待コードをこの端末の指紋/顔認証と物理的に紐付けます。</div>
+                    <button id="cp-btn-vip" style="width:100%; padding:10px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer;">🔑 VIPコードを入力して生体バインド</button>
+                </div>
+
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                     <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
@@ -662,6 +668,13 @@ export class UIManager {
                 localStorage.setItem('universe_panic_code', newCode.trim());
                 alert("自爆コードを設定しました。取扱注意！");
             }
+        });
+
+        // ★ 追加：VIP生体バインディングのイベント
+        bind('cp-btn-vip', async () => {
+            const { VIPInvite } = await import('../billing/VIPInvite.js');
+            await VIPInvite.processInvite(this.app);
+            this.controlPanel.style.display = 'none';
         });
 
         bind('cp-spawn-btn', () => {
