@@ -246,6 +246,30 @@ export class UIManager {
             if (this.isCapsuleDragged()) return;
             this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
+
+        // ★ ADMIN（開発者）のみ、宇宙空間に独立したアプリ（星）を召喚する
+        const currentRole = localStorage.getItem('universe_role');
+        if (currentRole === 'ADMIN') {
+            this.spawnGodAppNode();
+        }
+    }
+
+    spawnGodAppNode() {
+        const godNodeId = 'SYSTEM_ADMIN_CORE';
+        const existingNode = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
+        
+        if (!existingNode) {
+            const godNode = {
+                id: godNodeId,
+                name: '👁️ GOD CONSOLE',
+                x: 0, y: -150, 
+                size: 45,
+                color: '#ff0000',
+                shape: 'rect', 
+                isSystem: true // 削除・移動不可にするためのフラグ（既存ロジックが許せば）
+            };
+            this.app.currentUniverse.nodes.push(godNode);
+        }
     }
 
     toggleTimeMachine() {
@@ -337,7 +361,7 @@ export class UIManager {
     }
 
     renderCP() {
-        // ★ Gateway等で設定された現在の権限（PRO/NORMAL/GUEST/ADMIN）を取得
+        // ★ Gatewayで設定された現在の権限を取得
         const currentRole = localStorage.getItem('universe_role') || 'GUEST';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN';
 
@@ -369,7 +393,7 @@ export class UIManager {
                             📱 <b>Liteモード稼働中</b><br>モード切替は不要です。星をタップするとメニューが表示されます。
                         </div>
                     ` : `
-                        <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODE SELECT (Pro)</div>
+                        <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">MODE SELECT</div>
                         <div style="display:flex; gap:5px; margin-bottom:20px;">
                             <button id="cp-mode-run" style="flex:1; padding:10px; background:${this.app.appMode==='RUN'?'#00ffcc':'#113344'}; color:${this.app.appMode==='RUN'?'#000':'#fff'}; border:none; border-radius:6px; font-size:12px; font-weight:bold; transition:0.2s;">👆 実行</button>
                             <button id="cp-mode-link" style="flex:1; padding:10px; background:${this.app.appMode==='LINK'?'#ff00ff':'#113344'}; color:#fff; border:none; border-radius:6px; font-size:12px; transition:0.2s;">🔗 結ぶ</button>
@@ -414,22 +438,19 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
 
-            // ★ PRO権限がない場合はロック画面を表示する！
+            // ★ PRO権限がない場合は設定画面をロック
             if (!isPro) {
                 content.innerHTML = `
                     <div style="text-align:center; padding: 40px 10px;">
                         <div style="font-size:30px; margin-bottom:15px;">🔒</div>
                         <div style="color:#ff4444; font-weight:bold; font-size:14px; margin-bottom:10px; letter-spacing:2px;">PRO LICENSE REQUIRED</div>
                         <div style="color:#aaa; font-size:11px; line-height:1.6; margin-bottom:20px;">
-                            防壁プロトコル、空間拡張、及びP2PネットワークへのアクセスはPRO版のライセンスが必要です。開発者からチケットを取得してください。
+                            防壁プロトコル、空間拡張、及びP2PネットワークへのアクセスはPRO版のライセンスが必要です。<br>開発者からチケットを取得してください。
                         </div>
-                        <button id="cp-btn-vip-unlock" style="width:100%; padding:12px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">
-                            🔑 VIPコードを入力してロック解除
-                        </button>
                     </div>
                 `;
             } else {
-                let html = `
+                content.innerHTML = `
                     <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
                     <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                         
@@ -508,22 +529,6 @@ export class UIManager {
                     <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
                     <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
 
-                    <div style="margin-top:20px; font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px;">🧬 ACCESS & BINDING (WebAuthn)</div>
-                    <div style="background:rgba(255,0,255,0.05); border:1px dashed rgba(255,0,255,0.3); padding:15px; border-radius:10px;">
-                        <div style="font-size:11px; color:#ff88ff; margin-bottom:10px;">招待コードをこの端末の指紋/顔認証と物理的に紐付けます。</div>
-                        <button id="cp-btn-vip" style="width:100%; padding:10px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer;">🔑 VIPコードを入力して生体バインド</button>
-                    </div>
-                `;
-
-                // ★ ADMIN（開発者）だった場合だけ、このボタンを追記する
-                if (currentRole === 'ADMIN') {
-                    html += `
-                    <div style="margin-top:20px; font-size:11px; color:#ff0000; margin-bottom:10px; letter-spacing:1px;">👁️ GOD MODE (開発者専用)</div>
-                    <button id="cp-btn-admin-console" style="width:100%; padding:12px; background:#440000; color:#ff4444; border:1px solid #ff0000; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🩸 VIPチケット発行コンソールを開く</button>
-                    `;
-                }
-
-                html += `
                     <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
                     <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                         <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
@@ -539,7 +544,6 @@ export class UIManager {
                         </div>
                     </div>
                 `;
-                content.innerHTML = html;
             }
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
@@ -706,33 +710,9 @@ export class UIManager {
             }
         });
 
-        // ★ VIPアンロック用
-        const btnVipUnlock = document.getElementById('cp-btn-vip-unlock');
-        if (btnVipUnlock) {
-            btnVipUnlock.onclick = async () => {
-                const { VIPInvite } = await import('../billing/VIPInvite.js');
-                await VIPInvite.processInvite(this.app);
-            };
-        }
-
-        // ★ PRO版のVIPバインド追加用
-        const btnVip = document.getElementById('cp-btn-vip');
-        if (btnVip) {
-            btnVip.onclick = async () => {
-                const { VIPInvite } = await import('../billing/VIPInvite.js');
-                await VIPInvite.processInvite(this.app);
-            };
-        }
-
-        // ★ ADMIN（開発者）専用のGOD CONSOLE
-        const adminBtn = document.getElementById('cp-btn-admin-console');
-        if (adminBtn) {
-            adminBtn.onclick = async () => {
-                const { AdminUI } = await import('./AdminUI.js');
-                AdminUI.open(this.app);
-            };
-        }
-
+        // ★ クリックでGOD CONSOLE星を出現（デスクトップアプリ）
+        const godAppNodeId = 'SYSTEM_ADMIN_CORE';
+        
         bind('cp-spawn-btn', () => {
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
@@ -1087,6 +1067,14 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
+        // ★ クリックされたのがGOD CONSOLEなら、メニューを出さずにAdminUIを開く
+        if (node.id === 'SYSTEM_ADMIN_CORE') {
+            import('./AdminUI.js').then(({ AdminUI }) => {
+                AdminUI.open(this.app);
+            });
+            return;
+        }
+
         if (node.isWormhole || node.name === '🌐 P2P WORMHOLE' || (node.url && node.url.startsWith('p2p://'))) {
             node.isWormhole = true; 
 
