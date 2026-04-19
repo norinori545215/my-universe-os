@@ -4,7 +4,7 @@ import { CognitiveShield } from './engine/CognitiveShield.js';
 import { GlitchEngine } from './engine/GlitchEngine.js'; 
 import { WanderingEntities } from './ai/WanderingEntities.js';
 import { auth, db } from './security/Auth.js';
-import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ★ インポート
 import { LoginGateway } from './security/LoginGateway.js';
@@ -22,10 +22,7 @@ window.startUniverseOS = (role) => {
     const app = new CanvasBuilder('universe-canvas'); 
     
     new CognitiveShield(); 
-    
-    // ★ 修正箇所：余計なブラウン管ノイズ（CRTエフェクト）を完全にOFFにしました
     GlitchEngine.toggleCRT(false); 
-    
     WanderingEntities.start(app); 
 };
 
@@ -69,5 +66,44 @@ window.resetUniverseData = async () => {
     } catch (error) {
         console.error("消去エラー:", error);
         alert("データの消去中にエラーが発生しました。");
+    }
+};
+
+// =========================================================================
+// ★ データ復旧ツール：過去のローカルバックアップからクラウドへデータを強制移植する
+// =========================================================================
+window.rescueLostData = async () => {
+    const backupData = localStorage.getItem('universe_backup_before_wipe') || localStorage.getItem('my_universe_save_data');
+    
+    if (!backupData) {
+        alert("⚠️ ローカルに復旧可能なデータ（バックアップ）が見つかりませんでした。\nすでに別の端末やブラウザに移動してしまった可能性があります。");
+        return;
+    }
+
+    if (confirm("ローカルに残っている過去のデータを、現在の開発者アカウントに強制移植（上書き復元）しますか？")) {
+        try {
+            const parsedData = JSON.parse(backupData);
+            const user = auth.currentUser;
+            
+            if (!user) {
+                alert("⚠️ ログインしていません。開発者アカウントでログインしてから実行してください。");
+                return;
+            }
+
+            // クラウド上のデータを過去のバックアップで上書き
+            await setDoc(doc(db, "universes", user.uid), {
+                encryptedData: backupData,
+                updatedAt: new Date().toISOString()
+            });
+
+            // 現在のセッションデータも書き換え
+            sessionStorage.setItem('my_universe_save_data', backupData);
+            
+            alert("✅ データの復旧（移植）に成功しました！\nOSを再起動します。");
+            window.location.reload();
+            
+        } catch (e) {
+            alert(`🚨 復旧エラー: ${e.message}`);
+        }
     }
 };
