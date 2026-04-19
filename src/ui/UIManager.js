@@ -432,7 +432,7 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
 
-            // ★ RESTRICTED（新規ユーザー）の場合はロック画面を表示する
+            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示する
             if (!isPro) {
                 content.innerHTML = `
                     <div style="text-align:center; padding: 40px 10px;">
@@ -779,6 +779,7 @@ export class UIManager {
             try {
                 const { VIPInvite } = await import('../billing/VIPInvite.js');
                 const payload = await VIPInvite.verifyTicket(code);
+                // データベースと同期するロジック（簡易版：まずはローカルをPROに書き換え）
                 localStorage.setItem('universe_role', payload.t);
                 alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
                 window.location.reload();
@@ -1124,7 +1125,6 @@ export class UIManager {
         if (node.id === 'SYSTEM_ADMIN_CORE') {
             import('./AdminPortal.js').then(({ AdminPortal }) => {
                 AdminPortal.render(() => {
-                    // ポータルを閉じた時のコールバック
                     if(window.universeAudio) window.universeAudio.playWarp();
                 });
             });

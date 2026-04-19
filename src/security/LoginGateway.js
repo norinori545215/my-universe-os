@@ -1,10 +1,9 @@
 // src/security/LoginGateway.js
 import { BioAuth } from './BioAuth.js';
 import { VIPInvite } from '../billing/VIPInvite.js';
-import { AdminPortal } from '../ui/AdminPortal.js';
 import { auth, db } from './Auth.js';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class LoginGateway {
     static ADMIN_EMAIL = "tokimogulife_0313@yahoo.co.jp";
@@ -37,7 +36,7 @@ export class LoginGateway {
                     if(confirm("ローカルデータを消去して初期化しますか？")) { localStorage.clear(); sessionStorage.clear(); window.location.reload(); }
                 };
             } 
-            // 【初回】Email / PW ログイン画面（元のUIを完全復元）
+            // 【初回】Email / PW または VIPコードのUI
             else {
                 this.renderLoginForm(ui, resolve);
             }
@@ -72,70 +71,97 @@ export class LoginGateway {
         document.getElementById('toggle-vip').onclick = () => { modeEmail.style.display = 'none'; modeVip.style.display = 'block'; };
         document.getElementById('toggle-email').onclick = () => { modeVip.style.display = 'none'; modeEmail.style.display = 'block'; };
 
-        // ★ Emailとパスワードでの本物のログイン・登録処理
+        // ★ Firebaseを用いた「本物の」Emailログイン/登録処理
         document.getElementById('gate-enter').onclick = async () => {
             const email = document.getElementById('gate-email').value.trim();
             const pass = document.getElementById('gate-pass').value.trim();
             if (!email || !pass) return alert("Emailとパスワードを入力してください");
 
-            document.getElementById('gate-enter').innerText = "認証中...";
-            document.getElementById('gate-enter').disabled = true;
+            const btn = document.getElementById('gate-enter');
+            btn.innerText = "認証中...";
+            btn.disabled = true;
 
             let role = 'RESTRICTED';
-            let userUid = null;
 
-            if (email === this.ADMIN_EMAIL) {
-                // ① 開発者ログイン
-                try {
+            try {
+                if (email === this.ADMIN_EMAIL) {
+                    // ① 開発者のログイン
                     await signInWithEmailAndPassword(auth, email, pass);
                     role = 'ADMIN';
-                } catch (e) {
-                    alert("開発者のパスワードが違います。");
-                    document.getElementById('gate-enter').innerText = "ログイン / 新規登録";
-                    document.getElementById('gate-enter').disabled = false;
-                    return;
-                }
-            } else {
-                // ② 一般ユーザー（既存・新規）の判定
-                try {
-                    // まずログインを試みる（既存ユーザー）
-                    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-                    userUid = userCredential.user.uid;
-                    role = 'PRO'; // これまで登録を完了している人はPRO機能利用可能
-                } catch (error) {
-                    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-                        // ユーザーが存在しない場合、新規登録する（新規ユーザー）
-                        try {
-                            const newCredential = await createUserWithEmailAndPassword(auth, email, pass);
-                            userUid = newCredential.user.uid;
-                            role = 'RESTRICTED'; // これまで登録を完了していない人は制限機能
-                        } catch (regError) {
-                            alert(`登録エラー: ${regError.message}`);
-                            document.getElementById('gate-enter').innerText = "ログイン / 新規登録";
-                            document.getElementById('gate-enter').disabled = false;
-                            return;
+                } else {
+                    try {
+                        // ② 既存ユーザーのログイン試行
+                        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+                        const user = userCredential.user;
+                        
+                        // データベースから権限を読み込む
+                        const userDoc = await getDoc(doc(db, "users", user.uid));
+                        if (userDoc.exists()) {
+                            role = userDoc.data().role || 'PRO';
+                        } else {
+                            // 万が一DBにデータがない古いユーザーの場合はPROとしてDBを作成
+                            role = 'PRO';
+                            await setDoc(doc(db, "users", user.uid), { role: 'PRO', createdAt: serverTimestamp() });
                         }
-                    } else {
-                        alert(`ログインエラー: パスワードが違うか、ネットワークに問題があります。`);
-                        document.getElementById('gate-enter').innerText = "ログイン / 新規登録";
-                        document.getElementById('gate-enter').disabled = false;
-                        return;
+
+                    } catch (error) {
+                        // ③ ユーザーが存在しない場合（新規ユーザー登録）
+                        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                            const newCredential = await createUserWithEmailAndPassword(auth, email, pass);
+                            const newUser = newCredential.user;
+                            
+                            role = 'RESTRICTED';
+                            // データベースに「制限付きユーザー」として登録
+                            await setDoc(doc(db, "users", newUser.uid), { role: 'RESTRICTED', createdAt: serverTimestamp() });
+                        } else {
+                            throw error; // その他のエラー（パスワード間違い等）
+                        }
                     }
                 }
-            }
 
-            this.executeDeviceBinding(role, ui, resolve);
+                // 認証成功 -> デバイスの生体紐付けへ
+                this.executeDeviceBinding(role, ui, resolve);
+
+            } catch (error) {
+                alert(`ログインエラー: パスワードが違うか、ネットワークに問題があります。\n(${error.message})`);
+                btn.innerText = "ログイン / 新規登録";
+                btn.disabled = false;
+            }
         };
 
-        // ★ VIPコードログイン処理（顧客・特別な人）
+        // ★ VIPコードでの匿名ログイン（メール不要）
         document.getElementById('gate-vip-enter').onclick = async () => {
             const code = document.getElementById('gate-vip-code').value.trim();
             if (!code) return;
+            
+            const btn = document.getElementById('gate-vip-enter');
+            btn.innerText = "暗号解読中...";
+            btn.disabled = true;
+
             try {
+                // 1. チケットの解読・検証
                 const payload = await VIPInvite.verifyTicket(code);
-                // チケットの権限（PRO等）を適用
-                this.executeDeviceBinding(payload.t, ui, resolve);
-            } catch (e) { alert(`コードエラー: ${e.message}`); }
+                const role = payload.t;
+
+                // 2. Firebaseに「匿名ユーザー」としてログイン（クラウドセーブ用）
+                const userCredential = await signInAnonymously(auth);
+                const user = userCredential.user;
+
+                // 3. データベースにVIPゲストとして登録
+                await setDoc(doc(db, "users", user.uid), { 
+                    role: role, 
+                    isVip: true, 
+                    vipCode: code,
+                    createdAt: serverTimestamp() 
+                }, { merge: true });
+
+                this.executeDeviceBinding(role, ui, resolve);
+
+            } catch (e) { 
+                alert(`コードエラー: ${e.message}`); 
+                btn.innerText = "コードでログイン";
+                btn.disabled = false;
+            }
         };
     }
 
@@ -144,12 +170,12 @@ export class LoginGateway {
             alert(`認証成功：デバイスを生体認証と紐付けます。`);
             const credId = await BioAuth.registerDevice();
             localStorage.setItem('universe_bound_credential', credId);
-            localStorage.setItem('universe_role', role);
+            localStorage.setItem('universe_role', role); // UI表示用キャッシュ
+            
             this.handleRoleRouting(role, ui, resolve);
         } catch (e) {
-            alert("生体認証の登録に失敗しました。");
-            document.getElementById('gate-enter').innerText = "ログイン / 新規登録";
-            document.getElementById('gate-enter').disabled = false;
+            alert("生体認証のキャンセル、または登録に失敗しました。");
+            window.location.reload();
         }
     }
 
