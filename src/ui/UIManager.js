@@ -432,7 +432,7 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
 
-            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示する
+            // ★ RESTRICTED（新規ユーザー）の場合はロック画面を表示する
             if (!isPro) {
                 content.innerHTML = `
                     <div style="text-align:center; padding: 40px 10px;">
@@ -441,6 +441,9 @@ export class UIManager {
                         <div style="color:#aaa; font-size:11px; line-height:1.6; margin-bottom:20px;">
                             防壁プロトコル、空間拡張、及びP2Pネットワークへのアクセスは制限されています。<br>すべての機能を利用するには開発者からVIPチケットを入手してください。
                         </div>
+                        <button id="cp-btn-vip-unlock" style="width:100%; padding:12px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">
+                            🔑 VIPコードを入力してロック解除
+                        </button>
                     </div>
                     <div style="margin-top:30px;">
                         <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
@@ -767,6 +770,21 @@ export class UIManager {
 
             NexusP2P.start(this.app);
             this.controlPanel.style.display = 'none';
+        });
+
+        // ★ RESTRICTED用：VIPコードを入力してロック解除するボタン
+        bind('cp-btn-vip-unlock', async () => {
+            const code = prompt("VIPコードを入力してください:");
+            if (!code) return;
+            try {
+                const { VIPInvite } = await import('../billing/VIPInvite.js');
+                const payload = await VIPInvite.verifyTicket(code);
+                localStorage.setItem('universe_role', payload.t);
+                alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
+                window.location.reload();
+            } catch (e) {
+                alert(`🚨 コードエラー: ${e.message}`);
+            }
         });
 
         bind('cp-btn-fs', () => {
