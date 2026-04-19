@@ -5,6 +5,14 @@ import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/f
 
 export class AdminPortal {
     static async render(onExitCallback) {
+        // ★ 絶対防壁：開発者(ADMIN)以外がこの画面を呼び出そうとしたら即座に弾く
+        if (localStorage.getItem('universe_role') !== 'ADMIN') {
+            console.error("ACCESS DENIED: Unauthorized access to Admin Portal.");
+            alert("権限がありません。");
+            if (onExitCallback) onExitCallback();
+            return;
+        }
+
         const ui = document.createElement('div');
         ui.id = 'admin-portal-screen';
         ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0a0000; z-index:9999999; display:flex; flex-direction:column; align-items:center; padding-top:40px; color:#fff; font-family:monospace; overflow-y:auto;`;
