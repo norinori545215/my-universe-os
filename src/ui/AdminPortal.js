@@ -89,7 +89,8 @@ export class AdminPortal {
             </button>
         `;
 
-        document.getElementById('portal-generate-btn').onclick = async () => {
+        // ★ ここを正しく portal-gen-btn に修正しました！
+        document.getElementById('portal-gen-btn').onclick = async () => {
             const tier = document.querySelector('input[name="portal-tier"]:checked').value;
             const days = parseInt(document.getElementById('portal-days').value) || 30;
             const memo = document.getElementById('portal-memo').value || "No Name";
@@ -110,7 +111,7 @@ export class AdminPortal {
             setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
         };
 
-        // ★ 設定をクラウドデータベース（Firestore）に保存する
+        // 設定をクラウドデータベース（Firestore）に保存する
         document.getElementById('portal-save-btn').onclick = async () => {
             const btn = document.getElementById('portal-save-btn');
             btn.innerText = "保存中...";
