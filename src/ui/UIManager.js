@@ -31,7 +31,7 @@ export class UIManager {
         
         this.lockUI = new LockUI(app, (type) => {
             if (type === 'panic') {
-                this.triggerPanic(); // パスワードによる手動パージ
+                this.triggerPanic();
             } else if (type === 'dummy') {
                 this.triggerDummyUniverse();
             }
@@ -75,7 +75,6 @@ export class UIManager {
         window.addEventListener('click', () => Chronos.updatePulse(), { passive: true });
         window.addEventListener('keydown', () => Chronos.updatePulse(), { passive: true });
 
-        // ★ 起動時にパニックプロトコルがONになっていれば再武装
         if (localStorage.getItem('universe_panic_armed') === 'true') {
             setTimeout(() => PanicWipe.arm(this.app), 1000);
         }
@@ -86,6 +85,28 @@ export class UIManager {
             if(oldLogout) oldLogout.style.display = 'none';
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
+
+        // ★ 開発者（ADMIN）なら、デスクトップ（宇宙空間）に専用アプリを出現させる
+        if (localStorage.getItem('universe_role') === 'ADMIN') {
+            setTimeout(() => this.spawnGodAppNode(), 1000);
+        }
+    }
+
+    spawnGodAppNode() {
+        const godNodeId = 'SYSTEM_ADMIN_CORE';
+        if (!this.app.currentUniverse.nodes.find(n => n.id === godNodeId)) {
+            const godNode = {
+                id: godNodeId,
+                name: '👁️ GOD CONSOLE',
+                x: 0, y: -150, 
+                size: 40,
+                color: '#ff0000',
+                shape: 'rect', 
+                isSystem: true // 収納や削除をブロックするためのフラグ
+            };
+            this.app.currentUniverse.nodes.push(godNode);
+            if(typeof this.app.update === 'function') this.app.update();
+        }
     }
 
     async toggle3DMode() {
@@ -246,30 +267,6 @@ export class UIManager {
             if (this.isCapsuleDragged()) return;
             this.controlPanel.style.display = this.controlPanel.style.display === 'none' ? 'flex' : 'none';
         };
-
-        // ★ ADMIN（開発者）のみ、宇宙空間に独立したアプリ（星）を召喚する
-        const currentRole = localStorage.getItem('universe_role');
-        if (currentRole === 'ADMIN') {
-            this.spawnGodAppNode();
-        }
-    }
-
-    spawnGodAppNode() {
-        const godNodeId = 'SYSTEM_ADMIN_CORE';
-        const existingNode = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
-        
-        if (!existingNode) {
-            const godNode = {
-                id: godNodeId,
-                name: '👁️ GOD CONSOLE',
-                x: 0, y: -150, 
-                size: 45,
-                color: '#ff0000',
-                shape: 'rect', 
-                isSystem: true // 削除・移動不可にするためのフラグ（既存ロジックが許せば）
-            };
-            this.app.currentUniverse.nodes.push(godNode);
-        }
     }
 
     toggleTimeMachine() {
@@ -294,7 +291,6 @@ export class UIManager {
         }
     }
 
-    // パスワードによる手動パージ
     triggerPanic() {
         this.hideMenu();
         this.hideQuickNote();
@@ -322,7 +318,6 @@ export class UIManager {
         this.app.autoSave();
         this.updateBreadcrumbs();
         
-        // RAMパージしてGoogleへ飛ぶ処理
         sessionStorage.clear();
         localStorage.removeItem('my_universe_save_data');
         window.location.replace("https://www.google.com");
@@ -361,9 +356,9 @@ export class UIManager {
     }
 
     renderCP() {
-        // ★ Gatewayで設定された現在の権限を取得
+        // ★ 権限の取得
         const currentRole = localStorage.getItem('universe_role') || 'GUEST';
-        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN';
+        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -438,14 +433,14 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
 
-            // ★ PRO権限がない場合は設定画面をロック
+            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示
             if (!isPro) {
                 content.innerHTML = `
                     <div style="text-align:center; padding: 40px 10px;">
                         <div style="font-size:30px; margin-bottom:15px;">🔒</div>
-                        <div style="color:#ff4444; font-weight:bold; font-size:14px; margin-bottom:10px; letter-spacing:2px;">PRO LICENSE REQUIRED</div>
+                        <div style="color:#ff4444; font-weight:bold; font-size:14px; margin-bottom:10px; letter-spacing:2px;">RESTRICTED AREA</div>
                         <div style="color:#aaa; font-size:11px; line-height:1.6; margin-bottom:20px;">
-                            防壁プロトコル、空間拡張、及びP2PネットワークへのアクセスはPRO版のライセンスが必要です。<br>開発者からチケットを取得してください。
+                            防壁プロトコル、空間拡張、及びP2Pネットワークへのアクセスは制限されています。<br>開発者からVIPチケットを入手してください。
                         </div>
                     </div>
                 `;
@@ -710,10 +705,19 @@ export class UIManager {
             }
         });
 
-        // ★ クリックでGOD CONSOLE星を出現（デスクトップアプリ）
-        const godAppNodeId = 'SYSTEM_ADMIN_CORE';
-        
+        // ★ 新規ユーザー（RESTRICTED）の場合の「星の生成」制限処理
         bind('cp-spawn-btn', () => {
+            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            
+            // 制限の確認
+            if (currentRole === 'RESTRICTED') {
+                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
+                if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
+                    alert(`⚠️ 星の数が上限（${limits.maxNodes}個）に達しています。\nこれ以上創造するにはVIPコードによるアンロックが必要です。`);
+                    return;
+                }
+            }
+
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
             
@@ -745,7 +749,17 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
+        // ★ 新規ユーザー（RESTRICTED）の場合の「P2P」制限処理
         bind('cp-p2p-start', () => {
+            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            if (currentRole === 'RESTRICTED') {
+                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allowP2P":false}');
+                if (!limits.allowP2P) {
+                    alert("⚠️ P2P通信(ワームホール)は現在制限されています。\nVIPコードを取得してください。");
+                    return;
+                }
+            }
+
             NexusP2P.start(this.app);
             this.controlPanel.style.display = 'none';
         });
@@ -826,7 +840,13 @@ export class UIManager {
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
-        const is3D = localStorage.getItem('universe_ext_3d') === 'true';
+        const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+        const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allow3D":false}');
+        
+        // ★ 新規ユーザーの3D許可チェック
+        const allow3D = currentRole === 'RESTRICTED' ? limits.allow3D : true;
+
+        const is3D = localStorage.getItem('universe_ext_3d') === 'true' && allow3D;
         const isSearch = localStorage.getItem('universe_ext_search') === 'true';
         const isTime = localStorage.getItem('universe_ext_time') === 'true';
         const isAutoPilot = localStorage.getItem('universe_ext_autopilot') === 'true';
@@ -926,6 +946,16 @@ export class UIManager {
             const zoom = this.app.camera.zoom || 1;
             const worldX = ((ev.clientX - rect.left - canvasEl.width / 2) / zoom) - this.app.camera.x;
             const worldY = ((ev.clientY - rect.top - canvasEl.height / 2) / zoom) - this.app.camera.y;
+
+            // ★ ここでも星の制限チェック
+            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            if (currentRole === 'RESTRICTED') {
+                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
+                if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
+                    // Alertを出さずに静かにブロック（連続タップ時用）
+                    return;
+                }
+            }
 
             const color = document.getElementById('cp-spawn-color')?.value || "#00ffcc";
             this.app.currentUniverse.addNode('新規データ', worldX, worldY, 25, color, 'star');
@@ -1067,10 +1097,13 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-        // ★ クリックされたのがGOD CONSOLEなら、メニューを出さずにAdminUIを開く
+
+        // ★ クリックされたのがGOD CONSOLEなら、メニューを出さずにAdminPortalを直接開く
         if (node.id === 'SYSTEM_ADMIN_CORE') {
-            import('./AdminUI.js').then(({ AdminUI }) => {
-                AdminUI.open(this.app);
+            import('./AdminPortal.js').then(({ AdminPortal }) => {
+                AdminPortal.render(() => {
+                    // ポータルを閉じた時のコールバック。必要ならリロード等。
+                });
             });
             return;
         }
