@@ -93,7 +93,7 @@ export class UIManager {
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
 
-        // ★ クラウドデータに上書きされても消えないように、2秒ごとに存在を監視して出現させる
+        // 開発者用コンソールの監視ループ
         setInterval(() => this.enforceGodConsole(), 2000);
     }
 
@@ -115,7 +115,7 @@ export class UIManager {
         }
     }
 
-    // 開発者専用ポータル星を強制的に維持する
+    // ★ 修正箇所：正規ルートで安全にGOD CONSOLEを生成する
     enforceGodConsole() {
         if (localStorage.getItem('universe_role') !== 'ADMIN') return;
         if (!this.app || !this.app.currentUniverse || !this.app.currentUniverse.nodes) return;
@@ -124,16 +124,14 @@ export class UIManager {
         const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
         
         if (!exists) {
-            const godNode = {
-                id: godNodeId,
-                name: '👁️ GOD CONSOLE',
-                x: 0, y: -150, 
-                size: 40,
-                color: '#ff0000',
-                shape: 'rect', 
-                isSystem: true 
-            };
-            this.app.currentUniverse.nodes.push(godNode);
+            // 1. OSの正規メソッドを使って星を生成（これでinnerUniverse等が完璧にセットアップされる）
+            this.app.currentUniverse.addNode('👁️ GOD CONSOLE', 0, -150, 40, '#ff0000', 'rect');
+            
+            // 2. 生成されたばかりの最新の星を取得し、システム専用IDを書き込む
+            const godNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
+            godNode.id = godNodeId;
+            godNode.isSystem = true;
+            
             if(typeof this.app.update === 'function') this.app.update();
         }
     }
@@ -461,7 +459,7 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
             
-            // ★ RESTRICTEDユーザーの場合、個別の機能をロックして表示する
+            // RESTRICTEDユーザーの場合、個別の機能をロックして表示する
             const lock3D = !isPro && !this.limits.allow3D;
             const lockP2P = !isPro && !this.limits.allowP2P;
 
@@ -738,7 +736,6 @@ export class UIManager {
             }
         });
 
-        // ★ 新規ユーザー（RESTRICTED）に対する「星の創造」制限処理
         bind('cp-spawn-btn', () => {
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             
@@ -780,7 +777,6 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ 新規ユーザー（RESTRICTED）に対する「P2P通信」制限処理
         bind('cp-p2p-start', () => {
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
@@ -794,7 +790,6 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ RESTRICTED用：VIPコードを入力してロック解除するボタン
         const btnVipUnlock = document.getElementById('cp-btn-vip-unlock');
         if (btnVipUnlock) {
             btnVipUnlock.onclick = async () => {
@@ -898,7 +893,6 @@ export class UIManager {
         
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         
-        // ★ 新規ユーザーに対する「3Dエンジンカプセル」制限処理
         const allow3D = currentRole === 'RESTRICTED' ? this.limits.allow3D : true;
 
         const is3D = localStorage.getItem('universe_ext_3d') === 'true' && allow3D;
@@ -1002,11 +996,10 @@ export class UIManager {
             const worldX = ((ev.clientX - rect.left - canvasEl.width / 2) / zoom) - this.app.camera.x;
             const worldY = ((ev.clientY - rect.top - canvasEl.height / 2) / zoom) - this.app.camera.y;
 
-            // ★ ここでも新規ユーザーの星の制限チェック（連続タップ用）
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
                 if (this.app.currentUniverse.nodes.length >= this.limits.maxNodes) {
-                    return; // アラートを出さずに静かにブロック
+                    return;
                 }
             }
 
@@ -1151,7 +1144,6 @@ export class UIManager {
 
     showMenu(node, screenX, screenY) {
 
-        // ★ 開発者用「GOD CONSOLE」がクリックされたら AdminPortal を開く
         if (node.id === 'SYSTEM_ADMIN_CORE') {
             import('./AdminPortal.js').then(({ AdminPortal }) => {
                 AdminPortal.render(() => {
