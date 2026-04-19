@@ -30,8 +30,9 @@ export class NexusUI {
             this.cryptoError = true;
         }
 
-        this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js');
-        this.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js');
+        // ★ 修正箇所：外部のURL通信をやめ、ローカル(自分のPC内)から直接読み込む
+        this.loadScript('./src/lib/qrcode.min.js');
+        this.loadScript('./src/lib/jsQR.js');
     }
 
     loadScript(src) {
@@ -155,12 +156,11 @@ export class NexusUI {
         document.getElementById('nx-qr-close').onclick = () => { modal.remove(); this.openScanner(node); };
     }
 
-startScanning(node, mode = 'connect') {
+    startScanning(node, mode = 'connect') {
         const modal = document.createElement('div');
         const color = mode === 'clone' ? '#ffcc00' : '#ff00ff';
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,15,20,0.98); z-index:15001; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;';
         
-        // ★ 修正：親divに flex と center を追加。videoの width/height 属性を削除し、style側で 100% と center 指定。さらにスマホで止まらないよう autoplay muted を追加。
         modal.innerHTML = `
             <div style="margin-bottom:20px; font-size:14px; color:${color}; font-weight:bold; letter-spacing:2px;">${mode === 'clone' ? 'SCAN BACKUP QR' : "SCAN PARTNER'S KEY"}</div>
             
