@@ -22,7 +22,10 @@ window.startUniverseOS = (role) => {
     const app = new CanvasBuilder('universe-canvas'); 
     
     new CognitiveShield(); 
-    GlitchEngine.toggleCRT(true); 
+    
+    // ★ 修正箇所：余計なブラウン管ノイズ（CRTエフェクト）を完全にOFFにしました
+    GlitchEngine.toggleCRT(false); 
+    
     WanderingEntities.start(app); 
 };
 
