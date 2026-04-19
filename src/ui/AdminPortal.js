@@ -1,11 +1,10 @@
 // src/ui/AdminPortal.js
 import { VIPInvite } from '../billing/VIPInvite.js';
-import { db } from '../security/Auth.js';
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { db, auth } from '../security/Auth.js'; // ★ authを追加
+import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"; // ★ 探索用ツールを追加
 
 export class AdminPortal {
     static async render(onExitCallback) {
-        // ★ 絶対防壁：開発者(ADMIN)以外がこの画面を呼び出そうとしたら即座に弾く
         if (localStorage.getItem('universe_role') !== 'ADMIN') {
             console.error("ACCESS DENIED: Unauthorized access to Admin Portal.");
             alert("権限がありません。");
@@ -20,7 +19,6 @@ export class AdminPortal {
 
         ui.innerHTML = `<div style="color:#00ffcc; font-size:18px; margin-top:20vh;">クラウドデータベースから設定を読み込んでいます...</div>`;
 
-        // ★ クラウドから現在の「新規ユーザー制限設定」を読み込む
         let restrictions = { maxNodes: 50, allow3D: false, allowP2P: false };
         try {
             const settingsDoc = await getDoc(doc(db, "system", "settings"));
@@ -84,12 +82,70 @@ export class AdminPortal {
                 </div>
             </div>
 
-            <button id="portal-exit-btn" style="margin-top:30px; padding:15px 40px; background:transparent; border:1px solid #888; color:#888; border-radius:30px; cursor:pointer; font-weight:bold;">
+            <div style="margin-top:30px; width:90%; max-width:800px; background:rgba(255,100,0,0.05); border:1px solid #ffaa00; border-radius:12px; padding:20px; box-shadow:0 0 30px rgba(255,170,0,0.2);">
+                <div style="color:#ffcc00; font-weight:bold; border-bottom:1px solid #ffaa00; padding-bottom:10px; margin-bottom:15px;">🚨 迷子データのサルベージ (完全復旧)</div>
+                <div style="font-size:11px; color:#aaa; margin-bottom:15px; line-height:1.5;">アカウント切り替えやログアウトによって見えなくなった「過去の宇宙データ」をクラウドの深淵から探し出し、現在の開発者アカウントに引き継ぎます。<br>※同じマスターパスワードを入力していれば、完全に解読・復元されます。</div>
+                <button id="portal-salvage-btn" style="width:100%; padding:15px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; cursor:pointer; font-weight:bold; font-size:14px;">
+                    🛰️ クラウドから過去のデータを探索して復元する
+                </button>
+            </div>
+
+            <button id="portal-exit-btn" style="margin-top:30px; padding:15px 40px; background:transparent; border:1px solid #888; color:#888; border-radius:30px; cursor:pointer; font-weight:bold; margin-bottom:50px;">
                 設定を終えてOS画面へ進む
             </button>
         `;
 
-        // ★ ここを正しく portal-gen-btn に修正しました！
+        // サルベージ（復旧）の実行ロジック
+        document.getElementById('portal-salvage-btn').onclick = async () => {
+            const btn = document.getElementById('portal-salvage-btn');
+            const origText = btn.innerText;
+            btn.innerText = "📡 クラウドの深淵をスキャン中...";
+            btn.disabled = true;
+
+            try {
+                // Firebase内の「すべての宇宙データ」を読み込む
+                const querySnapshot = await getDocs(collection(db, "universes"));
+                let bestBackup = null;
+                let maxLength = 0;
+
+                // 自分以外のデータの中で「一番容量が大きい（星がたくさんある）データ」を探し出す
+                querySnapshot.forEach((d) => {
+                    if (auth.currentUser && d.id !== auth.currentUser.uid) {
+                        const data = d.data();
+                        if (data && data.encryptedData && data.encryptedData.length > maxLength) {
+                            maxLength = data.encryptedData.length;
+                            bestBackup = data.encryptedData;
+                        }
+                    }
+                });
+
+                if (bestBackup) {
+                    if (confirm("✨ 過去に作成された巨大な宇宙データを発見しました！\n現在の開発者アカウントに引き継いで復元しますか？\n（※同じマスターパスワードを使用していれば完全に解読されます）")) {
+                        // 見つけたデータを現在の開発者アカウントに上書き保存
+                        await setDoc(doc(db, "universes", auth.currentUser.uid), {
+                            encryptedData: bestBackup,
+                            updatedAt: serverTimestamp()
+                        });
+                        alert("✅ データの引き継ぎに成功しました！\nOSを再起動して宇宙を読み込みます。");
+                        window.location.reload();
+                    } else {
+                        btn.innerText = origText;
+                        btn.disabled = false;
+                    }
+                } else {
+                    alert("クラウド上に復元可能な過去のデータが見つかりませんでした。");
+                    btn.innerText = origText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`スキャンエラー: ${error.message}\n※手順1の「Firebaseのルール変更」が完了しているか確認してください。完了後1分ほど経ってから再度お試しください。`);
+                btn.innerText = origText;
+                btn.disabled = false;
+            }
+        };
+
+        // --- 既存の処理 ---
         document.getElementById('portal-gen-btn').onclick = async () => {
             const tier = document.querySelector('input[name="portal-tier"]:checked').value;
             const days = parseInt(document.getElementById('portal-days').value) || 30;
@@ -111,7 +167,6 @@ export class AdminPortal {
             setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
         };
 
-        // 設定をクラウドデータベース（Firestore）に保存する
         document.getElementById('portal-save-btn').onclick = async () => {
             const btn = document.getElementById('portal-save-btn');
             btn.innerText = "保存中...";
@@ -127,7 +182,7 @@ export class AdminPortal {
                 await setDoc(doc(db, "system", "settings"), { new_user_limits: limits }, { merge: true });
                 alert("クラウドへの保存が完了しました！\n今後すべての新規ユーザーにこの制限が適用されます。");
             } catch (error) {
-                alert(`保存エラー: ${error.message}\nFirestoreのセキュリティルールを確認してください。`);
+                alert(`保存エラー: ${error.message}`);
             }
 
             btn.innerText = "💾 制限設定をクラウドに保存";
