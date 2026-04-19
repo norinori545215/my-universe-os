@@ -6,15 +6,15 @@ import { WanderingEntities } from '../ai/WanderingEntities.js';
 import { auth, db } from '../security/Auth.js';
 import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// ★ ログインゲートウェイのインポート
+// ★ ログインゲートウェイと管理ポータルのインポート
 import { LoginGateway } from './security/LoginGateway.js';
+import { AdminPortal } from './ui/AdminPortal.js';
 
 // 二重起動を防止するためのフラグ
 window.__osStarted = false;
 
 /**
  * OS本体を起動するグローバル関数
- * （LoginGateway や AdminPortal 等、どこからでも安全に呼び出せるように設計）
  */
 window.startUniverseOS = (role) => {
     // 既にOSが起動していたら何もしない（二重描画を防ぐ）
@@ -22,9 +22,6 @@ window.startUniverseOS = (role) => {
     window.__osStarted = true;
 
     console.log(`マルチバース・エンジン起動... [最終権限: ${role}]`);
-
-    // 権限の最終適用
-    localStorage.setItem('universe_role', role);
 
     // 宇宙の描画エンジン（CanvasBuilder）を起動
     const app = new CanvasBuilder('universe-canvas'); 
@@ -43,20 +40,24 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // ★ ステップ1: ログイン画面（門番）を立ち上げる
-        // ユーザーがパスワードや生体認証を突破するまでここで進行が完全に止まる
-        const userRole = await LoginGateway.boot();
+        // ここでパスワードや生体認証が終わるまで進行が止まる
+        const bootAction = await LoginGateway.boot();
 
-        // ★ ステップ2: 認証を突破した場合、OSを起動する
-        // ただし、開発者が「チケット発行ポータル」を選択した場合は
-        // userRole が 'ADMIN_PORTAL_OPENED' 等になる想定なので起動をスキップする
-        if (!window.__osStarted && userRole && userRole !== 'ADMIN_PORTAL_OPENED') {
-            window.startUniverseOS(userRole);
+        // ★ ステップ2: 認証結果によって「全く違う画面」をスタートさせる
+        if (bootAction === 'ROUTE_ADMIN_PORTAL') {
+            // 開発者が「① 招待コード発行画面」を選んだ場合
+            console.log("管理者ポータルを展開します...");
+            // ポータルを閉じた時に、OS(PRO版)を起動させるようにコールバックを渡す
+            AdminPortal.render(() => {
+                window.startUniverseOS('ADMIN');
+            });
+        } else {
+            // 既存ユーザー(PRO)、新規ユーザー(RESTRICTED)、特別ゲスト(VIP) は通常通りOSを起動
+            window.startUniverseOS(bootAction);
         }
         
     } catch (e) {
-        // 認証に失敗、またはユーザーがキャンセルした場合
         console.error("認証フローが中断・キャンセルされました:", e);
-        // OSは起動させず、真っ暗な画面のまま待機する
     }
 });
 

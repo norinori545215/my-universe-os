@@ -68,29 +68,31 @@ export class LoginGateway {
         document.getElementById('toggle-vip').onclick = () => { modeEmail.style.display = 'none'; modeVip.style.display = 'block'; };
         document.getElementById('toggle-email').onclick = () => { modeVip.style.display = 'none'; modeEmail.style.display = 'block'; };
 
-        // 通常ログイン処理
+        // ★ Emailとパスワードでのログイン処理
         document.getElementById('gate-enter').onclick = async () => {
             const email = document.getElementById('gate-email').value.trim();
             const pass = document.getElementById('gate-pass').value.trim();
             if (!email || !pass) return alert("Emailとパスワードを入力してください");
 
-            let role = 'NORMAL';
+            let role = 'RESTRICTED';
             if (email === this.ADMIN_EMAIL) {
+                // 開発者アカウント
                 role = 'ADMIN';
             } else {
-                // 既存のセーブデータがあればVIP(PRO)、なければ新規(NORMAL)
+                // 既存のセーブデータがあればVIP(PRO)、なければ新規(RESTRICTED)として扱う
                 const hasLocalData = localStorage.getItem('my_universe_save_data');
-                role = hasLocalData ? 'PRO' : 'NORMAL';
+                role = hasLocalData ? 'PRO' : 'RESTRICTED';
             }
             this.executeDeviceBinding(role, ui, resolve);
         };
 
-        // VIPコードログイン処理
+        // ★ VIPコード（顧客・特別な人）のログイン処理
         document.getElementById('gate-vip-enter').onclick = async () => {
             const code = document.getElementById('gate-vip-code').value.trim();
             if (!code) return;
             try {
                 const payload = await VIPInvite.verifyTicket(code);
+                // チケットに埋め込まれた権限（通常はPRO）を適用
                 this.executeDeviceBinding(payload.t, ui, resolve);
             } catch (e) { alert(`コードエラー: ${e.message}`); }
         };
@@ -108,31 +110,30 @@ export class LoginGateway {
         }
     }
 
-    // ★ 管理者なら「2択画面」を出し、それ以外は即座にOSを起動
+    // ★ 開発者なら「2択画面」を出し、それ以外は即座にOSを起動
     static handleRoleRouting(role, ui, resolve) {
         if (role === 'ADMIN') {
             ui.innerHTML = `
                 <div style="font-size:20px; color:#ff4444; font-weight:bold; margin-bottom:40px; letter-spacing:2px;">DEVELOPER AUTHORIZED</div>
-                <div style="display:flex; gap:20px;">
-                    <button id="btn-admin-console" style="padding:20px; background:#440000; border:1px solid #ff0000; color:#fff; border-radius:10px; cursor:pointer; font-weight:bold; font-size:16px; width:200px; transition:0.2s;">
-                        <div style="font-size:30px; margin-bottom:10px;">🎟️</div>
-                        VIPコード<br>発行画面へ
+                <div style="display:flex; gap:20px; flex-direction:column; align-items:center;">
+                    <button id="btn-admin-console" style="padding:20px; background:#440000; border:1px solid #ff0000; color:#fff; border-radius:10px; cursor:pointer; font-weight:bold; font-size:16px; width:350px; transition:0.2s;">
+                        🎟️ ① 招待コード発行 ＆ ゲスト制限設定
                     </button>
-                    <button id="btn-admin-os" style="padding:20px; background:#003344; border:1px solid #00ffcc; color:#fff; border-radius:10px; cursor:pointer; font-weight:bold; font-size:16px; width:200px; transition:0.2s;">
-                        <div style="font-size:30px; margin-bottom:10px;">🌌</div>
-                        OSを通常起動
+                    <button id="btn-admin-os" style="padding:20px; background:#003344; border:1px solid #00ffcc; color:#fff; border-radius:10px; cursor:pointer; font-weight:bold; font-size:16px; width:350px; transition:0.2s;">
+                        🌌 ② 従来通りのOS画面を起動 (PRO)
                     </button>
                 </div>
             `;
-            document.getElementById('btn-admin-console').onclick = async () => {
-                const { AdminUI } = await import('../ui/AdminUI.js');
-                ui.innerHTML = ''; // ゲートウェイの背景を残したままコンソールを展開
-                AdminUI.renderInside(ui, resolve);
+            // ①が選ばれたら main.js に 'ROUTE_ADMIN_PORTAL' という合図を返す
+            document.getElementById('btn-admin-console').onclick = () => {
+                ui.style.opacity = '0'; setTimeout(() => { ui.remove(); resolve('ROUTE_ADMIN_PORTAL'); }, 500);
             };
+            // ②が選ばれたら OS起動
             document.getElementById('btn-admin-os').onclick = () => {
                 ui.style.opacity = '0'; setTimeout(() => { ui.remove(); resolve('ADMIN'); }, 500);
             };
         } else {
+            // 既存ユーザー(PRO)、新規ユーザー(RESTRICTED)、顧客(PRO) はそのままOS起動
             ui.style.opacity = '0'; setTimeout(() => { ui.remove(); resolve(role); }, 500);
         }
     }
