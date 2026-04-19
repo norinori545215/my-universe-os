@@ -29,14 +29,33 @@ export class LoginGateway {
                 document.getElementById('btn-bio').onclick = async () => {
                     try {
                         await BioAuth.authenticateDevice(boundCred);
-                        this.handleRoleRouting(currentRole, ui, resolve);
+
+                        // ★ 修正箇所：ローカルの記憶を過信せず、Firebaseから最新の権限を強制取得してズレを直す
+                        let finalRole = currentRole;
+                        if (auth.currentUser) {
+                            const email = auth.currentUser.email;
+                            if (email && email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
+                                finalRole = 'ADMIN'; // 強制的に開発者に引き上げ
+                            } else {
+                                const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+                                if (userDoc.exists() && userDoc.data().role) {
+                                    finalRole = userDoc.data().role;
+                                }
+                            }
+                            localStorage.setItem('universe_role', finalRole);
+                        }
+
+                        this.handleRoleRouting(finalRole, ui, resolve);
                     } catch (e) { alert("認証失敗"); }
                 };
                 document.getElementById('btn-reset').onclick = () => {
-                    if(confirm("ローカルデータを消去して初期化しますか？")) { localStorage.clear(); sessionStorage.clear(); window.location.reload(); }
+                    if(confirm("ローカルデータを消去して初期化しますか？")) { 
+                        localStorage.clear(); sessionStorage.clear(); 
+                        auth.signOut().then(() => window.location.reload());
+                    }
                 };
             } 
-            // 【初回】Email / PW または VIPコードのUI
+            // 【初回】Email / PW ログイン画面
             else {
                 this.renderLoginForm(ui, resolve);
             }
@@ -73,7 +92,7 @@ export class LoginGateway {
 
         // ★ Firebaseを用いた「本物の」Emailログイン/登録処理
         document.getElementById('gate-enter').onclick = async () => {
-            const email = document.getElementById('gate-email').value.trim();
+            const email = document.getElementById('gate-email').value.trim().toLowerCase(); // ★ 小文字化して判定を厳格に
             const pass = document.getElementById('gate-pass').value.trim();
             if (!email || !pass) return alert("Emailとパスワードを入力してください");
 
@@ -84,7 +103,7 @@ export class LoginGateway {
             let role = 'RESTRICTED';
 
             try {
-                if (email === this.ADMIN_EMAIL) {
+                if (email === this.ADMIN_EMAIL.toLowerCase()) {
                     // ① 開発者のログイン
                     await signInWithEmailAndPassword(auth, email, pass);
                     role = 'ADMIN';
@@ -99,7 +118,6 @@ export class LoginGateway {
                         if (userDoc.exists()) {
                             role = userDoc.data().role || 'PRO';
                         } else {
-                            // 万が一DBにデータがない古いユーザーの場合はPROとしてDBを作成
                             role = 'PRO';
                             await setDoc(doc(db, "users", user.uid), { role: 'PRO', createdAt: serverTimestamp() });
                         }
@@ -111,10 +129,9 @@ export class LoginGateway {
                             const newUser = newCredential.user;
                             
                             role = 'RESTRICTED';
-                            // データベースに「制限付きユーザー」として登録
                             await setDoc(doc(db, "users", newUser.uid), { role: 'RESTRICTED', createdAt: serverTimestamp() });
                         } else {
-                            throw error; // その他のエラー（パスワード間違い等）
+                            throw error;
                         }
                     }
                 }
@@ -129,7 +146,7 @@ export class LoginGateway {
             }
         };
 
-        // ★ VIPコードでの匿名ログイン（メール不要）
+        // ★ VIPコードでの匿名ログイン（顧客・特別な人）
         document.getElementById('gate-vip-enter').onclick = async () => {
             const code = document.getElementById('gate-vip-code').value.trim();
             if (!code) return;
@@ -139,15 +156,12 @@ export class LoginGateway {
             btn.disabled = true;
 
             try {
-                // 1. チケットの解読・検証
                 const payload = await VIPInvite.verifyTicket(code);
                 const role = payload.t;
 
-                // 2. Firebaseに「匿名ユーザー」としてログイン（クラウドセーブ用）
                 const userCredential = await signInAnonymously(auth);
                 const user = userCredential.user;
 
-                // 3. データベースにVIPゲストとして登録
                 await setDoc(doc(db, "users", user.uid), { 
                     role: role, 
                     isVip: true, 
@@ -170,12 +184,13 @@ export class LoginGateway {
             alert(`認証成功：デバイスを生体認証と紐付けます。`);
             const credId = await BioAuth.registerDevice();
             localStorage.setItem('universe_bound_credential', credId);
-            localStorage.setItem('universe_role', role); // UI表示用キャッシュ
+            localStorage.setItem('universe_role', role); 
             
             this.handleRoleRouting(role, ui, resolve);
         } catch (e) {
-            alert("生体認証のキャンセル、または登録に失敗しました。");
-            window.location.reload();
+            alert("生体認証の登録に失敗しました。");
+            document.getElementById('gate-enter').innerText = "ログイン / 新規登録";
+            document.getElementById('gate-enter').disabled = false;
         }
     }
 
