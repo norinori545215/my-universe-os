@@ -31,7 +31,7 @@ export class UIManager {
         
         this.lockUI = new LockUI(app, (type) => {
             if (type === 'panic') {
-                this.triggerPanic();
+                this.triggerPanic(); 
             } else if (type === 'dummy') {
                 this.triggerDummyUniverse();
             }
@@ -86,7 +86,7 @@ export class UIManager {
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
 
-        // ★ 開発者（ADMIN）なら、デスクトップ（宇宙空間）に専用アプリを出現させる
+        // ★ 開発者（ADMIN）の場合、デスクトップにGOD CONSOLEを出現させる
         if (localStorage.getItem('universe_role') === 'ADMIN') {
             setTimeout(() => this.spawnGodAppNode(), 1000);
         }
@@ -102,7 +102,7 @@ export class UIManager {
                 size: 40,
                 color: '#ff0000',
                 shape: 'rect', 
-                isSystem: true // 収納や削除をブロックするためのフラグ
+                isSystem: true 
             };
             this.app.currentUniverse.nodes.push(godNode);
             if(typeof this.app.update === 'function') this.app.update();
@@ -356,8 +356,7 @@ export class UIManager {
     }
 
     renderCP() {
-        // ★ 権限の取得
-        const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
@@ -433,14 +432,21 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
 
-            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示
+            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示する
             if (!isPro) {
                 content.innerHTML = `
                     <div style="text-align:center; padding: 40px 10px;">
                         <div style="font-size:30px; margin-bottom:15px;">🔒</div>
                         <div style="color:#ff4444; font-weight:bold; font-size:14px; margin-bottom:10px; letter-spacing:2px;">RESTRICTED AREA</div>
                         <div style="color:#aaa; font-size:11px; line-height:1.6; margin-bottom:20px;">
-                            防壁プロトコル、空間拡張、及びP2Pネットワークへのアクセスは制限されています。<br>開発者からVIPチケットを入手してください。
+                            防壁プロトコル、空間拡張、及びP2Pネットワークへのアクセスは制限されています。<br>すべての機能を利用するには開発者からVIPチケットを入手してください。
+                        </div>
+                    </div>
+                    <div style="margin-top:30px;">
+                        <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
+                        <div style="display:flex; gap:8px;">
+                            <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
+                            <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;" onclick="if(window.resetUniverseData) window.resetUniverseData();">🚨 宇宙初期化</button>
                         </div>
                     </div>
                 `;
@@ -705,11 +711,10 @@ export class UIManager {
             }
         });
 
-        // ★ 新規ユーザー（RESTRICTED）の場合の「星の生成」制限処理
+        // ★ 新規ユーザー（RESTRICTED）に対する「星の創造」制限処理
         bind('cp-spawn-btn', () => {
-            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             
-            // 制限の確認
             if (currentRole === 'RESTRICTED') {
                 const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
                 if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
@@ -749,13 +754,13 @@ export class UIManager {
             this.controlPanel.style.display = 'none';
         });
 
-        // ★ 新規ユーザー（RESTRICTED）の場合の「P2P」制限処理
+        // ★ 新規ユーザー（RESTRICTED）に対する「P2P通信」制限処理
         bind('cp-p2p-start', () => {
-            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
                 const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allowP2P":false}');
                 if (!limits.allowP2P) {
-                    alert("⚠️ P2P通信(ワームホール)は現在制限されています。\nVIPコードを取得してください。");
+                    alert("⚠️ P2P通信(ワームホール)は現在制限されています。\n機能を利用するにはVIPコードを取得してください。");
                     return;
                 }
             }
@@ -840,10 +845,10 @@ export class UIManager {
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
-        const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allow3D":false}');
         
-        // ★ 新規ユーザーの3D許可チェック
+        // ★ 新規ユーザー（RESTRICTED）に対する「3Dエンジン」制限処理
         const allow3D = currentRole === 'RESTRICTED' ? limits.allow3D : true;
 
         const is3D = localStorage.getItem('universe_ext_3d') === 'true' && allow3D;
@@ -947,13 +952,12 @@ export class UIManager {
             const worldX = ((ev.clientX - rect.left - canvasEl.width / 2) / zoom) - this.app.camera.x;
             const worldY = ((ev.clientY - rect.top - canvasEl.height / 2) / zoom) - this.app.camera.y;
 
-            // ★ ここでも星の制限チェック
-            const currentRole = localStorage.getItem('universe_role') || 'GUEST';
+            // ★ ここでも新規ユーザーの星の制限チェック（連続タップ用）
+            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
                 const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
                 if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
-                    // Alertを出さずに静かにブロック（連続タップ時用）
-                    return;
+                    return; // アラートを出さずに静かにブロック
                 }
             }
 
@@ -1098,11 +1102,12 @@ export class UIManager {
 
     showMenu(node, screenX, screenY) {
 
-        // ★ クリックされたのがGOD CONSOLEなら、メニューを出さずにAdminPortalを直接開く
+        // ★ 開発者用「GOD CONSOLE」がクリックされたら AdminPortal を開く
         if (node.id === 'SYSTEM_ADMIN_CORE') {
             import('./AdminPortal.js').then(({ AdminPortal }) => {
                 AdminPortal.render(() => {
-                    // ポータルを閉じた時のコールバック。必要ならリロード等。
+                    // ポータルを閉じた時のコールバック
+                    if(window.universeAudio) window.universeAudio.playWarp();
                 });
             });
             return;
@@ -1320,7 +1325,7 @@ export class UIManager {
             mColorPicker.onchange = (e) => {
                 node.color = e.target.value;
                 this.app.autoSave();
-                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
+                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
             };
         }
 
@@ -1336,7 +1341,7 @@ export class UIManager {
                 this.app.autoSave();
                 if(typeof this.app.update === 'function') this.app.update();
                 if(this.app.simulation) this.app.simulation.alpha(0.1).restart();
-                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
+                if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
             };
         }
 
@@ -1367,7 +1372,7 @@ export class UIManager {
                     node.baseX = -this.app.camera.x; node.baseY = -this.app.camera.y;
                     this.app.autoSave();
                     if(window.universeAudio) window.universeAudio.playWarp();
-                    if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
+                    if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node);
                 }
             };
         }
@@ -1391,7 +1396,7 @@ export class UIManager {
                 if (checkDrag()) return;
                 this.hideMenu();
                 if (NexusP2P && (NexusP2P.connection || NexusP2P.hostConnection)) {
-                    NexusP2P.sendSmuggleNode(node); // ★ 密輸機能
+                    NexusP2P.sendSmuggleNode(node); 
                 } else {
                     alert("⚠️ ターゲットとリンクしていません。\nコントロールパネルの「拡張・防壁」タブからP2Pポータルを開き、通信を確立してください。");
                 }
@@ -1439,7 +1444,7 @@ export class UIManager {
             node.isGhost = !node.isGhost;
             this.app.autoSave();
             if(window.universeAudio) window.universeAudio.playWarp();
-            if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
+            if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
         };
 
         document.getElementById('m-lock').onclick = () => {
@@ -1451,7 +1456,7 @@ export class UIManager {
                     delete node.password; 
                     node.isTempUnlocked = false;
                     this.app.autoSave();
-                    if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); // ★ 同期
+                    if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node);
                 }
             } else {
                 this.lockUI.openForSet(node);
@@ -1527,7 +1532,7 @@ export class UIManager {
                 this.app.blackHole.push(node); 
                 this.app.autoSave(); 
                 if(window.universeAudio) window.universeAudio.playDelete(); 
-                if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); // ★ 同期
+                if (NexusP2P && NexusP2P.onNodeDeleted) NexusP2P.onNodeDeleted(node); 
             } 
             this.hideMenu(); 
         };
@@ -1650,7 +1655,7 @@ export class UIManager {
                 this.app.autoSave(); 
                 this.showInventoryUI(); 
                 if(window.universeAudio) window.universeAudio.playSpawn(); 
-                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); // ★ 同期
+                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); 
             };
             document.getElementById(`inv-del-${i}`).onclick = () => { 
                 if(confirm("完全に消去しますか？(元に戻せません)")){ 
@@ -1671,7 +1676,7 @@ export class UIManager {
                 node.x = -this.app.camera.x + (Math.random() * 40 - 20); 
                 node.y = -this.app.camera.y + (Math.random() * 40 - 20);
                 this.app.currentUniverse.nodes.push(node);
-                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); // ★ 同期
+                if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(node); 
             });
             this.app.autoSave();
             this.showInventoryUI();
