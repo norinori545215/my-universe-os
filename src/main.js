@@ -1,9 +1,9 @@
 // src/main.js
-import { CanvasBuilder } from '../engine/CanvasBuilder.js';
-import { CognitiveShield } from '../engine/CognitiveShield.js'; 
-import { GlitchEngine } from '../engine/GlitchEngine.js'; 
-import { WanderingEntities } from '../ai/WanderingEntities.js';
-import { auth, db } from '../security/Auth.js';
+import { CanvasBuilder } from './engine/CanvasBuilder.js';
+import { CognitiveShield } from './engine/CognitiveShield.js'; 
+import { GlitchEngine } from './engine/GlitchEngine.js'; 
+import { WanderingEntities } from './ai/WanderingEntities.js';
+import { auth, db } from './security/Auth.js';
 import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ★ インポート
