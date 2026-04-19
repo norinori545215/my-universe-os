@@ -24,6 +24,10 @@ import { FileSystemBridge } from '../api/FileSystemBridge.js';
 import { NeuralCore } from '../ai/NeuralCore.js'; 
 import { PanicWipe } from '../security/PanicWipe.js'; 
 
+// ★ クラウドデータ取得用のインポートを追加
+import { db } from '../security/Auth.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
 export class UIManager {
     constructor(app) {
         this.app = app;
@@ -53,11 +57,14 @@ export class UIManager {
         };
         
         this.app.isMobileMode = this.state.isMobileMode;
-        
         window.universeAudio = new AudioCore();
         
         this.is3DMode = false;
         this.hyper3DInstance = null;
+
+        // ★ クラウドルールの初期化
+        this.limits = { maxNodes: 50, allow3D: false, allowP2P: false };
+        this.loadCloudLimits();
 
         this.createUI();
         
@@ -89,6 +96,27 @@ export class UIManager {
         // ★ 開発者（ADMIN）の場合、デスクトップにGOD CONSOLEを出現させる
         if (localStorage.getItem('universe_role') === 'ADMIN') {
             setTimeout(() => this.spawnGodAppNode(), 1000);
+        }
+    }
+
+    // ★ 起動時にFirestoreから最新の「新規ユーザー向け制限」をダウンロードする
+    async loadCloudLimits() {
+        try {
+            const settingsDoc = await getDoc(doc(db, "system", "settings"));
+            if (settingsDoc.exists() && settingsDoc.data().new_user_limits) {
+                this.limits = settingsDoc.data().new_user_limits;
+                // オフライン時や同期用にローカルにもキャッシュしておく
+                localStorage.setItem('universe_new_user_limits', JSON.stringify(this.limits));
+                // 制限を読み込んだらUIを再更新（3Dボタンの表示・非表示など）
+                this.updateUIState();
+                this.renderCP();
+            } else {
+                // クラウドにまだ設定がない場合はローカルキャッシュかデフォルトを使用
+                this.limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50, "allow3D":false, "allowP2P":false}');
+            }
+        } catch (e) {
+            console.warn("クラウドルールの取得に失敗しました。ローカルキャッシュを使用します。", e);
+            this.limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50, "allow3D":false, "allowP2P":false}');
         }
     }
 
@@ -719,9 +747,8 @@ export class UIManager {
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             
             if (currentRole === 'RESTRICTED') {
-                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
-                if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
-                    alert(`⚠️ 星の数が上限（${limits.maxNodes}個）に達しています。\nこれ以上創造するにはVIPコードによるアンロックが必要です。`);
+                if (this.app.currentUniverse.nodes.length >= this.limits.maxNodes) {
+                    alert(`⚠️ 星の数が上限（${this.limits.maxNodes}個）に達しています。\nこれ以上創造するにはVIPコードによるアンロックが必要です。`);
                     return;
                 }
             }
@@ -761,8 +788,7 @@ export class UIManager {
         bind('cp-p2p-start', () => {
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
-                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allowP2P":false}');
-                if (!limits.allowP2P) {
+                if (!this.limits.allowP2P) {
                     alert("⚠️ P2P通信(ワームホール)は現在制限されています。\n機能を利用するにはVIPコードを取得してください。");
                     return;
                 }
@@ -779,7 +805,15 @@ export class UIManager {
             try {
                 const { VIPInvite } = await import('../billing/VIPInvite.js');
                 const payload = await VIPInvite.verifyTicket(code);
-                // データベースと同期するロジック（簡易版：まずはローカルをPROに書き換え）
+                
+                // Firestoreのユーザー権限を直接書き換える（クラウド同期による真のアンロック）
+                const { auth, db } = await import('../security/Auth.js');
+                const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+                
+                if (auth.currentUser) {
+                    await setDoc(doc(db, "users", auth.currentUser.uid), { role: payload.t }, { merge: true });
+                }
+                
                 localStorage.setItem('universe_role', payload.t);
                 alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
                 window.location.reload();
@@ -865,10 +899,9 @@ export class UIManager {
         this.capsuleSlots.innerHTML = '';
         
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
-        const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"allow3D":false}');
         
         // ★ 新規ユーザー（RESTRICTED）に対する「3Dエンジン」制限処理
-        const allow3D = currentRole === 'RESTRICTED' ? limits.allow3D : true;
+        const allow3D = currentRole === 'RESTRICTED' ? this.limits.allow3D : true;
 
         const is3D = localStorage.getItem('universe_ext_3d') === 'true' && allow3D;
         const isSearch = localStorage.getItem('universe_ext_search') === 'true';
@@ -974,8 +1007,7 @@ export class UIManager {
             // ★ ここでも新規ユーザーの星の制限チェック（連続タップ用）
             const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
             if (currentRole === 'RESTRICTED') {
-                const limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50}');
-                if (this.app.currentUniverse.nodes.length >= limits.maxNodes) {
+                if (this.app.currentUniverse.nodes.length >= this.limits.maxNodes) {
                     return; // アラートを出さずに静かにブロック
                 }
             }
