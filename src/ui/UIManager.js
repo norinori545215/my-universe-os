@@ -24,7 +24,7 @@ import { FileSystemBridge } from '../api/FileSystemBridge.js';
 import { NeuralCore } from '../ai/NeuralCore.js'; 
 import { PanicWipe } from '../security/PanicWipe.js'; 
 
-// ★ クラウドデータ取得用のインポートを追加
+// ★ クラウドデータ取得用のインポート
 import { db } from '../security/Auth.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -62,7 +62,7 @@ export class UIManager {
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
-        // ★ クラウドルールの初期化
+        // クラウドルールの初期化
         this.limits = { maxNodes: 50, allow3D: false, allowP2P: false };
         this.loadCloudLimits();
 
@@ -93,25 +93,20 @@ export class UIManager {
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
 
-        // ★ 開発者（ADMIN）の場合、デスクトップにGOD CONSOLEを出現させる
-        if (localStorage.getItem('universe_role') === 'ADMIN') {
-            setTimeout(() => this.spawnGodAppNode(), 1000);
-        }
+        // ★ クラウドデータに上書きされても消えないように、2秒ごとに存在を監視して出現させる
+        setInterval(() => this.enforceGodConsole(), 2000);
     }
 
-    // ★ 起動時にFirestoreから最新の「新規ユーザー向け制限」をダウンロードする
+    // 起動時にFirestoreから最新の「新規ユーザー向け制限」をダウンロードする
     async loadCloudLimits() {
         try {
             const settingsDoc = await getDoc(doc(db, "system", "settings"));
             if (settingsDoc.exists() && settingsDoc.data().new_user_limits) {
                 this.limits = settingsDoc.data().new_user_limits;
-                // オフライン時や同期用にローカルにもキャッシュしておく
                 localStorage.setItem('universe_new_user_limits', JSON.stringify(this.limits));
-                // 制限を読み込んだらUIを再更新（3Dボタンの表示・非表示など）
                 this.updateUIState();
                 this.renderCP();
             } else {
-                // クラウドにまだ設定がない場合はローカルキャッシュかデフォルトを使用
                 this.limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50, "allow3D":false, "allowP2P":false}');
             }
         } catch (e) {
@@ -120,9 +115,15 @@ export class UIManager {
         }
     }
 
-    spawnGodAppNode() {
+    // 開発者専用ポータル星を強制的に維持する
+    enforceGodConsole() {
+        if (localStorage.getItem('universe_role') !== 'ADMIN') return;
+        if (!this.app || !this.app.currentUniverse || !this.app.currentUniverse.nodes) return;
+
         const godNodeId = 'SYSTEM_ADMIN_CORE';
-        if (!this.app.currentUniverse.nodes.find(n => n.id === godNodeId)) {
+        const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
+        
+        if (!exists) {
             const godNode = {
                 id: godNodeId,
                 name: '👁️ GOD CONSOLE',
@@ -459,124 +460,119 @@ export class UIManager {
         } else if (this.state.activeTab === 'config') {
             
             const chronosCfg = Chronos.getConfig(); 
+            
+            // ★ RESTRICTEDユーザーの場合、個別の機能をロックして表示する
+            const lock3D = !isPro && !this.limits.allow3D;
+            const lockP2P = !isPro && !this.limits.allowP2P;
 
-            // ★ RESTRICTED（新規ユーザー等）の場合はロック画面を表示する
-            if (!isPro) {
-                content.innerHTML = `
-                    <div style="text-align:center; padding: 40px 10px;">
-                        <div style="font-size:30px; margin-bottom:15px;">🔒</div>
-                        <div style="color:#ff4444; font-weight:bold; font-size:14px; margin-bottom:10px; letter-spacing:2px;">RESTRICTED AREA</div>
-                        <div style="color:#aaa; font-size:11px; line-height:1.6; margin-bottom:20px;">
-                            防壁プロトコル、空間拡張、及びP2Pネットワークへのアクセスは制限されています。<br>すべての機能を利用するには開発者からVIPチケットを入手してください。
-                        </div>
-                        <button id="cp-btn-vip-unlock" style="width:100%; padding:12px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">
-                            🔑 VIPコードを入力してロック解除
-                        </button>
-                    </div>
-                    <div style="margin-top:30px;">
-                        <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
-                        <div style="display:flex; gap:8px;">
-                            <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
-                            <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;" onclick="if(window.resetUniverseData) window.resetUniverseData();">🚨 宇宙初期化</button>
-                        </div>
-                    </div>
-                `;
-            } else {
-                content.innerHTML = `
-                    <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
-                    <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
-                        
-                        <div style="border: 1px solid rgba(255, 204, 0, 0.3); padding: 10px; border-radius: 8px;">
-                            <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ffcc00;">
-                                <input type="checkbox" id="cp-chronos-toggle" ${chronosCfg.enabled ? 'checked' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
-                                <b>⏳ Chronos (自律型自爆)</b>
-                            </label>
-                            <div style="font-size:10px; color:#888; margin: 8px 0 5px 26px;">無アクセスが続くと宇宙を灰にする</div>
-                            <div style="margin-left:26px; display:flex; align-items:center; gap:10px;">
-                                <input type="number" id="cp-chronos-days" value="${chronosCfg.days}" style="width:50px; background:rgba(0,0,0,0.5); color:#ffcc00; border:1px solid #ffcc00; border-radius:4px; padding:2px 5px; font-size:12px;">
-                                <span style="font-size:11px; color:#ffcc00;">日後に実行</span>
-                            </div>
-                        </div>
+            content.innerHTML = `
+                ${!isPro ? `
+                <div style="background:rgba(255,0,255,0.05); border:1px solid #ff00ff; padding:15px; border-radius:8px; margin-bottom:15px; text-align:center;">
+                    <div style="color:#ff00ff; font-size:12px; margin-bottom:10px;">一部機能が制限されています</div>
+                    <button id="cp-btn-vip-unlock" style="width:100%; padding:10px; background:#440044; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">🔑 VIPコードを入力して全解放</button>
+                </div>
+                ` : ''}
 
-                        <div style="border: 1px solid rgba(255, 0, 0, 0.3); padding: 10px; border-radius: 8px; background: rgba(255,0,0,0.05);">
-                            <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ff4444;">
-                                <input type="checkbox" id="cp-panic-armed" ${localStorage.getItem('universe_panic_armed') === 'true' ? 'checked' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
-                                <b>🚨 物理パニック (振ると自爆)</b>
-                            </label>
-                            <div style="font-size:10px; color:#ff8888; margin: 8px 0 0 26px;">ONにすると、スマホやPCを激しく振った瞬間に全データをパージしてGoogleへ強制遷移します。</div>
-                        </div>
-
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; margin-top:10px;">
-                            <input type="checkbox" id="cp-ext-mobile" ${this.state.isMobileMode?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
-                            <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
+                <div style="font-size:11px; color:#00ffcc; margin-bottom:10px; letter-spacing:1px;">SECURITY EXTENSIONS</div>
+                <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
+                    
+                    <div style="border: 1px solid rgba(255, 204, 0, 0.3); padding: 10px; border-radius: 8px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ffcc00;">
+                            <input type="checkbox" id="cp-chronos-toggle" ${chronosCfg.enabled ? 'checked' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                            <b>⏳ Chronos (自律型自爆)</b>
                         </label>
-                        <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
+                        <div style="font-size:10px; color:#888; margin: 8px 0 5px 26px;">無アクセスが続くと宇宙を灰にする</div>
+                        <div style="margin-left:26px; display:flex; align-items:center; gap:10px;">
+                            <input type="number" id="cp-chronos-days" value="${chronosCfg.days}" style="width:50px; background:rgba(0,0,0,0.5); color:#ffcc00; border:1px solid #ffcc00; border-radius:4px; padding:2px 5px; font-size:12px;">
+                            <span style="font-size:11px; color:#ffcc00;">日後に実行</span>
+                        </div>
+                    </div>
 
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                    <div style="border: 1px solid rgba(255, 0, 0, 0.3); padding: 10px; border-radius: 8px; background: rgba(255,0,0,0.05);">
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ff4444;">
+                            <input type="checkbox" id="cp-panic-armed" ${localStorage.getItem('universe_panic_armed') === 'true' ? 'checked' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
+                            <b>🚨 物理パニック (振ると自爆)</b>
+                        </label>
+                        <div style="font-size:10px; color:#ff8888; margin: 8px 0 0 26px;">ONにすると、スマホやPCを激しく振った瞬間に全データをパージしてGoogleへ強制遷移します。</div>
+                    </div>
+
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; margin-top:10px;">
+                        <input type="checkbox" id="cp-ext-mobile" ${this.state.isMobileMode?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
+                        <span style="color:#ffcc00; font-weight:bold;">📱 スマホ操作モード (Lite Mode)</span>
+                    </label>
+                    <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
+
+                    ${lock3D ? 
+                        `<div style="display:flex; align-items:center; gap:10px; font-size:13px; color:#555; cursor:not-allowed;"><span style="width:16px; height:16px; display:inline-block; text-align:center;">🔒</span> <span style="color:#555;">🪐 3Dエンジン (VIP限定)</span></div>` :
+                        `<label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
                             <input type="checkbox" id="cp-ext-3d" ${localStorage.getItem('universe_ext_3d')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
                             <span style="color:#ff88ff; font-weight:bold;">🪐 3Dエンジン</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                            <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザ</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-time" ${localStorage.getItem('universe_ext_time')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
-                            <span style="color:#ffee66;">⏳ タイムマシン</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                            <span style="color:#00ffcc;">🤖 自動プレゼン</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                            <span style="color:#00ffcc;">🖥️ ターミナル</span>
-                        </label>
+                        </label>`
+                    }
 
-                        <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
-                        
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-audio" ${window.universeAudio && !window.universeAudio.isMuted ? 'checked' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                            <span style="color:#ff66ff;">🔊 153bpm 音響エンジン</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-center-text" ${localStorage.getItem('universe_center_text')!=='false'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                            🔤 中央透かし文字を表示
-                        </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザ</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-time" ${localStorage.getItem('universe_ext_time')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                        <span style="color:#ffee66;">⏳ タイムマシン</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc;">🤖 自動プレゼン</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc;">🖥️ ターミナル</span>
+                    </label>
 
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                            <span style="color:#ff88ff; font-weight:bold;">🎙️ 音響シンクロ (マイク)</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-vision" ${localStorage.getItem('universe_ext_vision')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                            <span style="color:#00ffcc; font-weight:bold;">✋ 空間ジェスチャー (カメラ)</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" id="cp-ext-ai" ${localStorage.getItem('universe_ext_ai')==='true'?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
-                            <span style="color:#ffaa00; font-weight:bold;">🤖 自律AIエンティティ</span>
-                        </label>
-                    </div>
-
-                    <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
-                    <button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>
-
-                    <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
-                    <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
-                        <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
-                        <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
-                        <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">手動自爆コード (Panic) を設定</button>
-                    </div>
+                    <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
                     
-                    <div style="margin-top:30px;">
-                        <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
-                        <div style="display:flex; gap:8px;">
-                            <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
-                            <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;" onclick="if(window.resetUniverseData) window.resetUniverseData();">🚨 宇宙初期化</button>
-                        </div>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-audio" ${window.universeAudio && !window.universeAudio.isMuted ? 'checked' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff66ff;">🔊 153bpm 音響エンジン</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-center-text" ${localStorage.getItem('universe_center_text')!=='false'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        🔤 中央透かし文字を表示
+                    </label>
+
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:#ff88ff; font-weight:bold;">🎙️ 音響シンクロ (マイク)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-vision" ${localStorage.getItem('universe_ext_vision')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:#00ffcc; font-weight:bold;">✋ 空間ジェスチャー (カメラ)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
+                        <input type="checkbox" id="cp-ext-ai" ${localStorage.getItem('universe_ext_ai')==='true'?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
+                        <span style="color:#ffaa00; font-weight:bold;">🤖 自律AIエンティティ</span>
+                    </label>
+                </div>
+
+                <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">QUANTUM NETWORK (P2P)</div>
+                ${lockP2P ? 
+                    `<button disabled style="width:100%; padding:12px; background:rgba(100,100,100,0.1); color:#555; border:1px dashed #555; border-radius:8px; font-weight:bold; font-size:12px; margin-bottom:10px; cursor:not-allowed;">🔒 P2P通信ポータル (VIP限定)</button>` :
+                    `<button id="cp-p2p-start" style="width:100%; padding:12px; background:rgba(255,0,255,0.1); color:#ff00ff; border:1px dashed #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🌐 P2P通信ポータルを開く</button>`
+                }
+
+                <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
+                <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
+                    <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
+                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
+                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">手動自爆コード (Panic) を設定</button>
+                </div>
+                
+                <div style="margin-top:30px;">
+                    <div style="font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">SYSTEM OVERRIDE</div>
+                    <div style="display:flex; gap:8px;">
+                        <button id="cp-btn-logout" style="flex:1; padding:12px; background:transparent; border:1px solid #666; color:#aaa; border-radius:8px; font-size:12px;">🚪 ログアウト</button>
+                        <button id="cp-btn-reset" style="flex:1; padding:12px; background:#330000; border:1px solid #ff4444; color:#ff4444; border-radius:8px; font-size:12px;" onclick="if(window.resetUniverseData) window.resetUniverseData();">🚨 宇宙初期化</button>
                     </div>
-                `;
-            }
+                </div>
+            `;
         } else if (this.state.activeTab === 'data') {
             content.innerHTML = `
                 <div style="margin-bottom:25px;">
@@ -799,28 +795,30 @@ export class UIManager {
         });
 
         // ★ RESTRICTED用：VIPコードを入力してロック解除するボタン
-        bind('cp-btn-vip-unlock', async () => {
-            const code = prompt("VIPコードを入力してください:");
-            if (!code) return;
-            try {
-                const { VIPInvite } = await import('../billing/VIPInvite.js');
-                const payload = await VIPInvite.verifyTicket(code);
-                
-                // Firestoreのユーザー権限を直接書き換える（クラウド同期による真のアンロック）
-                const { auth, db } = await import('../security/Auth.js');
-                const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                
-                if (auth.currentUser) {
-                    await setDoc(doc(db, "users", auth.currentUser.uid), { role: payload.t }, { merge: true });
+        const btnVipUnlock = document.getElementById('cp-btn-vip-unlock');
+        if (btnVipUnlock) {
+            btnVipUnlock.onclick = async () => {
+                const code = prompt("VIPコードを入力してください:");
+                if (!code) return;
+                try {
+                    const { VIPInvite } = await import('../billing/VIPInvite.js');
+                    const payload = await VIPInvite.verifyTicket(code);
+                    
+                    const { auth, db } = await import('../security/Auth.js');
+                    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+                    
+                    if (auth.currentUser) {
+                        await setDoc(doc(db, "users", auth.currentUser.uid), { role: payload.t }, { merge: true });
+                    }
+                    
+                    localStorage.setItem('universe_role', payload.t);
+                    alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
+                    window.location.reload();
+                } catch (e) {
+                    alert(`🚨 コードエラー: ${e.message}`);
                 }
-                
-                localStorage.setItem('universe_role', payload.t);
-                alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
-                window.location.reload();
-            } catch (e) {
-                alert(`🚨 コードエラー: ${e.message}`);
-            }
-        });
+            };
+        }
 
         bind('cp-btn-fs', () => {
             FileSystemBridge.importDirectory(this.app);
@@ -900,7 +898,7 @@ export class UIManager {
         
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         
-        // ★ 新規ユーザー（RESTRICTED）に対する「3Dエンジン」制限処理
+        // ★ 新規ユーザーに対する「3Dエンジンカプセル」制限処理
         const allow3D = currentRole === 'RESTRICTED' ? this.limits.allow3D : true;
 
         const is3D = localStorage.getItem('universe_ext_3d') === 'true' && allow3D;
