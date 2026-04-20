@@ -31,11 +31,19 @@ export class LoginGateway {
     static renderBioAuth(ui, boundCred, currentRole, resolve) {
         ui.innerHTML = `
             <div style="font-size:24px; color:#ff00ff; font-weight:bold; letter-spacing:3px; margin-bottom:40px;">NEXUS OS</div>
-            <button id="btn-bio" style="padding:15px 40px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc; border-radius:8px; cursor:pointer; font-size:16px; font-weight:bold;">生体認証でログイン</button>
+            <button id="btn-bio" style="padding:15px 40px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; color:#00ffcc; border-radius:8px; cursor:pointer; font-size:16px; font-weight:bold; transition:0.2s;">生体認証でログイン</button>
             <button id="btn-reset" style="margin-top:30px; background:transparent; border:none; color:#666; cursor:pointer; font-size:11px; text-decoration:underline;">別のアカウントでログイン（初期化）</button>
         `;
         
         document.getElementById('btn-bio').onclick = async () => {
+            const btn = document.getElementById('btn-bio');
+            
+            // ★ 修正箇所：多重クリック（A request is already pending）を防止するロック処理
+            if (btn.disabled) return; 
+            btn.disabled = true;
+            btn.innerText = "センサー起動中...";
+            btn.style.opacity = "0.5";
+
             try {
                 await BioAuth.authenticateDevice(boundCred);
 
@@ -54,7 +62,13 @@ export class LoginGateway {
                 }
 
                 this.requestMasterKey(finalRole, ui, resolve, false);
-            } catch (e) { alert("認証失敗"); }
+            } catch (e) { 
+                console.warn("生体認証キャンセル/失敗:", e);
+                // 失敗した場合はボタンのロックを解除して元に戻す
+                btn.disabled = false;
+                btn.innerText = "生体認証でログイン";
+                btn.style.opacity = "1";
+            }
         };
 
         document.getElementById('btn-reset').onclick = () => {
@@ -104,20 +118,18 @@ export class LoginGateway {
             let role = 'RESTRICTED';
 
             try {
-                // ★ 修正箇所：開発者アカウントの自動創世機能を搭載
                 if (email === this.ADMIN_EMAIL.toLowerCase()) {
                     try {
                         await signInWithEmailAndPassword(auth, email, pass);
                         role = 'ADMIN';
                     } catch (adminError) {
-                        // もしFirebaseに開発者アカウントが無ければ、特別に新規作成する
                         if (adminError.code === 'auth/user-not-found' || adminError.code === 'auth/invalid-credential') {
                             const newAdmin = await createUserWithEmailAndPassword(auth, email, pass);
                             role = 'ADMIN';
                             await setDoc(doc(db, "users", newAdmin.user.uid), { role: 'ADMIN', createdAt: serverTimestamp() });
                             console.log("✨ 開発者用神アカウント(ADMIN)を創世しました。");
                         } else {
-                            throw adminError; // パスワード短すぎ等の他のエラーは弾く
+                            throw adminError; 
                         }
                     }
                 } else {
@@ -252,7 +264,6 @@ export class LoginGateway {
             
             this.handleRoleRouting(role, ui, resolve);
         } catch (e) {
-            // BioAuth.js のドメインエラー等の場合はここに入り、スキップして次に進む
             console.warn("生体認証の登録をスキップしました:", e.message);
             this.handleRoleRouting(role, ui, resolve);
         }
