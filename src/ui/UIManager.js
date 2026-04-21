@@ -62,17 +62,17 @@ export class UIManager {
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
-        // ★修正: クラウドルールの初期値に新しい制限項目を追加
+        // ★修正: クラウドルールの初期値に9つの詳細制限項目を追加
         this.limits = { 
             maxNodes: 50, 
             allow3D: false, 
             allowP2P: false,
             allowNodeEdit: false,
             allowNodeColor: false,
-            allowNodeDelete: false,
             allowNodeShape: false,
             allowNodeImage: false,
             allowNodeLink: false,
+            allowNodeDelete: false,
             allowExec: false,
             allowVault: false,
             allowAI: false
@@ -136,10 +136,14 @@ export class UIManager {
         const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
         
         if (!exists) {
+            // 1. OSの正規メソッドを使って星を生成（これでinnerUniverse等が完璧にセットアップされる）
             this.app.currentUniverse.addNode('👁️ GOD CONSOLE', 0, -150, 40, '#ff0000', 'rect');
+            
+            // 2. 生成されたばかりの最新の星を取得し、システム専用IDを書き込む
             const godNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             godNode.id = godNodeId;
             godNode.isSystem = true;
+            
             if(typeof this.app.update === 'function') this.app.update();
         }
     }
@@ -394,7 +398,7 @@ export class UIManager {
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
         
-        // ★ 権限チェック
+        // ★ 権限チェック：削除権限があるか判定（ない場合は収納モードをロック）
         const canDelete = isPro || !!this.limits.allowNodeDelete;
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";

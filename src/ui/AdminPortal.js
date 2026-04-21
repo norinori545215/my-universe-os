@@ -18,7 +18,8 @@ export class AdminPortal {
         ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050508; z-index:9999999; display:flex; color:#fff; font-family:sans-serif;`;
         document.body.appendChild(ui);
 
-        // クラウドから現在の設定を読み込む（詳細設定のデフォルト値を含む）
+        // クラウドから現在の設定を読み込む
+        // ★追加：9つの詳細な制限項目をデフォルト値として定義
         let restrictions = { 
             maxNodes: 50, 
             allow3D: false, 
@@ -72,7 +73,6 @@ export class AdminPortal {
                 <div id="tab-vip" class="admin-tab-content" style="display:block; max-width:700px;">
                     <h2 style="color:#fff; border-bottom:2px solid #ff00ff; padding-bottom:10px; margin-bottom:30px;">🎟️ 顧客・特別ゲスト招待</h2>
                     <div style="background:rgba(255,0,255,0.05); border:1px solid #ff00ff; border-radius:12px; padding:30px; box-shadow:0 0 30px rgba(255,0,255,0.1);">
-                        
                         <label style="display:block; font-size:12px; color:#ff88ff; margin-bottom:8px;">付与する権限</label>
                         <div style="display:flex; gap:10px; margin-bottom:20px;">
                             <label style="flex:1; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; padding:10px; border-radius:6px; cursor:pointer; text-align:center;">
@@ -86,15 +86,10 @@ export class AdminPortal {
                         <label style="display:block; font-size:12px; color:#aaa; margin-bottom:8px;">宛先メモ (管理用)</label>
                         <input type="text" id="portal-memo" placeholder="例: A社様 トライアル" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:30px; box-sizing:border-box; outline:none;">
                         
-                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
-                            VIPコードを錬成
-                        </button>
+                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">VIPコードを錬成</button>
                         
                         <textarea id="portal-code-out" readonly style="width:100%; height:80px; background:#000; color:#00ffcc; border:1px dashed #00ffcc; margin-top:20px; display:none; resize:none; padding:15px; box-sizing:border-box; outline:none; font-family:monospace; font-size:16px; text-align:center; line-height:50px;"></textarea>
-                        
-                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">
-                            📄 コピーして顧客に渡す
-                        </button>
+                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">📄 コピーして顧客に渡す</button>
                     </div>
                 </div>
 
@@ -179,28 +174,23 @@ export class AdminPortal {
 
         tabBtns.forEach(btn => {
             btn.onclick = () => {
-                // ボタンの見た目リセット
                 tabBtns.forEach(b => {
                     b.style.background = 'transparent';
                     b.style.borderColor = '#333';
                     b.style.color = '#aaa';
                     b.classList.remove('active');
                 });
-                // コンテンツを非表示
                 tabContents.forEach(c => c.style.display = 'none');
 
-                // クリックされたタブをアクティブに
                 btn.style.background = 'rgba(0,255,204,0.1)';
                 btn.style.borderColor = '#00ffcc';
                 btn.style.color = '#00ffcc';
                 
-                // VIPタブの時は色をマゼンタに
                 if(btn.dataset.target === 'tab-vip') {
                     btn.style.background = 'rgba(255,0,255,0.1)';
                     btn.style.borderColor = '#ff00ff';
                     btn.style.color = '#ff00ff';
                 }
-                // サルベージタブの時は色をオレンジに
                 if(btn.dataset.target === 'tab-salvage') {
                     btn.style.background = 'rgba(255,204,0,0.1)';
                     btn.style.borderColor = '#ffcc00';
@@ -213,8 +203,6 @@ export class AdminPortal {
         });
 
         // --- ボタンの機能ロジック ---
-
-        // [OSへ戻る] ボタン
         document.getElementById('portal-exit-btn').onclick = () => {
             ui.style.opacity = '0';
             setTimeout(() => {
@@ -223,7 +211,6 @@ export class AdminPortal {
             }, 300);
         };
 
-        // [VIPコード発行] ボタン
         document.getElementById('portal-gen-btn').onclick = async () => {
             const tier = document.querySelector('input[name="portal-tier"]:checked').value;
             const days = parseInt(document.getElementById('portal-days').value) || 30;
@@ -237,7 +224,6 @@ export class AdminPortal {
             document.getElementById('portal-copy-btn').style.display = 'block';
         };
 
-        // [コピー] ボタン
         document.getElementById('portal-copy-btn').onclick = (e) => {
             const outArea = document.getElementById('portal-code-out');
             outArea.select();
@@ -246,13 +232,12 @@ export class AdminPortal {
             setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
         };
 
-        // [制限設定をクラウドに保存] ボタン
         document.getElementById('portal-save-btn').onclick = async () => {
             const btn = document.getElementById('portal-save-btn');
             btn.innerText = "クラウドへ送信中...";
             btn.disabled = true;
 
-            // ★ 詳細設定の値をすべて取得して保存
+            // ★追加：9つの詳細設定をすべて取得してクラウドへ保存
             const limits = {
                 maxNodes: parseInt(document.getElementById('limit-nodes').value) || 50,
                 allow3D: document.getElementById('limit-3d').checked,
@@ -279,7 +264,6 @@ export class AdminPortal {
             btn.disabled = false;
         };
 
-        // [迷子データのサルベージ] ボタン
         document.getElementById('portal-salvage-btn').onclick = async () => {
             const btn = document.getElementById('portal-salvage-btn');
             const origText = btn.innerText;
