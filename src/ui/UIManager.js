@@ -62,8 +62,15 @@ export class UIManager {
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
-        // クラウドルールの初期化
-        this.limits = { maxNodes: 50, allow3D: false, allowP2P: false };
+        // ★修正: クラウドルールの初期値に新しい制限項目を追加
+        this.limits = { 
+            maxNodes: 50, 
+            allow3D: false, 
+            allowP2P: false,
+            allowNodeEdit: false,
+            allowNodeColor: false,
+            allowNodeDelete: false
+        };
         this.loadCloudLimits();
 
         this.createUI();
@@ -93,29 +100,28 @@ export class UIManager {
             if(oldReset) oldReset.style.display = 'none';
         }, 500);
 
-        // 開発者用コンソールの監視ループ
         setInterval(() => this.enforceGodConsole(), 2000);
     }
 
-    // 起動時にFirestoreから最新の「新規ユーザー向け制限」をダウンロードする
     async loadCloudLimits() {
         try {
             const settingsDoc = await getDoc(doc(db, "system", "settings"));
             if (settingsDoc.exists() && settingsDoc.data().new_user_limits) {
-                this.limits = settingsDoc.data().new_user_limits;
+                this.limits = { ...this.limits, ...settingsDoc.data().new_user_limits };
                 localStorage.setItem('universe_new_user_limits', JSON.stringify(this.limits));
                 this.updateUIState();
                 this.renderCP();
             } else {
-                this.limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50, "allow3D":false, "allowP2P":false}');
+                const cached = localStorage.getItem('universe_new_user_limits');
+                if (cached) this.limits = { ...this.limits, ...JSON.parse(cached) };
             }
         } catch (e) {
             console.warn("クラウドルールの取得に失敗しました。ローカルキャッシュを使用します。", e);
-            this.limits = JSON.parse(localStorage.getItem('universe_new_user_limits') || '{"maxNodes":50, "allow3D":false, "allowP2P":false}');
+            const cached = localStorage.getItem('universe_new_user_limits');
+            if (cached) this.limits = { ...this.limits, ...JSON.parse(cached) };
         }
     }
 
-    // ★ 修正箇所：正規ルートで安全にGOD CONSOLEを生成する
     enforceGodConsole() {
         if (localStorage.getItem('universe_role') !== 'ADMIN') return;
         if (!this.app || !this.app.currentUniverse || !this.app.currentUniverse.nodes) return;
@@ -124,14 +130,10 @@ export class UIManager {
         const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
         
         if (!exists) {
-            // 1. OSの正規メソッドを使って星を生成（これでinnerUniverse等が完璧にセットアップされる）
             this.app.currentUniverse.addNode('👁️ GOD CONSOLE', 0, -150, 40, '#ff0000', 'rect');
-            
-            // 2. 生成されたばかりの最新の星を取得し、システム専用IDを書き込む
             const godNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             godNode.id = godNodeId;
             godNode.isSystem = true;
-            
             if(typeof this.app.update === 'function') this.app.update();
         }
     }
@@ -385,6 +387,9 @@ export class UIManager {
     renderCP() {
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+        
+        // ★ 権限チェック
+        const canDelete = isPro || !!this.limits.allowNodeDelete;
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -437,9 +442,9 @@ export class UIManager {
                             <input type="checkbox" id="cp-rapid-spawn" ${localStorage.getItem('universe_rapid_spawn')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
                             🌟 連続創造モード
                         </label>
-                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:pointer; color:#ff4444;">
-                            <input type="checkbox" id="cp-rapid-delete" ${this.state.isRapidDeleteMode?'checked':''} style="accent-color:#ff4444; width:16px; height:16px;"> 
-                            🎒 連続収納モード
+                        <label style="display:flex; align-items:center; gap:10px; font-size:12px; cursor:${canDelete ? 'pointer' : 'not-allowed'}; color:${canDelete ? '#ff4444' : '#555'};">
+                            <input type="checkbox" id="cp-rapid-delete" ${this.state.isRapidDeleteMode ? 'checked' : ''} ${!canDelete ? 'disabled' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
+                            ${canDelete ? '🎒 連続収納モード' : '🎒 連続収納モード 🔒'}
                         </label>
                     </div>
                 </div>
@@ -459,7 +464,6 @@ export class UIManager {
             
             const chronosCfg = Chronos.getConfig(); 
             
-            // RESTRICTEDユーザーの場合、個別の機能をロックして表示する
             const lock3D = !isPro && !this.limits.allow3D;
             const lockP2P = !isPro && !this.limits.allowP2P;
 
@@ -1143,7 +1147,6 @@ export class UIManager {
     }
 
     showMenu(node, screenX, screenY) {
-
         if (node.id === 'SYSTEM_ADMIN_CORE') {
             import('./AdminPortal.js').then(({ AdminPortal }) => {
                 AdminPortal.render(() => {
@@ -1152,6 +1155,13 @@ export class UIManager {
             });
             return;
         }
+
+        // ★ 権限と制限のチェック（ここで「ゲスト」かつ「制限あり」のユーザーを弾く）
+        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
+        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+        const canEdit = isPro || !!this.limits.allowNodeEdit;
+        const canColor = isPro || !!this.limits.allowNodeColor;
+        const canDelete = isPro || !!this.limits.allowNodeDelete;
 
         if (node.isWormhole || node.name === '🌐 P2P WORMHOLE' || (node.url && node.url.startsWith('p2p://'))) {
             node.isWormhole = true; 
@@ -1163,6 +1173,10 @@ export class UIManager {
             }
 
             if (this.state.isRapidDeleteMode) {
+                if (!canDelete) {
+                    alert("⚠️ ゲスト権限では星の削除は制限されています。");
+                    return;
+                }
                 const idx = this.app.currentUniverse.nodes.indexOf(node);
                 if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
                 this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
@@ -1181,6 +1195,10 @@ export class UIManager {
         }
 
         if (this.state.isRapidDeleteMode) {
+            if (!canDelete) {
+                alert("⚠️ ゲスト権限では星の削除は制限されています。");
+                return;
+            }
             const idx = this.app.currentUniverse.nodes.indexOf(node);
             if (idx > -1) this.app.currentUniverse.nodes.splice(idx, 1);
             this.app.currentUniverse.links = this.app.currentUniverse.links.filter(l => l.source !== node && l.target !== node);
@@ -1219,9 +1237,22 @@ export class UIManager {
         const detailsStyle = "background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; margin-bottom:8px; overflow:hidden;";
         const summaryStyle = "padding:10px; font-size:13px; font-weight:bold; cursor:pointer; outline:none; background:rgba(0,0,0,0.4); display:flex; align-items:center; gap:5px; user-select:none;";
         const contentStyle = "padding:8px; display:flex; flex-direction:column; gap:4px; background:rgba(0,0,0,0.2);";
-        const innerBtnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:10px; cursor:pointer; text-align:left; border-radius:6px; font-size:12px; width:100%; transition:background 0.2s;';
+        const innerBtnStyle = 'color:white; background:rgba(255,255,255,0.08); border:none; padding:10px; text-align:left; border-radius:6px; font-size:12px; width:100%; transition:background 0.2s;';
 
         const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
+
+        // ★ 制限つきのボタンのHTML組み立て
+        const lockIcon = ' <span style="font-size:10px; float:right;">🔒</span>';
+        
+        const noteBtnHTML = canEdit ? `<button id="m-note" style="${innerBtnStyle} color:#aaffff; cursor:pointer;">📝 記憶を編集</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📝 記憶を編集${lockIcon}</button>`;
+        const renBtnHTML = canEdit ? `<button id="m-ren" style="${innerBtnStyle} color:#ccff66; cursor:pointer;">✏ 名前変更</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">✏ 名前変更${lockIcon}</button>`;
+        const iconBtnHTML = canEdit ? `<button id="m-set-icon" style="${innerBtnStyle} color:#ffaa00; cursor:pointer;">🖼 画像設定</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">🖼 画像設定${lockIcon}</button>`;
+        const linkBtnHTML = canEdit ? `<button id="m-link" style="${innerBtnStyle} color:#aaaaff; cursor:pointer;">📱 URL登録</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📱 URL登録${lockIcon}</button>`;
+        
+        const colorPickerHTML = canColor ? `<input type="color" id="m-color-picker" value="${node.color || '#00ffcc'}" style="width:40px; height:32px; border:none; border-radius:6px; background:transparent; cursor:pointer; padding:0; flex-shrink:0;" title="色を変更">` : `<div style="width:40px; height:32px; border-radius:6px; background:#222; border:1px solid #444; display:flex; justify-content:center; align-items:center; color:#555; font-size:12px; flex-shrink:0; cursor:not-allowed;" title="制限されています">🔒</div>`;
+        const shapeBtnHTML = canColor ? `<button id="m-shape" style="${innerBtnStyle} cursor:pointer; flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>` : `<button disabled style="${innerBtnStyle} flex:1; color:#555; margin-bottom:0; padding:8px; cursor:not-allowed;">💠 形: ${node.shape || 'star'} 🔒</button>`;
+
+        const delBtnHTML = canDelete ? `<button id="m-del" style="${innerBtnStyle} cursor:pointer; color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>` : `<button disabled style="${innerBtnStyle} color:#555; border:1px solid #333; cursor:not-allowed;">🎒 亜空間へ送る${lockIcon}</button>`;
 
         this.actionMenu.innerHTML = `
             <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
@@ -1231,9 +1262,9 @@ export class UIManager {
             <details class="nx-accordion" style="${detailsStyle}" open>
                 <summary style="${summaryStyle} color:#ff00ff; border-bottom:1px solid rgba(255,0,255,0.2);">📡 通信・秘匿</summary>
                 <div style="${contentStyle}">
-                    <button id="m-vault" style="${innerBtnStyle} color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
-                    <button id="m-nexus" style="${innerBtnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold;">📡 QRセキュア通信</button>
-                    <button id="m-p2p-send" style="${innerBtnStyle} color:#ff88ff; border:1px dashed rgba(255,0,255,0.5); font-weight:bold;">🚀 相手の宇宙へ密輸 (P2P)</button>
+                    <button id="m-vault" style="${innerBtnStyle} cursor:pointer; color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
+                    <button id="m-nexus" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold;">📡 QRセキュア通信</button>
+                    <button id="m-p2p-send" style="${innerBtnStyle} cursor:pointer; color:#ff88ff; border:1px dashed rgba(255,0,255,0.5); font-weight:bold;">🚀 相手の宇宙へ密輸 (P2P)</button>
                     <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
                 </div>
             </details>
@@ -1242,38 +1273,38 @@ export class UIManager {
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
                     
-                    ${node.isAI ? `<button id="m-ai-chat" style="${innerBtnStyle} color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : ''}
+                    ${node.isAI ? `<button id="m-ai-chat" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : ''}
                     
-                    <button id="m-note" style="${innerBtnStyle} color:#aaffff;">📝 記憶を編集</button>
-                    <button id="m-exec" style="${innerBtnStyle} color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
+                    ${noteBtnHTML}
+                    <button id="m-exec" style="${innerBtnStyle} cursor:pointer; color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
                     
-                    ${node.fileHandle ? `<button id="m-fs-save" style="${innerBtnStyle} color:#ffaa00; font-weight:bold; border:1px dashed #ffaa00;">💾 現実のPCに上書き保存</button>` : ''}
+                    ${node.fileHandle ? `<button id="m-fs-save" style="${innerBtnStyle} cursor:pointer; color:#ffaa00; font-weight:bold; border:1px dashed #ffaa00;">💾 現実のPCに上書き保存</button>` : ''}
                     
-                    <button id="m-ren" style="${innerBtnStyle} color:#ccff66;">✏ 名前変更</button>
+                    ${renBtnHTML}
                     
                     <div style="display:flex; gap:4px; margin-bottom:4px;">
-                        <input type="color" id="m-color-picker" value="${node.color || '#00ffcc'}" style="width:40px; height:32px; border:none; border-radius:6px; background:transparent; cursor:pointer; padding:0; flex-shrink:0;" title="色を変更">
-                        <button id="m-shape" style="${innerBtnStyle} flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>
+                        ${colorPickerHTML}
+                        ${shapeBtnHTML}
                     </div>
 
-                    <button id="m-set-icon" style="${innerBtnStyle} color:#ffaa00;">🖼 画像設定</button>
-                    <button id="m-link" style="${innerBtnStyle} color:#aaaaff;">📱 URL登録</button>
+                    ${iconBtnHTML}
+                    ${linkBtnHTML}
                 </div>
             </details>
 
             <details class="nx-accordion" style="${detailsStyle}">
                 <summary style="${summaryStyle} color:#ffcc00; border-bottom:1px solid rgba(255,204,0,0.2);">🌌 空間・探索</summary>
                 <div style="${contentStyle}">
-                    <button id="m-ai" style="${innerBtnStyle} color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
-                    <button id="m-dive" style="${innerBtnStyle}">➡ 内部へ潜る</button>
-                    <button id="m-connect" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
+                    <button id="m-ai" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid rgba(255,0,255,0.3); font-weight:bold;">🧠 AI思考拡張</button>
+                    <button id="m-dive" style="${innerBtnStyle} cursor:pointer;">➡ 内部へ潜る</button>
+                    <button id="m-connect" style="${innerBtnStyle} cursor:pointer; color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">🔗 別の星と結ぶ</button>
                     
-                    ${canMoveOut ? `<button id="m-move-out" style="${innerBtnStyle} color:#ffaa00; border:1px dashed #ffaa00;">⤴️ 外の空間へ出す</button>` : ''}
-                    <button id="m-move-node" style="${innerBtnStyle} color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">📦 別の星の中へ移動</button>
+                    ${canMoveOut ? `<button id="m-move-out" style="${innerBtnStyle} cursor:pointer; color:#ffaa00; border:1px dashed #ffaa00;">⤴️ 外の空間へ出す</button>` : ''}
+                    <button id="m-move-node" style="${innerBtnStyle} cursor:pointer; color:#00ffcc; border:1px solid rgba(0,255,204,0.3);">📦 別の星の中へ移動</button>
 
                     <div style="display:flex; gap:4px;">
-                        <button id="m-up" style="${innerBtnStyle} flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
-                        <button id="m-down" style="${innerBtnStyle} flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
+                        <button id="m-up" style="${innerBtnStyle} cursor:pointer; flex:1; text-align:center; color:#ffcc00; margin-bottom:0;">🌟 拡大</button>
+                        <button id="m-down" style="${innerBtnStyle} cursor:pointer; flex:1; text-align:center; color:#aaa; margin-bottom:0;">🌠 縮小</button>
                     </div>
                 </div>
             </details>
@@ -1281,9 +1312,9 @@ export class UIManager {
             <details class="nx-accordion" style="${detailsStyle}">
                 <summary style="${summaryStyle} color:#ff4444; border-bottom:1px solid rgba(255,68,68,0.2);">🚨 状態・システム</summary>
                 <div style="${contentStyle}">
-                    <button id="m-ghost" style="${innerBtnStyle} color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
-                    <button id="m-lock" style="${innerBtnStyle} color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
-                    <button id="m-del" style="${innerBtnStyle} color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>
+                    <button id="m-ghost" style="${innerBtnStyle} cursor:pointer; color:${ghostBtnColor}; border:1px dashed ${ghostBtnColor}; font-weight:bold;">${ghostBtnText}</button>
+                    <button id="m-lock" style="${innerBtnStyle} cursor:pointer; color:${lockBtnColor}; border:1px solid rgba(255,68,68,0.3); font-weight:bold;">${lockBtnText}</button>
+                    ${delBtnHTML}
                 </div>
             </details>
 
@@ -1356,6 +1387,7 @@ export class UIManager {
             };
         }
 
+        // ★ イベントのバインド（要素が存在する場合のみ処理する安全設計）
         const mColorPicker = document.getElementById('m-color-picker');
         if (mColorPicker) {
             mColorPicker.oninput = (e) => {
@@ -1515,25 +1547,30 @@ export class UIManager {
             if(window.universeAudio) window.universeAudio.playWarp(); 
         };
 
-        document.getElementById('m-note').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
+        const mNoteBtn = document.getElementById('m-note');
+        if (mNoteBtn) mNoteBtn.onclick = () => { if (checkDrag()) return; this.hideMenu(); this.notePad.open(node); };
+        
         document.getElementById('m-up').onclick = () => { if (checkDrag()) return; node.size = Math.min(150, node.size + 10); this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); };
         document.getElementById('m-down').onclick = () => { if (checkDrag()) return; node.size = Math.max(5, node.size - 10); this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); };
         
-        document.getElementById('m-ren').onclick = () => { 
+        const mRenBtn = document.getElementById('m-ren');
+        if (mRenBtn) mRenBtn.onclick = () => { 
             if (checkDrag()) return; 
             const n = prompt("新しい名前:", node.name); 
             if(n) { node.name = n; this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); } 
             this.hideMenu(); 
         };
         
-        document.getElementById('m-set-icon').onclick = () => { 
+        const mSetIconBtn = document.getElementById('m-set-icon');
+        if (mSetIconBtn) mSetIconBtn.onclick = () => { 
             if (checkDrag()) return; 
             const url = prompt("画像URL:", node.iconUrl || ""); 
             if(url !== null) { node.iconUrl = url; this.app.autoSave(); if (NexusP2P && NexusP2P.onNodeUpdated) NexusP2P.onNodeUpdated(node); } 
             this.hideMenu(); 
         };
         
-        document.getElementById('m-link').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
+        const mLinkBtn = document.getElementById('m-link');
+        if (mLinkBtn) mLinkBtn.onclick = () => { if (checkDrag()) return; this.hideMenu(); this.showAppLibrary(node); };
         
         document.getElementById('m-connect').onclick = () => {
             if (checkDrag()) return;
@@ -1562,7 +1599,8 @@ export class UIManager {
             }, 100);
         };
 
-        document.getElementById('m-del').onclick = () => { 
+        const mDelBtn = document.getElementById('m-del');
+        if (mDelBtn) mDelBtn.onclick = () => { 
             if (checkDrag()) return;
             if(confirm("収納しますか？")){ 
                 const idx = this.app.currentUniverse.nodes.indexOf(node);
