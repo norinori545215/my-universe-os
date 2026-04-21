@@ -69,7 +69,13 @@ export class UIManager {
             allowP2P: false,
             allowNodeEdit: false,
             allowNodeColor: false,
-            allowNodeDelete: false
+            allowNodeDelete: false,
+            allowNodeShape: false,
+            allowNodeImage: false,
+            allowNodeLink: false,
+            allowExec: false,
+            allowVault: false,
+            allowAI: false
         };
         this.loadCloudLimits();
 
@@ -1156,12 +1162,19 @@ export class UIManager {
             return;
         }
 
-        // ★ 権限と制限のチェック（ここで「ゲスト」かつ「制限あり」のユーザーを弾く）
+        // ★ 権限と制限のチェック（9項目の詳細制限をすべて判定）
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
-        const canEdit = isPro || !!this.limits.allowNodeEdit;
-        const canColor = isPro || !!this.limits.allowNodeColor;
+        
+        const canEdit   = isPro || !!this.limits.allowNodeEdit;
+        const canColor  = isPro || !!this.limits.allowNodeColor;
+        const canShape  = isPro || !!this.limits.allowNodeShape;
+        const canImage  = isPro || !!this.limits.allowNodeImage;
+        const canLink   = isPro || !!this.limits.allowNodeLink;
         const canDelete = isPro || !!this.limits.allowNodeDelete;
+        const canExec   = isPro || !!this.limits.allowExec;
+        const canVault  = isPro || !!this.limits.allowVault;
+        const canAI     = isPro || !!this.limits.allowAI;
 
         if (node.isWormhole || node.name === '🌐 P2P WORMHOLE' || (node.url && node.url.startsWith('p2p://'))) {
             node.isWormhole = true; 
@@ -1231,8 +1244,10 @@ export class UIManager {
         const lockBtnColor = node.isLocked ? "#ffcc00" : "#ff4444";
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
-        const vaultBtnText = (node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`;
-        const vaultBtnColor = (node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888";
+        
+        // ★ Vault権限による表示変更
+        const vaultBtnText = canVault ? ((node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`) : `📦 秘匿データアクセス 🔒`;
+        const vaultBtnColor = canVault ? ((node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888") : "#555555";
         
         const detailsStyle = "background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; margin-bottom:8px; overflow:hidden;";
         const summaryStyle = "padding:10px; font-size:13px; font-weight:bold; cursor:pointer; outline:none; background:rgba(0,0,0,0.4); display:flex; align-items:center; gap:5px; user-select:none;";
@@ -1241,18 +1256,23 @@ export class UIManager {
 
         const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
 
-        // ★ 制限つきのボタンのHTML組み立て
+        // ★ 各ボタンのロック状態のHTML組み立て
         const lockIcon = ' <span style="font-size:10px; float:right;">🔒</span>';
         
         const noteBtnHTML = canEdit ? `<button id="m-note" style="${innerBtnStyle} color:#aaffff; cursor:pointer;">📝 記憶を編集</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📝 記憶を編集${lockIcon}</button>`;
-        const renBtnHTML = canEdit ? `<button id="m-ren" style="${innerBtnStyle} color:#ccff66; cursor:pointer;">✏ 名前変更</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">✏ 名前変更${lockIcon}</button>`;
-        const iconBtnHTML = canEdit ? `<button id="m-set-icon" style="${innerBtnStyle} color:#ffaa00; cursor:pointer;">🖼 画像設定</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">🖼 画像設定${lockIcon}</button>`;
-        const linkBtnHTML = canEdit ? `<button id="m-link" style="${innerBtnStyle} color:#aaaaff; cursor:pointer;">📱 URL登録</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📱 URL登録${lockIcon}</button>`;
+        const renBtnHTML  = canEdit ? `<button id="m-ren" style="${innerBtnStyle} color:#ccff66; cursor:pointer;">✏ 名前変更</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">✏ 名前変更${lockIcon}</button>`;
         
         const colorPickerHTML = canColor ? `<input type="color" id="m-color-picker" value="${node.color || '#00ffcc'}" style="width:40px; height:32px; border:none; border-radius:6px; background:transparent; cursor:pointer; padding:0; flex-shrink:0;" title="色を変更">` : `<div style="width:40px; height:32px; border-radius:6px; background:#222; border:1px solid #444; display:flex; justify-content:center; align-items:center; color:#555; font-size:12px; flex-shrink:0; cursor:not-allowed;" title="制限されています">🔒</div>`;
-        const shapeBtnHTML = canColor ? `<button id="m-shape" style="${innerBtnStyle} cursor:pointer; flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>` : `<button disabled style="${innerBtnStyle} flex:1; color:#555; margin-bottom:0; padding:8px; cursor:not-allowed;">💠 形: ${node.shape || 'star'} 🔒</button>`;
+        const shapeBtnHTML    = canShape ? `<button id="m-shape" style="${innerBtnStyle} cursor:pointer; flex:1; color:#fff; margin-bottom:0; padding:8px;">💠 形: ${node.shape || 'star'}</button>` : `<button disabled style="${innerBtnStyle} flex:1; color:#555; margin-bottom:0; padding:8px; cursor:not-allowed;">💠 形: ${node.shape || 'star'} 🔒</button>`;
+        
+        const iconBtnHTML = canImage ? `<button id="m-set-icon" style="${innerBtnStyle} color:#ffaa00; cursor:pointer;">🖼 画像設定</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">🖼 画像設定${lockIcon}</button>`;
+        const linkBtnHTML = canLink  ? `<button id="m-link" style="${innerBtnStyle} color:#aaaaff; cursor:pointer;">📱 URL登録</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📱 URL登録${lockIcon}</button>`;
+        
+        const execBtnHTML = canExec ? `<button id="m-exec" style="${innerBtnStyle} cursor:pointer; color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">▶️ プログラムとして実行${lockIcon}</button>`;
+        const aiBtnHTML   = node.isAI ? (canAI ? `<button id="m-ai-chat" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">💬 脳波リンク (Chat)${lockIcon}</button>`) : '';
 
-        const delBtnHTML = canDelete ? `<button id="m-del" style="${innerBtnStyle} cursor:pointer; color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>` : `<button disabled style="${innerBtnStyle} color:#555; border:1px solid #333; cursor:not-allowed;">🎒 亜空間へ送る${lockIcon}</button>`;
+        const delBtnHTML  = canDelete ? `<button id="m-del" style="${innerBtnStyle} cursor:pointer; color:#ff4444; border:1px solid rgba(255,68,68,0.3);">🎒 亜空間へ送る</button>` : `<button disabled style="${innerBtnStyle} color:#555; border:1px solid #333; cursor:not-allowed;">🎒 亜空間へ送る${lockIcon}</button>`;
+        const vaultMainBtn = canVault ? `<button id="m-vault" style="${innerBtnStyle} cursor:pointer; color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>` : `<button disabled style="${innerBtnStyle} color:#555; border:1px solid #333; cursor:not-allowed;">${vaultBtnText}</button>`;
 
         this.actionMenu.innerHTML = `
             <div id="m-drag-handle" style="text-align:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(0,255,204,0.3); color:#00ffcc; font-size:10px; letter-spacing:2px; cursor:move; user-select:none;">＝ DRAG TO MOVE ＝</div>
@@ -1262,7 +1282,7 @@ export class UIManager {
             <details class="nx-accordion" style="${detailsStyle}" open>
                 <summary style="${summaryStyle} color:#ff00ff; border-bottom:1px solid rgba(255,0,255,0.2);">📡 通信・秘匿</summary>
                 <div style="${contentStyle}">
-                    <button id="m-vault" style="${innerBtnStyle} cursor:pointer; color:${vaultBtnColor}; border:1px solid rgba(255,102,170,0.3); font-weight:bold;">${vaultBtnText}</button>
+                    ${vaultMainBtn}
                     <button id="m-nexus" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid rgba(255,0,255,0.5); font-weight:bold;">📡 QRセキュア通信</button>
                     <button id="m-p2p-send" style="${innerBtnStyle} cursor:pointer; color:#ff88ff; border:1px dashed rgba(255,0,255,0.5); font-weight:bold;">🚀 相手の宇宙へ密輸 (P2P)</button>
                     <input type="file" id="m-vault-upload" style="display:none;" accept="*/*" multiple>
@@ -1273,10 +1293,9 @@ export class UIManager {
                 <summary style="${summaryStyle} color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.2);">✏️ 基本・情報</summary>
                 <div style="${contentStyle}">
                     
-                    ${node.isAI ? `<button id="m-ai-chat" style="${innerBtnStyle} cursor:pointer; color:#ff00ff; border:1px solid #ff00ff; font-weight:bold; box-shadow:0 0 10px rgba(255,0,255,0.3);">💬 脳波リンク (Chat)</button>` : ''}
-                    
+                    ${aiBtnHTML}
                     ${noteBtnHTML}
-                    <button id="m-exec" style="${innerBtnStyle} cursor:pointer; color:#00ff00; font-weight:bold; border:1px dashed rgba(0,255,0,0.5);">▶️ プログラムとして実行</button>
+                    ${execBtnHTML}
                     
                     ${node.fileHandle ? `<button id="m-fs-save" style="${innerBtnStyle} cursor:pointer; color:#ffaa00; font-weight:bold; border:1px dashed #ffaa00;">💾 現実のPCに上書き保存</button>` : ''}
                     
@@ -1387,7 +1406,6 @@ export class UIManager {
             };
         }
 
-        // ★ イベントのバインド（要素が存在する場合のみ処理する安全設計）
         const mColorPicker = document.getElementById('m-color-picker');
         if (mColorPicker) {
             mColorPicker.oninput = (e) => {
@@ -1449,16 +1467,19 @@ export class UIManager {
             };
         }
 
+        const vaultMainBtnEl = document.getElementById('m-vault');
         const vaultUpload = document.getElementById('m-vault-upload');
-        document.getElementById('m-vault').onclick = async () => {
-            if (checkDrag()) return;
-            if (node.vault && node.vault.length > 0) {
-                this.hideMenu();
-                this.mediaView.open(node); 
-                return;
-            }
-            vaultUpload.click();
-        };
+        if (vaultMainBtnEl && canVault) {
+            vaultMainBtnEl.onclick = async () => {
+                if (checkDrag()) return;
+                if (node.vault && node.vault.length > 0) {
+                    this.hideMenu();
+                    this.mediaView.open(node); 
+                    return;
+                }
+                vaultUpload.click();
+            };
+        }
 
         document.getElementById('m-nexus').onclick = () => { if (checkDrag()) return; this.hideMenu(); this.nexusUI.openScanner(node); };
 

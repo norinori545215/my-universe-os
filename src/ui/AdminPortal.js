@@ -13,19 +13,25 @@ export class AdminPortal {
 
         const ui = document.createElement('div');
         ui.id = 'admin-portal-screen';
+        
         // 画面全体を覆う黒い背景
         ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050508; z-index:9999999; display:flex; color:#fff; font-family:sans-serif;`;
         document.body.appendChild(ui);
 
-        // クラウドから現在の設定を読み込む
+        // クラウドから現在の設定を読み込む（詳細設定のデフォルト値を含む）
         let restrictions = { 
             maxNodes: 50, 
             allow3D: false, 
             allowP2P: false,
-            // ★追加：星メニューの細かい制限項目（デフォルト値）
             allowNodeEdit: false,
             allowNodeColor: false,
-            allowNodeDelete: false
+            allowNodeShape: false,
+            allowNodeImage: false,
+            allowNodeLink: false,
+            allowNodeDelete: false,
+            allowExec: false,
+            allowVault: false,
+            allowAI: false
         };
 
         try {
@@ -66,6 +72,7 @@ export class AdminPortal {
                 <div id="tab-vip" class="admin-tab-content" style="display:block; max-width:700px;">
                     <h2 style="color:#fff; border-bottom:2px solid #ff00ff; padding-bottom:10px; margin-bottom:30px;">🎟️ 顧客・特別ゲスト招待</h2>
                     <div style="background:rgba(255,0,255,0.05); border:1px solid #ff00ff; border-radius:12px; padding:30px; box-shadow:0 0 30px rgba(255,0,255,0.1);">
+                        
                         <label style="display:block; font-size:12px; color:#ff88ff; margin-bottom:8px;">付与する権限</label>
                         <div style="display:flex; gap:10px; margin-bottom:20px;">
                             <label style="flex:1; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; padding:10px; border-radius:6px; cursor:pointer; text-align:center;">
@@ -79,14 +86,19 @@ export class AdminPortal {
                         <label style="display:block; font-size:12px; color:#aaa; margin-bottom:8px;">宛先メモ (管理用)</label>
                         <input type="text" id="portal-memo" placeholder="例: A社様 トライアル" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:30px; box-sizing:border-box; outline:none;">
                         
-                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">VIPコードを錬成</button>
+                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
+                            VIPコードを錬成
+                        </button>
                         
                         <textarea id="portal-code-out" readonly style="width:100%; height:80px; background:#000; color:#00ffcc; border:1px dashed #00ffcc; margin-top:20px; display:none; resize:none; padding:15px; box-sizing:border-box; outline:none; font-family:monospace; font-size:16px; text-align:center; line-height:50px;"></textarea>
-                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">📄 コピーして顧客に渡す</button>
+                        
+                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">
+                            📄 コピーして顧客に渡す
+                        </button>
                     </div>
                 </div>
 
-                <div id="tab-limits" class="admin-tab-content" style="display:none; max-width:700px;">
+                <div id="tab-limits" class="admin-tab-content" style="display:none; max-width:800px;">
                     <h2 style="color:#fff; border-bottom:2px solid #00ffcc; padding-bottom:10px; margin-bottom:10px;">⚙️ 新規ユーザー (ゲスト) 制限設定</h2>
                     <p style="color:#aaa; font-size:12px; margin-bottom:30px; line-height:1.6;">ここで設定した内容は、明日以降ログインする全世界の「無料ゲストユーザー」に適用されます。<br>※将来的にユーザーが購入・課金を行い「PRO」権限へ昇格した場合は、これらの制限はすべて自動的に解除されます。</p>
 
@@ -97,23 +109,47 @@ export class AdminPortal {
                         <input type="number" id="limit-nodes" value="${restrictions.maxNodes}" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:25px; box-sizing:border-box; outline:none;">
                         
                         <h3 style="color:#00ffcc; font-size:14px; margin-bottom:15px;">■ システム拡張機能</h3>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:15px; cursor:pointer; font-size:14px; background:#1a1a24; padding:15px; border-radius:8px;">
-                            <input type="checkbox" id="limit-3d" ${restrictions.allow3D ? 'checked' : ''} style="width:20px; height:20px; accent-color:#00ffcc;"> 3Dエンジン (立体宇宙) を許可する
-                        </label>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:25px; cursor:pointer; font-size:14px; background:#1a1a24; padding:15px; border-radius:8px;">
-                            <input type="checkbox" id="limit-p2p" ${restrictions.allowP2P ? 'checked' : ''} style="width:20px; height:20px; accent-color:#00ffcc;"> P2P通信 (ワームホール) を許可する
-                        </label>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:25px;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
+                                <input type="checkbox" id="limit-3d" ${restrictions.allow3D ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 🪐 3Dエンジン (立体宇宙)
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
+                                <input type="checkbox" id="limit-p2p" ${restrictions.allowP2P ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 🌐 P2P通信 (ワームホール)
+                            </label>
+                        </div>
 
-                        <h3 style="color:#00ffcc; font-size:14px; margin-bottom:15px;">■ 星のメニュー機能制限</h3>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:30px;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
-                                <input type="checkbox" id="limit-edit" ${restrictions.allowNodeEdit ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 星の名前・画像の編集
+                        <h3 style="color:#00ffcc; font-size:14px; margin-bottom:15px;">■ 星のメニュー機能制限（詳細）</h3>
+                        <div style="font-size:11px; color:#888; margin-bottom:10px;">✅チェックを入れた機能のみ、ゲストユーザーにも使用が許可されます。</div>
+                        
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:30px;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #ccff66;">
+                                <input type="checkbox" id="limit-edit" ${restrictions.allowNodeEdit ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 名前・記憶編集
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
-                                <input type="checkbox" id="limit-color" ${restrictions.allowNodeColor ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 星のカラー変更
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #00ffcc;">
+                                <input type="checkbox" id="limit-color" ${restrictions.allowNodeColor ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 色の変更
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
-                                <input type="checkbox" id="limit-delete" ${restrictions.allowNodeDelete ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 星の破壊 (削除)
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #fff;">
+                                <input type="checkbox" id="limit-shape" ${restrictions.allowNodeShape ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 形の変更
+                            </label>
+
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #ffaa00;">
+                                <input type="checkbox" id="limit-image" ${restrictions.allowNodeImage ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 画像・アイコン設定
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #aaaaff;">
+                                <input type="checkbox" id="limit-link" ${restrictions.allowNodeLink ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> URLリンク設定
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #ff66aa;">
+                                <input type="checkbox" id="limit-vault" ${restrictions.allowVault ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 地下金庫(Vault)操作
+                            </label>
+
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a1a; padding:12px; border-radius:8px; border-left:3px solid #ff0000;" title="※ゲストには原則OFFを推奨">
+                                <input type="checkbox" id="limit-exec" ${restrictions.allowExec ? 'checked' : ''} style="width:18px; height:18px; accent-color:#ff0000;"> プログラム実行 (危険)
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a2a; padding:12px; border-radius:8px; border-left:3px solid #ff00ff;">
+                                <input type="checkbox" id="limit-ai" ${restrictions.allowAI ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> AIとの脳波リンク
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a1a; padding:12px; border-radius:8px; border-left:3px solid #ff4444;">
+                                <input type="checkbox" id="limit-delete" ${restrictions.allowNodeDelete ? 'checked' : ''} style="width:18px; height:18px; accent-color:#ff4444;"> 星の破壊 (削除)
                             </label>
                         </div>
 
@@ -216,18 +252,25 @@ export class AdminPortal {
             btn.innerText = "クラウドへ送信中...";
             btn.disabled = true;
 
+            // ★ 詳細設定の値をすべて取得して保存
             const limits = {
                 maxNodes: parseInt(document.getElementById('limit-nodes').value) || 50,
                 allow3D: document.getElementById('limit-3d').checked,
                 allowP2P: document.getElementById('limit-p2p').checked,
                 allowNodeEdit: document.getElementById('limit-edit').checked,
                 allowNodeColor: document.getElementById('limit-color').checked,
-                allowNodeDelete: document.getElementById('limit-delete').checked
+                allowNodeShape: document.getElementById('limit-shape').checked,
+                allowNodeImage: document.getElementById('limit-image').checked,
+                allowNodeLink: document.getElementById('limit-link').checked,
+                allowNodeDelete: document.getElementById('limit-delete').checked,
+                allowExec: document.getElementById('limit-exec').checked,
+                allowVault: document.getElementById('limit-vault').checked,
+                allowAI: document.getElementById('limit-ai').checked
             };
 
             try {
                 await setDoc(doc(db, "system", "settings"), { new_user_limits: limits }, { merge: true });
-                alert("✅ 設定をクラウドに保存しました！\n明日以降の新規ゲストユーザーにこの制限が適用されます。");
+                alert("✅ 制限設定をクラウドに保存しました！\n明日以降の新規ゲストユーザーに適用されます。");
             } catch (error) {
                 alert(`保存エラー: ${error.message}`);
             }
