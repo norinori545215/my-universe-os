@@ -2,7 +2,7 @@
 import { BioAuth } from './BioAuth.js';
 import { VIPInvite } from '../billing/VIPInvite.js';
 import { auth, db } from './Auth.js';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, updateProfile, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { deriveKey } from './CryptoCore.js';
 import { loadEncryptedUniverse } from '../db/CloudSync.js';
@@ -37,8 +37,6 @@ export class LoginGateway {
         
         document.getElementById('btn-bio').onclick = async () => {
             const btn = document.getElementById('btn-bio');
-            
-            // ★ 修正箇所：多重クリック（A request is already pending）を防止するロック処理
             if (btn.disabled) return; 
             btn.disabled = true;
             btn.innerText = "センサー起動中...";
@@ -64,7 +62,6 @@ export class LoginGateway {
                 this.requestMasterKey(finalRole, ui, resolve, false);
             } catch (e) { 
                 console.warn("生体認証キャンセル/失敗:", e);
-                // 失敗した場合はボタンのロックを解除して元に戻す
                 btn.disabled = false;
                 btn.innerText = "生体認証でログイン";
                 btn.style.opacity = "1";
@@ -81,98 +78,164 @@ export class LoginGateway {
 
     static renderLoginForm(ui, resolve) {
         ui.innerHTML = `
-            <div style="width:320px; background:rgba(20,20,30,0.9); padding:30px; border:1px solid #333; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
-                <div style="font-size:22px; color:#fff; font-weight:bold; margin-bottom:20px; text-align:center;">LOGIN</div>
+            <div id="main-auth-box" style="width:320px; background:rgba(20,20,30,0.9); padding:30px; border:1px solid #333; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.8); transition:opacity 0.2s;">
                 
-                <div id="login-mode-email">
-                    <input type="email" id="gate-email" placeholder="Email Address" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
-                    <input type="password" id="gate-pass" placeholder="Password" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
-                    <button id="gate-enter" style="width:100%; padding:12px; background:#00ffcc; color:#000; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">ログイン / 新規登録</button>
-                    <div style="text-align:center;"><button id="toggle-vip" style="background:transparent; border:none; color:#ff00ff; cursor:pointer; font-size:12px; text-decoration:underline;">VIPコードをお持ちの方はこちら</button></div>
+                <div style="display:flex; margin-bottom:20px; border-bottom:1px solid #444;">
+                    <button id="tab-login" style="flex:1; padding:10px; background:transparent; color:#00ffcc; border:none; border-bottom:2px solid #00ffcc; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">LOGIN</button>
+                    <button id="tab-register" style="flex:1; padding:10px; background:transparent; color:#888; border:none; border-bottom:2px solid transparent; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;">SIGN UP</button>
+                </div>
+                
+                <div id="mode-login">
+                    <input type="email" id="login-email" placeholder="Email Address" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
+                    <input type="password" id="login-pass" placeholder="Password" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
+                    <button id="btn-login" style="width:100%; padding:12px; background:#00ffcc; color:#000; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">ログイン</button>
                 </div>
 
-                <div id="login-mode-vip" style="display:none;">
-                    <div style="font-size:11px; color:#ffaa00; margin-bottom:10px; text-align:center;">※Email登録不要でアクセスできます</div>
-                    <input type="text" id="gate-vip-code" placeholder="NEXUS-..." style="width:100%; box-sizing:border-box; background:#111; border:1px solid #ffaa00; color:#ffaa00; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
-                    <button id="gate-vip-enter" style="width:100%; padding:12px; background:#ffaa00; color:#000; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">コードでログイン</button>
-                    <div style="text-align:center;"><button id="toggle-email" style="background:transparent; border:none; color:#888; cursor:pointer; font-size:12px; text-decoration:underline;">Emailログインに戻る</button></div>
+                <div id="mode-register" style="display:none;">
+                    <div style="font-size:11px; color:#ff00ff; margin-bottom:10px;">※登録後、認証コード（メール）が送信されます</div>
+                    <input type="text" id="reg-name" placeholder="Account Name (表示名)" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
+                    <input type="email" id="reg-email" placeholder="Email Address" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
+                    <input type="password" id="reg-pass" placeholder="Password (6文字以上)" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
+                    <button id="btn-register" style="width:100%; padding:12px; background:#ff00ff; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">新規登録</button>
                 </div>
+
+                <div style="text-align:center; margin-top:10px;">
+                    <button id="toggle-vip" style="background:transparent; border:none; color:#ffaa00; cursor:pointer; font-size:12px; text-decoration:underline;">VIPコードをお持ちの方はこちら</button>
+                </div>
+            </div>
+            
+            <div id="mode-vip" style="display:none; width:320px; background:rgba(20,20,30,0.9); padding:30px; border:1px solid #ffaa00; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.8); position:absolute;">
+                <div style="font-size:11px; color:#ffaa00; margin-bottom:10px; text-align:center;">※Email登録不要でアクセスできます</div>
+                <input type="text" id="gate-vip-code" placeholder="NEXUS-..." style="width:100%; box-sizing:border-box; background:#111; border:1px solid #ffaa00; color:#ffaa00; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
+                <button id="gate-vip-enter" style="width:100%; padding:12px; background:#ffaa00; color:#000; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">コードでログイン</button>
+                <div style="text-align:center;"><button id="toggle-back" style="background:transparent; border:none; color:#888; cursor:pointer; font-size:12px; text-decoration:underline;">メールログインに戻る</button></div>
             </div>
         `;
 
-        const modeEmail = document.getElementById('login-mode-email');
-        const modeVip = document.getElementById('login-mode-vip');
+        const tabLogin = document.getElementById('tab-login');
+        const tabReg = document.getElementById('tab-register');
+        const modeLogin = document.getElementById('mode-login');
+        const modeReg = document.getElementById('mode-register');
+        const modeVip = document.getElementById('mode-vip');
+        const mainBox = document.getElementById('main-auth-box');
 
-        document.getElementById('toggle-vip').onclick = () => { modeEmail.style.display = 'none'; modeVip.style.display = 'block'; };
-        document.getElementById('toggle-email').onclick = () => { modeVip.style.display = 'none'; modeEmail.style.display = 'block'; };
+        // タブ切り替えロジック
+        tabLogin.onclick = () => {
+            modeLogin.style.display = 'block'; modeReg.style.display = 'none';
+            tabLogin.style.color = '#00ffcc'; tabLogin.style.borderBottomColor = '#00ffcc';
+            tabReg.style.color = '#888'; tabReg.style.borderBottomColor = 'transparent';
+        };
+        tabReg.onclick = () => {
+            modeLogin.style.display = 'none'; modeReg.style.display = 'block';
+            tabReg.style.color = '#ff00ff'; tabReg.style.borderBottomColor = '#ff00ff';
+            tabLogin.style.color = '#888'; tabLogin.style.borderBottomColor = 'transparent';
+        };
 
-        document.getElementById('gate-enter').onclick = async () => {
-            const email = document.getElementById('gate-email').value.trim().toLowerCase(); 
-            const pass = document.getElementById('gate-pass').value.trim();
-            if (!email || !pass) return alert("Emailとパスワードを入力してください");
+        document.getElementById('toggle-vip').onclick = () => { 
+            mainBox.style.opacity = '0'; 
+            setTimeout(() => { mainBox.style.display='none'; modeVip.style.display='block'; }, 200); 
+        };
+        document.getElementById('toggle-back').onclick = () => { 
+            modeVip.style.display='none'; mainBox.style.display='block'; 
+            setTimeout(() => { mainBox.style.opacity='1'; }, 50); 
+        };
 
-            const btn = document.getElementById('gate-enter');
-            btn.innerText = "認証中...";
-            btn.disabled = true;
+        // ==========================================
+        // ★ 1. 新規登録 (SIGN UP) 処理
+        // ==========================================
+        document.getElementById('btn-register').onclick = async () => {
+            const name = document.getElementById('reg-name').value.trim();
+            const email = document.getElementById('reg-email').value.trim().toLowerCase();
+            const pass = document.getElementById('reg-pass').value;
+            
+            if(!name || !email || !pass) return alert("すべての項目を入力してください。");
+            if(pass.length < 6) return alert("パスワードは6文字以上必要です。");
 
-            let role = 'RESTRICTED';
+            const btn = document.getElementById('btn-register');
+            btn.innerText = "登録中..."; btn.disabled = true;
 
             try {
+                // アカウント生成
+                const cred = await createUserWithEmailAndPassword(auth, email, pass);
+                
+                // アカウント名の登録
+                await updateProfile(cred.user, { displayName: name });
+                
+                // ★ 修正: 新規ユーザーは確実に「RESTRICTED（制限付きゲスト）」として登録する
+                await setDoc(doc(db, "users", cred.user.uid), { 
+                    role: 'RESTRICTED', 
+                    name: name,
+                    createdAt: serverTimestamp() 
+                });
+                
+                // 認証メールの送信
+                await sendEmailVerification(cred.user);
+                auth.signOut(); // 認証されるまでログインさせない
+                
+                alert("🎉 登録が完了しました！\n入力されたメールアドレスに認証リンクを送信しました。\nメールを確認し、リンクをクリックしてからログインしてください。");
+                tabLogin.click(); // ログイン画面に戻す
+            } catch(e) {
+                alert(`登録エラー: ${e.message}`);
+            }
+            btn.innerText = "新規登録"; btn.disabled = false;
+        };
+
+        // ==========================================
+        // ★ 2. ログイン (LOGIN) 処理
+        // ==========================================
+        document.getElementById('btn-login').onclick = async () => {
+            const email = document.getElementById('login-email').value.trim().toLowerCase(); 
+            const pass = document.getElementById('login-pass').value;
+            if (!email || !pass) return alert("Emailとパスワードを入力してください");
+
+            const btn = document.getElementById('btn-login');
+            btn.innerText = "認証中..."; btn.disabled = true;
+
+            try {
+                const cred = await signInWithEmailAndPassword(auth, email, pass);
+                const user = cred.user;
+
+                // ★ 管理者以外は、メール認証が完了しているか必ずチェックする
+                if (email !== this.ADMIN_EMAIL.toLowerCase() && !user.emailVerified) {
+                    alert("⚠️ メール認証が完了していません。\n受信トレイ（または迷惑メールフォルダ）の認証リンクをクリックしてください。");
+                    auth.signOut();
+                    btn.innerText = "ログイン"; btn.disabled = false;
+                    return;
+                }
+
+                let role = 'RESTRICTED';
+
                 if (email === this.ADMIN_EMAIL.toLowerCase()) {
-                    try {
-                        await signInWithEmailAndPassword(auth, email, pass);
-                        role = 'ADMIN';
-                    } catch (adminError) {
-                        if (adminError.code === 'auth/user-not-found' || adminError.code === 'auth/invalid-credential') {
-                            const newAdmin = await createUserWithEmailAndPassword(auth, email, pass);
-                            role = 'ADMIN';
-                            await setDoc(doc(db, "users", newAdmin.user.uid), { role: 'ADMIN', createdAt: serverTimestamp() });
-                            console.log("✨ 開発者用神アカウント(ADMIN)を創世しました。");
-                        } else {
-                            throw adminError; 
-                        }
-                    }
+                    role = 'ADMIN';
+                    await setDoc(doc(db, "users", user.uid), { role: 'ADMIN' }, { merge: true });
                 } else {
-                    try {
-                        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-                        const user = userCredential.user;
-                        
-                        const userDoc = await getDoc(doc(db, "users", user.uid));
-                        if (userDoc.exists()) {
-                            role = userDoc.data().role || 'PRO';
-                        } else {
-                            role = 'PRO';
-                            await setDoc(doc(db, "users", user.uid), { role: 'PRO', createdAt: serverTimestamp() });
-                        }
-                    } catch (error) {
-                        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-                            const newCredential = await createUserWithEmailAndPassword(auth, email, pass);
-                            const newUser = newCredential.user;
-                            
-                            role = 'RESTRICTED';
-                            await setDoc(doc(db, "users", newUser.uid), { role: 'RESTRICTED', createdAt: serverTimestamp() });
-                        } else {
-                            throw error;
-                        }
+                    const userDoc = await getDoc(doc(db, "users", user.uid));
+                    if (userDoc.exists() && userDoc.data().role) {
+                        role = userDoc.data().role;
+                    } else {
+                        // ★ 万が一、古いアカウントでドキュメントが存在しない場合も、安全のためPROではなくRESTRICTEDにする
+                        role = 'RESTRICTED';
+                        await setDoc(doc(db, "users", user.uid), { role: 'RESTRICTED', createdAt: serverTimestamp() }, { merge: true });
                     }
                 }
 
                 this.requestMasterKey(role, ui, resolve, true);
 
             } catch (error) {
-                alert(`ログインエラー: パスワードが違うか、ネットワークに問題があります。\n(${error.message})`);
-                btn.innerText = "ログイン / 新規登録";
-                btn.disabled = false;
+                alert(`ログインエラー: パスワードが違うか、アカウントが存在しません。\n(${error.message})`);
+                btn.innerText = "ログイン"; btn.disabled = false;
             }
         };
 
+        // ==========================================
+        // ★ 3. VIPコードログイン 処理
+        // ==========================================
         document.getElementById('gate-vip-enter').onclick = async () => {
             const code = document.getElementById('gate-vip-code').value.trim();
             if (!code) return;
             
             const btn = document.getElementById('gate-vip-enter');
-            btn.innerText = "暗号解読中...";
-            btn.disabled = true;
+            btn.innerText = "暗号解読中..."; btn.disabled = true;
 
             try {
                 const payload = await VIPInvite.verifyTicket(code);
@@ -192,8 +255,7 @@ export class LoginGateway {
 
             } catch (e) { 
                 alert(`コードエラー: ${e.message}`); 
-                btn.innerText = "コードでログイン";
-                btn.disabled = false;
+                btn.innerText = "コードでログイン"; btn.disabled = false;
             }
         };
     }
