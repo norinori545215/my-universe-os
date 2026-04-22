@@ -2,7 +2,7 @@
 import { BioAuth } from './BioAuth.js';
 import { VIPInvite } from '../billing/VIPInvite.js';
 import { auth, db } from './Auth.js';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, updateProfile, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { signInWithEmailAndPassword, signInAnonymously, updateProfile, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { deriveKey } from './CryptoCore.js';
 import { loadEncryptedUniverse } from '../db/CloudSync.js';
@@ -20,12 +20,69 @@ export class LoginGateway {
             ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050510; z-index:9999999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#00ffcc; font-family:sans-serif;`;
             document.body.appendChild(ui);
 
+            // ★ メールリンクから戻ってきたときの処理
+            if (isSignInWithEmailLink(auth, window.location.href)) {
+                this.handleEmailLinkSignIn(ui, resolve);
+                return;
+            }
+
             if (boundCred) {
                 this.renderBioAuth(ui, boundCred, currentRole, resolve);
             } else {
                 this.renderLoginForm(ui, resolve);
             }
         });
+    }
+
+    // ★ メールリンク認証の処理（復元）
+    static async handleEmailLinkSignIn(ui, resolve) {
+        ui.innerHTML = `<div style="font-size:16px; color:#ff00ff; font-weight:bold;">📧 メール認証を確認中...</div>`;
+        
+        let email = window.localStorage.getItem('emailForSignIn');
+        if (!email) {
+            email = window.prompt('確認のため、登録したメールアドレスをもう一度入力してください。');
+        }
+
+        try {
+            const result = await signInWithEmailLink(auth, email, window.location.href);
+            window.localStorage.removeItem('emailForSignIn');
+
+            const user = result.user;
+            let role = 'RESTRICTED';
+
+            if (email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
+                role = 'ADMIN';
+                await setDoc(doc(db, "users", user.uid), { role: 'ADMIN' }, { merge: true });
+            } else {
+                const userDoc = await getDoc(doc(db, "users", user.uid));
+                if (userDoc.exists() && userDoc.data().role) {
+                    role = userDoc.data().role;
+                } else {
+                    // 新規登録の初回ログイン時は名前を保存し、制限付き権限にする
+                    const savedName = window.localStorage.getItem('nameForSignIn') || "Guest User";
+                    await updateProfile(user, { displayName: savedName });
+                    role = 'RESTRICTED';
+                    await setDoc(doc(db, "users", user.uid), { 
+                        role: 'RESTRICTED', 
+                        name: savedName,
+                        createdAt: serverTimestamp() 
+                    }, { merge: true });
+                    window.localStorage.removeItem('nameForSignIn');
+                }
+            }
+
+            // URLのクエリパラメータ（認証トークン）を消して綺麗にする
+            window.history.replaceState(null, null, window.location.pathname);
+            
+            this.requestMasterKey(role, ui, resolve, result.additionalUserInfo.isNewUser);
+
+        } catch (error) {
+            ui.innerHTML = `
+                <div style="font-size:16px; color:#ff4444; font-weight:bold; margin-bottom:20px;">🚨 認証エラー</div>
+                <div style="font-size:12px; color:#888;">リンクが古いか、別のブラウザで開かれています。</div>
+                <button onclick="window.location.reload()" style="margin-top:20px; padding:10px 20px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; cursor:pointer;">やり直す</button>
+            `;
+        }
     }
 
     static renderBioAuth(ui, boundCred, currentRole, resolve) {
@@ -92,11 +149,12 @@ export class LoginGateway {
                 </div>
 
                 <div id="mode-register" style="display:none;">
-                    <div style="font-size:11px; color:#ff00ff; margin-bottom:10px;">※登録後、認証コード（メール）が送信されます</div>
+                    <div style="font-size:11px; color:#ff00ff; margin-bottom:15px; line-height:1.4;">
+                        ※パスワードは不要です。<br>入力したメールアドレスに「ログイン専用リンク」が届きます。
+                    </div>
                     <input type="text" id="reg-name" placeholder="Account Name (表示名)" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
-                    <input type="email" id="reg-email" placeholder="Email Address" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:15px; outline:none;">
-                    <input type="password" id="reg-pass" placeholder="Password (6文字以上)" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
-                    <button id="btn-register" style="width:100%; padding:12px; background:#ff00ff; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">新規登録</button>
+                    <input type="email" id="reg-email" placeholder="Email Address" style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; outline:none;">
+                    <button id="btn-register" style="width:100%; padding:12px; background:#ff00ff; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; margin-bottom:15px;">認証メールを送信</button>
                 </div>
 
                 <div style="text-align:center; margin-top:10px;">
@@ -119,7 +177,6 @@ export class LoginGateway {
         const modeVip = document.getElementById('mode-vip');
         const mainBox = document.getElementById('main-auth-box');
 
-        // タブ切り替えロジック
         tabLogin.onclick = () => {
             modeLogin.style.display = 'block'; modeReg.style.display = 'none';
             tabLogin.style.color = '#00ffcc'; tabLogin.style.borderBottomColor = '#00ffcc';
@@ -141,47 +198,40 @@ export class LoginGateway {
         };
 
         // ==========================================
-        // ★ 1. 新規登録 (SIGN UP) 処理
+        // ★ 1. 新規登録 (メールリンク送信) 処理
         // ==========================================
         document.getElementById('btn-register').onclick = async () => {
             const name = document.getElementById('reg-name').value.trim();
             const email = document.getElementById('reg-email').value.trim().toLowerCase();
-            const pass = document.getElementById('reg-pass').value;
             
-            if(!name || !email || !pass) return alert("すべての項目を入力してください。");
-            if(pass.length < 6) return alert("パスワードは6文字以上必要です。");
+            if(!name || !email) return alert("アカウント名とEmailを入力してください。");
 
             const btn = document.getElementById('btn-register');
-            btn.innerText = "登録中..."; btn.disabled = true;
+            btn.innerText = "送信中..."; btn.disabled = true;
+
+            const actionCodeSettings = {
+                url: window.location.href, // 戻ってくるURL（現在のページ）
+                handleCodeInApp: true // アプリ内でコードを処理する
+            };
 
             try {
-                // アカウント生成
-                const cred = await createUserWithEmailAndPassword(auth, email, pass);
+                await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+                // リンクを踏んで戻ってきたときのために、ローカルにメールアドレスと名前を保存
+                window.localStorage.setItem('emailForSignIn', email);
+                window.localStorage.setItem('nameForSignIn', name);
                 
-                // アカウント名の登録
-                await updateProfile(cred.user, { displayName: name });
+                alert("📩 認証メールを送信しました！\nメール内のリンクをクリックしてログインを完了してください。");
                 
-                // ★ 修正: 新規ユーザーは確実に「RESTRICTED（制限付きゲスト）」として登録する
-                await setDoc(doc(db, "users", cred.user.uid), { 
-                    role: 'RESTRICTED', 
-                    name: name,
-                    createdAt: serverTimestamp() 
-                });
-                
-                // 認証メールの送信
-                await sendEmailVerification(cred.user);
-                auth.signOut(); // 認証されるまでログインさせない
-                
-                alert("🎉 登録が完了しました！\n入力されたメールアドレスに認証リンクを送信しました。\nメールを確認し、リンクをクリックしてからログインしてください。");
-                tabLogin.click(); // ログイン画面に戻す
+                // 送信後はボタンをロック
+                btn.innerText = "送信完了";
             } catch(e) {
-                alert(`登録エラー: ${e.message}`);
+                alert(`送信エラー: ${e.message}`);
+                btn.innerText = "認証メールを送信"; btn.disabled = false;
             }
-            btn.innerText = "新規登録"; btn.disabled = false;
         };
 
         // ==========================================
-        // ★ 2. ログイン (LOGIN) 処理
+        // ★ 2. ログイン (既存ユーザー) 処理
         // ==========================================
         document.getElementById('btn-login').onclick = async () => {
             const email = document.getElementById('login-email').value.trim().toLowerCase(); 
@@ -195,14 +245,6 @@ export class LoginGateway {
                 const cred = await signInWithEmailAndPassword(auth, email, pass);
                 const user = cred.user;
 
-                // ★ 管理者以外は、メール認証が完了しているか必ずチェックする
-                if (email !== this.ADMIN_EMAIL.toLowerCase() && !user.emailVerified) {
-                    alert("⚠️ メール認証が完了していません。\n受信トレイ（または迷惑メールフォルダ）の認証リンクをクリックしてください。");
-                    auth.signOut();
-                    btn.innerText = "ログイン"; btn.disabled = false;
-                    return;
-                }
-
                 let role = 'RESTRICTED';
 
                 if (email === this.ADMIN_EMAIL.toLowerCase()) {
@@ -213,13 +255,11 @@ export class LoginGateway {
                     if (userDoc.exists() && userDoc.data().role) {
                         role = userDoc.data().role;
                     } else {
-                        // ★ 万が一、古いアカウントでドキュメントが存在しない場合も、安全のためPROではなくRESTRICTEDにする
                         role = 'RESTRICTED';
-                        await setDoc(doc(db, "users", user.uid), { role: 'RESTRICTED', createdAt: serverTimestamp() }, { merge: true });
                     }
                 }
 
-                this.requestMasterKey(role, ui, resolve, true);
+                this.requestMasterKey(role, ui, resolve, false);
 
             } catch (error) {
                 alert(`ログインエラー: パスワードが違うか、アカウントが存在しません。\n(${error.message})`);
