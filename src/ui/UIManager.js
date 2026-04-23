@@ -62,17 +62,17 @@ export class UIManager {
         this.is3DMode = false;
         this.hyper3DInstance = null;
 
-        // ★修正: クラウドルールの初期値に9つの詳細制限項目を追加
+        // ★修正: クラウドルールの初期値に新しい制限項目を追加
         this.limits = { 
             maxNodes: 50, 
             allow3D: false, 
             allowP2P: false,
             allowNodeEdit: false,
             allowNodeColor: false,
+            allowNodeDelete: false,
             allowNodeShape: false,
             allowNodeImage: false,
             allowNodeLink: false,
-            allowNodeDelete: false,
             allowExec: false,
             allowVault: false,
             allowAI: false
@@ -136,14 +136,10 @@ export class UIManager {
         const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
         
         if (!exists) {
-            // 1. OSの正規メソッドを使って星を生成（これでinnerUniverse等が完璧にセットアップされる）
             this.app.currentUniverse.addNode('👁️ GOD CONSOLE', 0, -150, 40, '#ff0000', 'rect');
-            
-            // 2. 生成されたばかりの最新の星を取得し、システム専用IDを書き込む
             const godNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             godNode.id = godNodeId;
             godNode.isSystem = true;
-            
             if(typeof this.app.update === 'function') this.app.update();
         }
     }
@@ -398,8 +394,12 @@ export class UIManager {
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
         
-        // ★ 権限チェック：削除権限があるか判定（ない場合は収納モードをロック）
+        // ★ ゲスト制限の判定（PRO権限がない場合はロックされる）
         const canDelete = isPro || !!this.limits.allowNodeDelete;
+        const lock3D = !isPro && !this.limits.allow3D;
+        const lockP2P = !isPro && !this.limits.allowP2P;
+        const lockAI = !isPro && !this.limits.allowAI;
+        const lockPro = !isPro; // VIP限定機能のフラグ
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -465,17 +465,28 @@ export class UIManager {
 
                 <div style="font-size:11px; color:#ff00ff; margin-bottom:10px; letter-spacing:1px; margin-top:20px;">AI & SENSORY INTERFACE</div>
                 
-                <button id="cp-spawn-local-ai" style="width:100%; padding:12px; background:rgba(255,0,255,0.2); color:#fff; border:1px solid #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px; box-shadow:0 0 10px rgba(255,0,255,0.4);">🧠 完全オフラインAIを構築 (WebGPU)</button>
+                ${lockAI ? 
+                    `<button disabled style="width:100%; padding:12px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; margin-bottom:10px;">🧠 完全オフラインAIを構築 (VIP限定) 🔒</button>` :
+                    `<button id="cp-spawn-local-ai" style="width:100%; padding:12px; background:rgba(255,0,255,0.2); color:#fff; border:1px solid #ff00ff; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px; box-shadow:0 0 10px rgba(255,0,255,0.4);">🧠 完全オフラインAIを構築 (WebGPU)</button>`
+                }
                 
-                <button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,170,0,0.1); color:#ffaa00; border:1px solid rgba(255,170,0,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>
-                <button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>
+                ${lockAI ? 
+                    `<button disabled style="width:100%; padding:12px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ (VIP限定) 🔒</button>` :
+                    `<button id="cp-spawn-entity" style="width:100%; padding:12px; background:rgba(255,170,0,0.1); color:#ffaa00; border:1px solid rgba(255,170,0,0.5); border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom:10px;">🤖 自律型AIを宇宙に放つ</button>`
+                }
+
+                ${lockPro ? 
+                    `<button disabled style="width:100%; padding:12px; background:#222; color:#555; border:1px dashed #444; border-radius:8px; font-weight:bold; font-size:12px; cursor:not-allowed;">✋ 空間ジェスチャー (VIP限定) 🔒</button>` :
+                    `<button id="cp-spatial-vision" style="width:100%; padding:12px; background:rgba(0,255,204,0.1); color:#00ffcc; border:1px dashed #00ffcc; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">✋ 空間ジェスチャー (カメラ起動)</button>`
+                }
             `;
         } else if (this.state.activeTab === 'config') {
             
             const chronosCfg = Chronos.getConfig(); 
-            
             const lock3D = !isPro && !this.limits.allow3D;
             const lockP2P = !isPro && !this.limits.allowP2P;
+            const lockAI = !isPro && !this.limits.allowAI;
+            const lockPro = !isPro;
 
             content.innerHTML = `
                 ${!isPro ? `
@@ -489,21 +500,21 @@ export class UIManager {
                 <div style="background:rgba(0,255,204,0.03); border:1px dashed rgba(0,255,204,0.3); padding:15px; border-radius:10px; display:flex; flex-direction:column; gap:15px;">
                     
                     <div style="border: 1px solid rgba(255, 204, 0, 0.3); padding: 10px; border-radius: 8px;">
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ffcc00;">
-                            <input type="checkbox" id="cp-chronos-toggle" ${chronosCfg.enabled ? 'checked' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
-                            <b>⏳ Chronos (自律型自爆)</b>
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'}; color:${lockPro ? '#555' : '#ffcc00'};">
+                            <input type="checkbox" id="cp-chronos-toggle" ${chronosCfg.enabled ? 'checked' : ''} ${lockPro ? 'disabled' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                            <b>⏳ Chronos (自律型自爆) ${lockPro ? '🔒' : ''}</b>
                         </label>
                         <div style="font-size:10px; color:#888; margin: 8px 0 5px 26px;">無アクセスが続くと宇宙を灰にする</div>
-                        <div style="margin-left:26px; display:flex; align-items:center; gap:10px;">
+                        <div style="margin-left:26px; display:flex; align-items:center; gap:10px; opacity:${lockPro ? '0.3' : '1'}; pointer-events:${lockPro ? 'none' : 'auto'};">
                             <input type="number" id="cp-chronos-days" value="${chronosCfg.days}" style="width:50px; background:rgba(0,0,0,0.5); color:#ffcc00; border:1px solid #ffcc00; border-radius:4px; padding:2px 5px; font-size:12px;">
                             <span style="font-size:11px; color:#ffcc00;">日後に実行</span>
                         </div>
                     </div>
 
                     <div style="border: 1px solid rgba(255, 0, 0, 0.3); padding: 10px; border-radius: 8px; background: rgba(255,0,0,0.05);">
-                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer; color:#ff4444;">
-                            <input type="checkbox" id="cp-panic-armed" ${localStorage.getItem('universe_panic_armed') === 'true' ? 'checked' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
-                            <b>🚨 物理パニック (振ると自爆)</b>
+                        <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'}; color:${lockPro ? '#555' : '#ff4444'};">
+                            <input type="checkbox" id="cp-panic-armed" ${localStorage.getItem('universe_panic_armed') === 'true' ? 'checked' : ''} ${lockPro ? 'disabled' : ''} style="accent-color:#ff4444; width:16px; height:16px;"> 
+                            <b>🚨 物理パニック (振ると自爆) ${lockPro ? '🔒' : ''}</b>
                         </label>
                         <div style="font-size:10px; color:#ff8888; margin: 8px 0 0 26px;">ONにすると、スマホやPCを激しく振った瞬間に全データをパージしてGoogleへ強制遷移します。</div>
                     </div>
@@ -522,21 +533,21 @@ export class UIManager {
                         </label>`
                     }
 
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                        <span style="color:#ff88ff;">👁️‍🗨️ 特異点ブラウザ</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-search" ${localStorage.getItem('universe_ext_search')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#ff88ff'};">👁️‍🗨️ 特異点ブラウザ ${lockPro ? '🔒' : ''}</span>
                     </label>
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-time" ${localStorage.getItem('universe_ext_time')==='true'?'checked':''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
-                        <span style="color:#ffee66;">⏳ タイムマシン</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-time" ${localStorage.getItem('universe_ext_time')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#ffcc00; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#ffee66'};">⏳ タイムマシン ${lockPro ? '🔒' : ''}</span>
                     </label>
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        <span style="color:#00ffcc;">🤖 自動プレゼン</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-autopilot" ${localStorage.getItem('universe_ext_autopilot')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#00ffcc'};">🤖 自動プレゼン ${lockPro ? '🔒' : ''}</span>
                     </label>
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        <span style="color:#00ffcc;">🖥️ ターミナル</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-logger" ${localStorage.getItem('universe_ext_logger')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#00ffcc'};">🖥️ ターミナル ${lockPro ? '🔒' : ''}</span>
                     </label>
 
                     <hr style="border:none; border-top:1px dashed rgba(255,255,255,0.1); margin:0;">
@@ -550,17 +561,17 @@ export class UIManager {
                         🔤 中央透かし文字を表示
                     </label>
 
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
-                        <span style="color:#ff88ff; font-weight:bold;">🎙️ 音響シンクロ (マイク)</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-mic" ${localStorage.getItem('universe_ext_mic')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#ff00ff; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#ff88ff'}; font-weight:bold;">🎙️ 音響シンクロ (マイク) ${lockPro ? '🔒' : ''}</span>
                     </label>
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-vision" ${localStorage.getItem('universe_ext_vision')==='true'?'checked':''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
-                        <span style="color:#00ffcc; font-weight:bold;">✋ 空間ジェスチャー (カメラ)</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockPro ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-vision" ${localStorage.getItem('universe_ext_vision')==='true'?'checked':''} ${lockPro ? 'disabled' : ''} style="accent-color:#00ffcc; width:16px; height:16px;"> 
+                        <span style="color:${lockPro ? '#555' : '#00ffcc'}; font-weight:bold;">✋ 空間ジェスチャー (カメラ) ${lockPro ? '🔒' : ''}</span>
                     </label>
-                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:pointer;">
-                        <input type="checkbox" id="cp-ext-ai" ${localStorage.getItem('universe_ext_ai')==='true'?'checked':''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
-                        <span style="color:#ffaa00; font-weight:bold;">🤖 自律AIエンティティ</span>
+                    <label style="display:flex; align-items:center; gap:10px; font-size:13px; cursor:${lockAI ? 'not-allowed' : 'pointer'};">
+                        <input type="checkbox" id="cp-ext-ai" ${localStorage.getItem('universe_ext_ai')==='true'?'checked':''} ${lockAI ? 'disabled' : ''} style="accent-color:#ffaa00; width:16px; height:16px;"> 
+                        <span style="color:${lockAI ? '#555' : '#ffaa00'}; font-weight:bold;">🤖 自律AIエンティティ ${lockAI ? '🔒' : ''}</span>
                     </label>
                 </div>
 
@@ -573,8 +584,14 @@ export class UIManager {
                 <div style="margin-top:20px; font-size:11px; color:#ff4444; margin-bottom:10px; letter-spacing:1px;">🚨 LEGAL ESCROW (緊急擬態 / 手動自爆)</div>
                 <div style="background:rgba(255,0,0,0.05); border:1px dashed rgba(255,0,0,0.3); padding:15px; border-radius:10px;">
                     <div style="font-size:11px; color:#ff8888; margin-bottom:10px;">ダミーコードでログインすると偽の宇宙が展開されます。</div>
-                    <button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>
-                    <button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">手動自爆コード (Panic) を設定</button>
+                    ${lockPro ? 
+                        `<button disabled style="width:100%; padding:10px; background:#222; color:#555; border:1px solid #444; border-radius:6px; font-weight:bold; cursor:not-allowed; margin-bottom:10px;">ダミーコード設定 🔒</button>` :
+                        `<button id="cp-btn-set-dummy" style="width:100%; padding:10px; background:#440000; color:#ffaa00; border:1px solid #ffaa00; border-radius:6px; font-weight:bold; cursor:pointer; margin-bottom:10px;">ダミーコード (HoneyPot) を設定</button>`
+                    }
+                    ${lockPro ? 
+                        `<button disabled style="width:100%; padding:10px; background:#222; color:#555; border:1px solid #444; border-radius:6px; font-weight:bold; cursor:not-allowed;">手動自爆コード設定 🔒</button>` :
+                        `<button id="cp-btn-set-panic" style="width:100%; padding:10px; background:#440000; color:#ff4444; border:1px solid #ff4444; border-radius:6px; font-weight:bold; cursor:pointer;">手動自爆コード (Panic) を設定</button>`
+                    }
                 </div>
                 
                 <div style="margin-top:30px;">
@@ -586,19 +603,26 @@ export class UIManager {
                 </div>
             `;
         } else if (this.state.activeTab === 'data') {
+            
+            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
+            const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+            const lockPro = !isPro;
+
             content.innerHTML = `
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#ffaa00; margin-bottom:10px; letter-spacing:1px;">LOCAL FILE SYSTEM</div>
-                    <button id="cp-btn-fs" style="width:100%; padding:14px; background:#331100; color:#ffaa00; border:1px dashed #ffaa00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
-                        📂 現実のPCフォルダを宇宙に接続する
-                    </button>
+                    ${lockPro ? 
+                        `<button disabled style="width:100%; padding:14px; background:#222; color:#555; border:1px dashed #444; border-radius:8px; font-size:13px; font-weight:bold; cursor:not-allowed;">📂 現実のPCフォルダ接続 (VIP限定) 🔒</button>` :
+                        `<button id="cp-btn-fs" style="width:100%; padding:14px; background:#331100; color:#ffaa00; border:1px dashed #ffaa00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">📂 現実のPCフォルダを宇宙に接続する</button>`
+                    }
                 </div>
 
                 <div style="margin-bottom:25px;">
                     <div style="font-size:11px; color:#ffcc00; margin-bottom:10px; letter-spacing:1px;">REALITY BRIDGE (現実同期)</div>
-                    <button id="cp-btn-reality" style="width:100%; padding:14px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
-                        🌐 ビットコイン相場を星として召喚
-                    </button>
+                    ${lockPro ? 
+                        `<button disabled style="width:100%; padding:14px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-size:13px; font-weight:bold; cursor:not-allowed;">🌐 ビットコイン相場召喚 (VIP限定) 🔒</button>` :
+                        `<button id="cp-btn-reality" style="width:100%; padding:14px; background:#332200; color:#ffcc00; border:1px solid #ffcc00; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">🌐 ビットコイン相場を星として召喚</button>`
+                    }
                 </div>
 
                 <div style="margin-bottom:25px;">
@@ -610,11 +634,20 @@ export class UIManager {
                 <button id="cp-btn-inventory" style="width:100%; padding:14px; background:#220022; color:#ff6699; border:1px solid #ff6699; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:bold;">🌌 亜空間ポケットを開く</button>
                 <div style="display:flex; flex-direction:column; gap:10px;">
                     <div style="display:flex; gap:10px;">
-                        <button id="cp-btn-export" style="flex:1; padding:12px; background:#112244; color:#66aaff; border:1px solid #66aaff; border-radius:8px; font-size:12px;">💾 出力 (通常)</button>
-                        <button id="cp-btn-export-img" style="flex:1; padding:12px; background:#221144; color:#ff66aa; border:1px solid #ff66aa; border-radius:8px; font-size:12px;">🖼️ 偽装出力 (画像へ隠す)</button>
+                        ${lockPro ? 
+                            `<button disabled style="flex:1; padding:12px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-size:12px; cursor:not-allowed;">💾 出力 🔒</button>` :
+                            `<button id="cp-btn-export" style="flex:1; padding:12px; background:#112244; color:#66aaff; border:1px solid #66aaff; border-radius:8px; font-size:12px;">💾 出力 (通常)</button>`
+                        }
+                        ${lockPro ? 
+                            `<button disabled style="flex:1; padding:12px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-size:12px; cursor:not-allowed;">🖼️ 偽装出力 🔒</button>` :
+                            `<button id="cp-btn-export-img" style="flex:1; padding:12px; background:#221144; color:#ff66aa; border:1px solid #ff66aa; border-radius:8px; font-size:12px;">🖼️ 偽装出力 (画像へ隠す)</button>`
+                        }
                         <input type="file" id="cp-export-img-file" style="display:none;" accept="image/png, image/jpeg">
                     </div>
-                    <button id="cp-btn-import" style="width:100%; padding:12px; background:#442211; color:#ffaa66; border:1px solid #ffaa66; border-radius:8px; font-size:12px;">📂 読込 (通常 / 偽装画像)</button>
+                    ${lockPro ? 
+                        `<button disabled style="width:100%; padding:12px; background:#222; color:#555; border:1px solid #444; border-radius:8px; font-size:12px; cursor:not-allowed;">📂 読込 🔒</button>` :
+                        `<button id="cp-btn-import" style="width:100%; padding:12px; background:#442211; color:#ffaa66; border:1px solid #ffaa66; border-radius:8px; font-size:12px;">📂 読込 (通常 / 偽装画像)</button>`
+                    }
                     <input type="file" id="cp-import-file" style="display:none;" accept=".universe, image/png, image/jpeg">
                 </div>
             `;
@@ -1166,7 +1199,6 @@ export class UIManager {
             return;
         }
 
-        // ★ 権限と制限のチェック（9項目の詳細制限をすべて判定）
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
         
@@ -1249,7 +1281,6 @@ export class UIManager {
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
         
-        // ★ Vault権限による表示変更
         const vaultBtnText = canVault ? ((node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`) : `📦 秘匿データアクセス 🔒`;
         const vaultBtnColor = canVault ? ((node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888") : "#555555";
         
@@ -1260,7 +1291,6 @@ export class UIManager {
 
         const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
 
-        // ★ 各ボタンのロック状態のHTML組み立て
         const lockIcon = ' <span style="font-size:10px; float:right;">🔒</span>';
         
         const noteBtnHTML = canEdit ? `<button id="m-note" style="${innerBtnStyle} color:#aaffff; cursor:pointer;">📝 記憶を編集</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📝 記憶を編集${lockIcon}</button>`;
@@ -1675,7 +1705,7 @@ export class UIManager {
     showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
-        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手 manual input</button>`;
         
         if (node.url) {
             html += `<button id="remove-url-btn" style="width:100%; padding:12px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:8px; margin-bottom:10px;">🔗 リンクを解除して元に戻す</button>`;
