@@ -8,6 +8,7 @@ import { deriveKey } from './CryptoCore.js';
 import { loadEncryptedUniverse } from '../db/CloudSync.js';
 
 export class LoginGateway {
+    // ★ ここに設定されたアドレスのみが「絶対管理者」になります
     static ADMIN_EMAIL = "tokimogulife_0313@yahoo.co.jp";
 
     static async boot() {
@@ -46,13 +47,12 @@ export class LoginGateway {
             window.localStorage.removeItem('emailForSignIn');
 
             const user = result.user;
-            let role = 'PRO'; // ★既存ユーザーのデフォルトはPROにする
+            let role = 'PRO';
 
             if (email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
                 role = 'ADMIN';
                 await setDoc(doc(db, "users", user.uid), { role: 'ADMIN' }, { merge: true });
             } else if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-                // ★ 新規ユーザーの場合のみ RESTRICTED（制限付き）にする
                 const savedName = window.localStorage.getItem('nameForSignIn') || "Guest User";
                 await updateProfile(user, { displayName: savedName });
                 role = 'RESTRICTED';
@@ -63,7 +63,6 @@ export class LoginGateway {
                 }, { merge: true });
                 window.localStorage.removeItem('nameForSignIn');
             } else {
-                // ★ 既存ユーザーの場合
                 const userDoc = await getDoc(doc(db, "users", user.uid));
                 if (userDoc.exists() && userDoc.data().role) {
                     role = userDoc.data().role;
@@ -74,7 +73,10 @@ export class LoginGateway {
             }
 
             window.history.replaceState(null, null, window.location.pathname);
-            this.requestMasterKey(role, ui, resolve, result.additionalUserInfo?.isNewUser || false);
+            
+            // ★修正: 端末に指紋情報がない場合は、既存ユーザーでも必ず再登録させる
+            const needsBinding = !localStorage.getItem('universe_bound_credential');
+            this.requestMasterKey(role, ui, resolve, needsBinding);
 
         } catch (error) {
             ui.innerHTML = `
@@ -250,7 +252,9 @@ export class LoginGateway {
                     }
                 }
 
-                this.requestMasterKey(role, ui, resolve, false);
+                // ★修正: 端末に指紋情報がない場合は再登録させる
+                const needsBinding = !localStorage.getItem('universe_bound_credential');
+                this.requestMasterKey(role, ui, resolve, needsBinding);
 
             } catch (error) {
                 alert(`ログインエラー: パスワードが違うか、アカウントが存在しません。\n(${error.message})`);
@@ -279,7 +283,8 @@ export class LoginGateway {
                     createdAt: serverTimestamp() 
                 }, { merge: true });
 
-                this.requestMasterKey(role, ui, resolve, true);
+                const needsBinding = !localStorage.getItem('universe_bound_credential');
+                this.requestMasterKey(role, ui, resolve, needsBinding);
 
             } catch (e) { 
                 alert(`コードエラー: ${e.message}`); 
@@ -288,7 +293,7 @@ export class LoginGateway {
         };
     }
 
-    static requestMasterKey(role, ui, resolve, isFirstTime) {
+    static requestMasterKey(role, ui, resolve, needsBinding) {
         ui.innerHTML = `
             <div style="width:320px; background:rgba(10,0,15,0.9); padding:30px; border:1px solid #ff00ff; border-radius:12px; box-shadow:0 10px 40px rgba(255,0,255,0.2); text-align:center;">
                 <h2 style="margin-top:0; color:#ff00ff; letter-spacing: 2px;">ABSOLUTE SECURE</h2>
@@ -330,7 +335,8 @@ export class LoginGateway {
                 statusText.innerText = "アクセス承認。事象の地平面へ接続します...";
                 
                 setTimeout(() => {
-                    if (isFirstTime) {
+                    // ★修正: 指紋情報がローカルになければ必ず再登録フローを通す
+                    if (needsBinding) {
                         this.executeDeviceBinding(role, ui, resolve);
                     } else {
                         this.handleRoleRouting(role, ui, resolve);
