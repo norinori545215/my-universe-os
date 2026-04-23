@@ -20,7 +20,6 @@ export class LoginGateway {
             ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050510; z-index:9999999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#00ffcc; font-family:sans-serif;`;
             document.body.appendChild(ui);
 
-            // ★ メールリンクから戻ってきたときの処理
             if (isSignInWithEmailLink(auth, window.location.href)) {
                 this.handleEmailLinkSignIn(ui, resolve);
                 return;
@@ -34,7 +33,6 @@ export class LoginGateway {
         });
     }
 
-    // ★ メールリンク認証の処理（復元）
     static async handleEmailLinkSignIn(ui, resolve) {
         ui.innerHTML = `<div style="font-size:16px; color:#ff00ff; font-weight:bold;">📧 メール認証を確認中...</div>`;
         
@@ -48,33 +46,35 @@ export class LoginGateway {
             window.localStorage.removeItem('emailForSignIn');
 
             const user = result.user;
-            let role = 'RESTRICTED';
+            let role = 'PRO'; // ★既存ユーザーのデフォルトはPROにする
 
             if (email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
                 role = 'ADMIN';
                 await setDoc(doc(db, "users", user.uid), { role: 'ADMIN' }, { merge: true });
+            } else if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                // ★ 新規ユーザーの場合のみ RESTRICTED（制限付き）にする
+                const savedName = window.localStorage.getItem('nameForSignIn') || "Guest User";
+                await updateProfile(user, { displayName: savedName });
+                role = 'RESTRICTED';
+                await setDoc(doc(db, "users", user.uid), { 
+                    role: 'RESTRICTED', 
+                    name: savedName,
+                    createdAt: serverTimestamp() 
+                }, { merge: true });
+                window.localStorage.removeItem('nameForSignIn');
             } else {
+                // ★ 既存ユーザーの場合
                 const userDoc = await getDoc(doc(db, "users", user.uid));
                 if (userDoc.exists() && userDoc.data().role) {
                     role = userDoc.data().role;
                 } else {
-                    // 新規登録の初回ログイン時は名前を保存し、制限付き権限にする
-                    const savedName = window.localStorage.getItem('nameForSignIn') || "Guest User";
-                    await updateProfile(user, { displayName: savedName });
-                    role = 'RESTRICTED';
-                    await setDoc(doc(db, "users", user.uid), { 
-                        role: 'RESTRICTED', 
-                        name: savedName,
-                        createdAt: serverTimestamp() 
-                    }, { merge: true });
-                    window.localStorage.removeItem('nameForSignIn');
+                    role = 'PRO';
+                    await setDoc(doc(db, "users", user.uid), { role: 'PRO' }, { merge: true });
                 }
             }
 
-            // URLのクエリパラメータ（認証トークン）を消して綺麗にする
             window.history.replaceState(null, null, window.location.pathname);
-            
-            this.requestMasterKey(role, ui, resolve, result.additionalUserInfo.isNewUser);
+            this.requestMasterKey(role, ui, resolve, result.additionalUserInfo?.isNewUser || false);
 
         } catch (error) {
             ui.innerHTML = `
@@ -107,6 +107,7 @@ export class LoginGateway {
                     const email = auth.currentUser.email;
                     if (email && email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
                         finalRole = 'ADMIN'; 
+                        await setDoc(doc(db, "users", auth.currentUser.uid), { role: 'ADMIN' }, { merge: true });
                     } else {
                         const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
                         if (userDoc.exists() && userDoc.data().role) {
@@ -197,9 +198,6 @@ export class LoginGateway {
             setTimeout(() => { mainBox.style.opacity='1'; }, 50); 
         };
 
-        // ==========================================
-        // ★ 1. 新規登録 (メールリンク送信) 処理
-        // ==========================================
         document.getElementById('btn-register').onclick = async () => {
             const name = document.getElementById('reg-name').value.trim();
             const email = document.getElementById('reg-email').value.trim().toLowerCase();
@@ -210,19 +208,16 @@ export class LoginGateway {
             btn.innerText = "送信中..."; btn.disabled = true;
 
             const actionCodeSettings = {
-                url: window.location.href, // 戻ってくるURL（現在のページ）
-                handleCodeInApp: true // アプリ内でコードを処理する
+                url: window.location.href,
+                handleCodeInApp: true
             };
 
             try {
                 await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-                // リンクを踏んで戻ってきたときのために、ローカルにメールアドレスと名前を保存
                 window.localStorage.setItem('emailForSignIn', email);
                 window.localStorage.setItem('nameForSignIn', name);
                 
                 alert("📩 認証メールを送信しました！\nメール内のリンクをクリックしてログインを完了してください。");
-                
-                // 送信後はボタンをロック
                 btn.innerText = "送信完了";
             } catch(e) {
                 alert(`送信エラー: ${e.message}`);
@@ -230,9 +225,6 @@ export class LoginGateway {
             }
         };
 
-        // ==========================================
-        // ★ 2. ログイン (既存ユーザー) 処理
-        // ==========================================
         document.getElementById('btn-login').onclick = async () => {
             const email = document.getElementById('login-email').value.trim().toLowerCase(); 
             const pass = document.getElementById('login-pass').value;
@@ -244,8 +236,7 @@ export class LoginGateway {
             try {
                 const cred = await signInWithEmailAndPassword(auth, email, pass);
                 const user = cred.user;
-
-                let role = 'RESTRICTED';
+                let role = 'PRO';
 
                 if (email === this.ADMIN_EMAIL.toLowerCase()) {
                     role = 'ADMIN';
@@ -255,7 +246,7 @@ export class LoginGateway {
                     if (userDoc.exists() && userDoc.data().role) {
                         role = userDoc.data().role;
                     } else {
-                        role = 'RESTRICTED';
+                        await setDoc(doc(db, "users", user.uid), { role: 'PRO' }, { merge: true });
                     }
                 }
 
@@ -267,15 +258,12 @@ export class LoginGateway {
             }
         };
 
-        // ==========================================
-        // ★ 3. VIPコードログイン 処理
-        // ==========================================
         document.getElementById('gate-vip-enter').onclick = async () => {
             const code = document.getElementById('gate-vip-code').value.trim();
             if (!code) return;
             
             const btn = document.getElementById('gate-vip-enter');
-            btn.innerText = "暗号解読中..."; btn.disabled = true;
+            btn.innerText = "暗解読中..."; btn.disabled = true;
 
             try {
                 const payload = await VIPInvite.verifyTicket(code);

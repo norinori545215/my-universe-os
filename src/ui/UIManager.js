@@ -394,12 +394,12 @@ export class UIManager {
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
         
-        // ★ ゲスト制限の判定（PRO権限がない場合はロックされる）
+        // ★ 権限チェック（CPの設定項目用）
         const canDelete = isPro || !!this.limits.allowNodeDelete;
         const lock3D = !isPro && !this.limits.allow3D;
         const lockP2P = !isPro && !this.limits.allowP2P;
         const lockAI = !isPro && !this.limits.allowAI;
-        const lockPro = !isPro; // VIP限定機能のフラグ
+        const lockPro = !isPro; // 全体のプロ機能ロックフラグ
 
         const activeStyle = "background:rgba(0,255,204,0.2); color:#00ffcc; border-bottom:2px solid #00ffcc;";
         const inactiveStyle = "background:transparent; color:#666; border-bottom:2px solid transparent;";
@@ -1012,7 +1012,6 @@ export class UIManager {
         this.centerTextEl.style.opacity = isText ? '1' : '0';
         setTimeout(() => this.centerTextEl.style.display = isText ? 'block' : 'none', 300);
     }
-
     setupGlobalCanvasEvents() {
         const canvasEl = document.getElementById('universe-canvas');
         if (!canvasEl) return;
@@ -1199,6 +1198,7 @@ export class UIManager {
             return;
         }
 
+        // ★ 権限と制限のチェック（9項目の詳細制限をすべて判定）
         const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
         const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
         
@@ -1281,6 +1281,7 @@ export class UIManager {
         const ghostBtnText = node.isGhost ? "👁️ 幽霊化を解除" : "👻 幽霊星にする";
         const ghostBtnColor = node.isGhost ? "#00ffcc" : "#8888ff";
         
+        // ★ Vault権限による表示変更
         const vaultBtnText = canVault ? ((node.vault && node.vault.length > 0) ? `📦 秘匿データを開く (${node.vault.length}件)` : `📥 ファイルを暗号化格納`) : `📦 秘匿データアクセス 🔒`;
         const vaultBtnColor = canVault ? ((node.vault && node.vault.length > 0) ? "#ff66aa" : "#888888") : "#555555";
         
@@ -1291,6 +1292,7 @@ export class UIManager {
 
         const canMoveOut = this.app.universeHistory && this.app.universeHistory.length > 0;
 
+        // ★ 各ボタンのロック状態のHTML組み立て
         const lockIcon = ' <span style="font-size:10px; float:right;">🔒</span>';
         
         const noteBtnHTML = canEdit ? `<button id="m-note" style="${innerBtnStyle} color:#aaffff; cursor:pointer;">📝 記憶を編集</button>` : `<button disabled style="${innerBtnStyle} color:#555; cursor:not-allowed;">📝 記憶を編集${lockIcon}</button>`;
@@ -1705,7 +1707,7 @@ export class UIManager {
     showAppLibrary(node) {
         let html = `<h4 style="margin:top:0; color:#00ffcc;">App Sync</h4><div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:15px;">`;
         this.app.appPresets.forEach((app, i) => { html += `<div id="preset-${i}" style="display:flex; flex-direction:column; align-items:center; cursor:pointer;"><img src="${app.icon}" style="width:36px; height:36px; border-radius:8px; background:#222;"><span style="font-size:8px; margin-top:4px; text-align:center;">${app.name}</span></div>`; });
-        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手 manual input</button>`;
+        html += `</div><button id="custom-url-btn" style="width:100%; padding:12px; background:#113344; color:#00ffff; border:1px solid #00ffff; border-radius:8px; margin-bottom:10px;">URL手動入力</button>`;
         
         if (node.url) {
             html += `<button id="remove-url-btn" style="width:100%; padding:12px; background:#441111; color:#ff4444; border:1px solid #ff4444; border-radius:8px; margin-bottom:10px;">🔗 リンクを解除して元に戻す</button>`;

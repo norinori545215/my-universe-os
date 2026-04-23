@@ -149,7 +149,7 @@ export class AdminPortal {
                         </div>
 
                         <button id="portal-save-btn" style="width:100%; padding:15px; background:#004444; color:#00ffcc; border:1px solid #00ffcc; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
-                            💾 制限設定をクラウドに保存
+                            💾 制限設定をクラウドに保存して再起動
                         </button>
                     </div>
                 </div>
@@ -168,7 +168,6 @@ export class AdminPortal {
             </div>
         `;
 
-        // --- タブ切り替えのロジック ---
         const tabBtns = ui.querySelectorAll('.admin-tab-btn');
         const tabContents = ui.querySelectorAll('.admin-tab-content');
 
@@ -202,7 +201,6 @@ export class AdminPortal {
             };
         });
 
-        // --- ボタンの機能ロジック ---
         document.getElementById('portal-exit-btn').onclick = () => {
             ui.style.opacity = '0';
             setTimeout(() => {
@@ -215,9 +213,7 @@ export class AdminPortal {
             const tier = document.querySelector('input[name="portal-tier"]:checked').value;
             const days = parseInt(document.getElementById('portal-days').value) || 30;
             const memo = document.getElementById('portal-memo').value || "No Name";
-            
             const code = await VIPInvite.generateTicket(tier, days, memo);
-            
             const out = document.getElementById('portal-code-out');
             out.value = code;
             out.style.display = 'block';
@@ -237,7 +233,6 @@ export class AdminPortal {
             btn.innerText = "クラウドへ送信中...";
             btn.disabled = true;
 
-            // ★追加：9つの詳細設定をすべて取得してクラウドへ保存
             const limits = {
                 maxNodes: parseInt(document.getElementById('limit-nodes').value) || 50,
                 allow3D: document.getElementById('limit-3d').checked,
@@ -255,13 +250,14 @@ export class AdminPortal {
 
             try {
                 await setDoc(doc(db, "system", "settings"), { new_user_limits: limits }, { merge: true });
-                alert("✅ 制限設定をクラウドに保存しました！\n明日以降の新規ゲストユーザーに適用されます。");
+                localStorage.setItem('universe_new_user_limits', JSON.stringify(limits));
+                alert("✅ 制限設定をクラウドに保存しました！\nOSを再起動して設定を反映します。");
+                window.location.reload();
             } catch (error) {
                 alert(`保存エラー: ${error.message}`);
+                btn.innerText = "💾 制限設定をクラウドに保存して再起動";
+                btn.disabled = false;
             }
-
-            btn.innerText = "💾 制限設定をクラウドに保存";
-            btn.disabled = false;
         };
 
         document.getElementById('portal-salvage-btn').onclick = async () => {
