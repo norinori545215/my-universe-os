@@ -25,8 +25,15 @@ import { NeuralCore } from '../ai/NeuralCore.js';
 import { PanicWipe } from '../security/PanicWipe.js'; 
 
 // ★ クラウドデータ取得用のインポート
-import { db } from '../security/Auth.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { auth, db } from '../security/Auth.js';
+import { PermissionGate } from '../security/PermissionGate.js';
+import { VIPInviteClient } from '../billing/VIPInviteClient.js';
+import {
+    doc,
+    getDoc,
+    setDoc,
+    serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class UIManager {
     constructor(app) {
@@ -109,6 +116,30 @@ export class UIManager {
         setInterval(() => this.enforceGodConsole(), 2000);
     }
 
+        getCurrentRole() {
+        try {
+            return PermissionGate.getRole?.() || localStorage.getItem('universe_role') || 'RESTRICTED';
+        } catch (e) {
+            console.warn('[UIManager] role取得に失敗:', e);
+            return localStorage.getItem('universe_role') || 'RESTRICTED';
+        }
+    }
+
+    isProRole(role = this.getCurrentRole()) {
+        return role === 'PRO' || role === 'ADMIN' || role === 'VIP_GUEST';
+    }
+
+    cacheRoleForUIOnly(role) {
+        const safeRole = role || 'RESTRICTED';
+
+        try {
+            PermissionGate.safeCacheForUIOnly(safeRole);
+        } catch (e) {
+            console.warn('[UIManager] roleキャッシュに失敗:', e);
+            localStorage.setItem('universe_role', safeRole);
+        }
+    }
+
     async loadCloudLimits() {
         try {
             const settingsDoc = await getDoc(doc(db, "system", "settings"));
@@ -129,18 +160,24 @@ export class UIManager {
     }
 
     enforceGodConsole() {
-        if (localStorage.getItem('universe_role') !== 'ADMIN') return;
+        const currentRole = this.getCurrentRole();
+
+        if (currentRole !== 'ADMIN') return;
         if (!this.app || !this.app.currentUniverse || !this.app.currentUniverse.nodes) return;
 
         const godNodeId = 'SYSTEM_ADMIN_CORE';
         const exists = this.app.currentUniverse.nodes.find(n => n.id === godNodeId);
-        
+
         if (!exists) {
             this.app.currentUniverse.addNode('👁️ GOD CONSOLE', 0, -150, 40, '#ff0000', 'rect');
+
             const godNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             godNode.id = godNodeId;
             godNode.isSystem = true;
-            if(typeof this.app.update === 'function') this.app.update();
+
+            if (typeof this.app.update === 'function') {
+                this.app.update();
+            }
         }
     }
 
@@ -391,8 +428,8 @@ export class UIManager {
     }
 
     renderCP() {
-        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
-        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+        const currentRole = this.getCurrentRole();
+        const isPro = this.isProRole(currentRole);
         
         // ★ 権限チェック（CPの設定項目用）
         const canDelete = isPro || !!this.limits.allowNodeDelete;
@@ -604,8 +641,8 @@ export class UIManager {
             `;
         } else if (this.state.activeTab === 'data') {
             
-            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
-            const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+            const currentRole = this.getCurrentRole();
+            const isPro = this.isProRole(currentRole);
             const lockPro = !isPro;
 
             content.innerHTML = `
@@ -784,8 +821,8 @@ export class UIManager {
         });
 
         bind('cp-spawn-btn', () => {
-            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
-            
+            const currentRole = this.getCurrentRole();
+
             if (currentRole === 'RESTRICTED') {
                 if (this.app.currentUniverse.nodes.length >= this.limits.maxNodes) {
                     alert(`⚠️ 星の数が上限（${this.limits.maxNodes}個）に達しています。\nこれ以上創造するにはVIPコードによるアンロックが必要です。`);
@@ -795,17 +832,24 @@ export class UIManager {
 
             const color = document.getElementById('cp-spawn-color').value;
             this.app.currentUniverse.addNode('新規データ', -this.app.camera.x, -this.app.camera.y, 25, color, 'star');
-            
+
             const newNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             newNode.id = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
-            
-            this.app.autoSave(); 
-            if(window.universeAudio) window.universeAudio.playSpawn();
-            if (NexusP2P && NexusP2P.onNodeAdded) NexusP2P.onNodeAdded(newNode);
 
-            if(this.state.isMobileMode || document.getElementById('cp-auto-menu')?.checked) {
-                this.showMenu(newNode, window.innerWidth/2, window.innerHeight/2);
+            this.app.autoSave();
+
+            if (window.universeAudio) {
+                window.universeAudio.playSpawn();
             }
+
+            if (NexusP2P && NexusP2P.onNodeAdded) {
+                NexusP2P.onNodeAdded(newNode);
+            }
+
+            if (this.state.isMobileMode || document.getElementById('cp-auto-menu')?.checked) {
+                this.showMenu(newNode, window.innerWidth / 2, window.innerHeight / 2);
+            }
+
             this.controlPanel.style.display = 'none';
         });
 
@@ -825,7 +869,8 @@ export class UIManager {
         });
 
         bind('cp-p2p-start', () => {
-            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
+            const currentRole = this.getCurrentRole();
+
             if (currentRole === 'RESTRICTED') {
                 if (!this.limits.allowP2P) {
                     alert("⚠️ P2P通信(ワームホール)は現在制限されています。\n機能を利用するにはVIPコードを取得してください。");
@@ -842,21 +887,35 @@ export class UIManager {
             btnVipUnlock.onclick = async () => {
                 const code = prompt("VIPコードを入力してください:");
                 if (!code) return;
+
                 try {
-                    const { VIPInvite } = await import('../billing/VIPInvite.js');
-                    const payload = await VIPInvite.verifyTicket(code);
-                    
-                    const { auth, db } = await import('../security/Auth.js');
-                    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    
-                    if (auth.currentUser) {
-                        await setDoc(doc(db, "users", auth.currentUser.uid), { role: payload.t }, { merge: true });
+                    if (!auth.currentUser) {
+                        alert("VIPコードを使うには、先にログインが必要です。");
+                        return;
                     }
-                    
-                    localStorage.setItem('universe_role', payload.t);
+
+                    const result = await VIPInviteClient.verifyTicket(code);
+                    const role = result.role || result.t || 'VIP_GUEST';
+
+                    try {
+                        await auth.currentUser.getIdToken(true);
+                    } catch (tokenError) {
+                        console.warn('[UIManager] IDトークン更新に失敗:', tokenError);
+                    }
+
+                    await setDoc(doc(db, "users", auth.currentUser.uid), {
+                        lastVipUnlockAt: serverTimestamp()
+                    }, {
+                        merge: true
+                    });
+
+                    this.cacheRoleForUIOnly(role);
+
                     alert("✅ VIPコードの認証に成功しました。\nシステムを再起動して全機能を解放します。");
                     window.location.reload();
+
                 } catch (e) {
+                    console.error('[UIManager] VIPコード認証に失敗:', e);
                     alert(`🚨 コードエラー: ${e.message}`);
                 }
             };
@@ -938,7 +997,7 @@ export class UIManager {
     updateUIState() {
         this.capsuleSlots.innerHTML = '';
         
-        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
+        const currentRole = this.getCurrentRole();
         
         const allow3D = currentRole === 'RESTRICTED' ? this.limits.allow3D : true;
 
