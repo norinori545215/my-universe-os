@@ -1,38 +1,55 @@
 // src/ui/AdminPortal.js
-import { VIPInvite } from '../billing/VIPInvite.js';
+import { VIPInviteClient } from '../billing/VIPInviteClient.js';
 import { db, auth } from '../security/Auth.js';
 import { PermissionGate } from '../security/PermissionGate.js';
-import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    doc,
+    getDoc,
+    setDoc,
+    collection,
+    getDocs,
+    serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class AdminPortal {
     static async render(onExitCallback) {
-    let permissions;
+        let permissions;
 
-    try {
-        permissions = await PermissionGate.refresh();
-    } catch (e) {
-        console.error('[AdminPortal] 権限確認に失敗:', e);
-        permissions = PermissionGate.get();
-    }
+        try {
+            permissions = await PermissionGate.refresh();
+        } catch (e) {
+            console.error('[AdminPortal] 権限確認に失敗:', e);
+            permissions = PermissionGate.get();
+        }
 
-    if (!permissions.allowAdminPortal) {
-        alert("ADMIN権限がありません。");
-        if (onExitCallback) onExitCallback();
-        return;
-    }
+        if (!permissions.allowAdminPortal) {
+            alert("ADMIN権限がありません。");
+            if (onExitCallback) onExitCallback();
+            return;
+        }
 
         const ui = document.createElement('div');
         ui.id = 'admin-portal-screen';
-        
+
         // 画面全体を覆う黒い背景
-        ui.style.cssText = `position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050508; z-index:9999999; display:flex; color:#fff; font-family:sans-serif;`;
+        ui.style.cssText = `
+            position:fixed;
+            top:0;
+            left:0;
+            width:100vw;
+            height:100vh;
+            background:#050508;
+            z-index:9999999;
+            display:flex;
+            color:#fff;
+            font-family:sans-serif;
+        `;
         document.body.appendChild(ui);
 
         // クラウドから現在の設定を読み込む
-        // ★追加：9つの詳細な制限項目をデフォルト値として定義
-        let restrictions = { 
-            maxNodes: 50, 
-            allow3D: false, 
+        let restrictions = {
+            maxNodes: 50,
+            allow3D: false,
             allowP2P: false,
             allowNodeEdit: false,
             allowNodeColor: false,
@@ -48,7 +65,10 @@ export class AdminPortal {
         try {
             const settingsDoc = await getDoc(doc(db, "system", "settings"));
             if (settingsDoc.exists() && settingsDoc.data().new_user_limits) {
-                restrictions = { ...restrictions, ...settingsDoc.data().new_user_limits };
+                restrictions = {
+                    ...restrictions,
+                    ...settingsDoc.data().new_user_limits
+                };
             }
         } catch (e) {
             console.error("設定の読み込みエラー:", e);
@@ -79,7 +99,7 @@ export class AdminPortal {
             </div>
 
             <div style="flex:1; padding:40px; overflow-y:auto; background:radial-gradient(circle at center, #111, #050508); position:relative;">
-                
+
                 <div id="tab-vip" class="admin-tab-content" style="display:block; max-width:700px;">
                     <h2 style="color:#fff; border-bottom:2px solid #ff00ff; padding-bottom:10px; margin-bottom:30px;">🎟️ 顧客・特別ゲスト招待</h2>
                     <div style="background:rgba(255,0,255,0.05); border:1px solid #ff00ff; border-radius:12px; padding:30px; box-shadow:0 0 30px rgba(255,0,255,0.1);">
@@ -88,31 +108,41 @@ export class AdminPortal {
                             <label style="flex:1; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; padding:10px; border-radius:6px; cursor:pointer; text-align:center;">
                                 <input type="radio" name="portal-tier" value="PRO" checked style="accent-color:#ff00ff;"> PRO版 (無制限)
                             </label>
+                            <label style="flex:1; background:rgba(255,0,255,0.1); border:1px solid #ff00ff; padding:10px; border-radius:6px; cursor:pointer; text-align:center;">
+                                <input type="radio" name="portal-tier" value="VIP_GUEST" style="accent-color:#ff00ff;"> ゲスト解放版
+                            </label>
                         </div>
 
                         <label style="display:block; font-size:12px; color:#aaa; margin-bottom:8px;">有効日数</label>
-                        <input type="number" id="portal-days" value="30" min="1" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; box-sizing:border-box; outline:none;">
-                        
+                        <input type="number" id="portal-days" value="30" min="1" max="36500" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:20px; box-sizing:border-box; outline:none;">
+
                         <label style="display:block; font-size:12px; color:#aaa; margin-bottom:8px;">宛先メモ (管理用)</label>
                         <input type="text" id="portal-memo" placeholder="例: A社様 トライアル" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:30px; box-sizing:border-box; outline:none;">
-                        
-                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">VIPコードを錬成</button>
-                        
+
+                        <button id="portal-gen-btn" style="width:100%; padding:15px; background:#440044; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
+                            VIPコードを錬成
+                        </button>
+
                         <textarea id="portal-code-out" readonly style="width:100%; height:80px; background:#000; color:#00ffcc; border:1px dashed #00ffcc; margin-top:20px; display:none; resize:none; padding:15px; box-sizing:border-box; outline:none; font-family:monospace; font-size:16px; text-align:center; line-height:50px;"></textarea>
-                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">📄 コピーして顧客に渡す</button>
+                        <button id="portal-copy-btn" style="width:100%; padding:12px; background:#003333; color:#00ffcc; border:1px solid #00ffcc; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px; display:none;">
+                            📄 コピーして顧客に渡す
+                        </button>
                     </div>
                 </div>
 
                 <div id="tab-limits" class="admin-tab-content" style="display:none; max-width:800px;">
                     <h2 style="color:#fff; border-bottom:2px solid #00ffcc; padding-bottom:10px; margin-bottom:10px;">⚙️ 新規ユーザー (ゲスト) 制限設定</h2>
-                    <p style="color:#aaa; font-size:12px; margin-bottom:30px; line-height:1.6;">ここで設定した内容は、明日以降ログインする全世界の「無料ゲストユーザー」に適用されます。<br>※将来的にユーザーが購入・課金を行い「PRO」権限へ昇格した場合は、これらの制限はすべて自動的に解除されます。</p>
+                    <p style="color:#aaa; font-size:12px; margin-bottom:30px; line-height:1.6;">
+                        ここで設定した内容は、明日以降ログインする全世界の「無料ゲストユーザー」に適用されます。<br>
+                        ※将来的にユーザーが購入・課金を行い「PRO」権限へ昇格した場合は、これらの制限はすべて自動的に解除されます。
+                    </p>
 
                     <div style="background:rgba(0,255,204,0.05); border:1px solid #00ffcc; border-radius:12px; padding:30px; box-shadow:0 0 30px rgba(0,255,204,0.1);">
-                        
+
                         <h3 style="color:#00ffcc; font-size:14px; margin-top:0; margin-bottom:15px;">■ 基礎制限</h3>
                         <label style="display:block; font-size:12px; color:#aaa; margin-bottom:8px;">星の最大生成数 (個)</label>
                         <input type="number" id="limit-nodes" value="${restrictions.maxNodes}" style="width:100%; background:#111; border:1px solid #555; color:#fff; padding:12px; border-radius:6px; margin-bottom:25px; box-sizing:border-box; outline:none;">
-                        
+
                         <h3 style="color:#00ffcc; font-size:14px; margin-bottom:15px;">■ システム拡張機能</h3>
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:25px;">
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px;">
@@ -125,7 +155,7 @@ export class AdminPortal {
 
                         <h3 style="color:#00ffcc; font-size:14px; margin-bottom:15px;">■ 星のメニュー機能制限（詳細）</h3>
                         <div style="font-size:11px; color:#888; margin-bottom:10px;">✅チェックを入れた機能のみ、ゲストユーザーにも使用が許可されます。</div>
-                        
+
                         <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:30px;">
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #ccff66;">
                                 <input type="checkbox" id="limit-edit" ${restrictions.allowNodeEdit ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 名前・記憶編集
@@ -144,17 +174,17 @@ export class AdminPortal {
                                 <input type="checkbox" id="limit-link" ${restrictions.allowNodeLink ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> URLリンク設定
                             </label>
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#1a1a24; padding:12px; border-radius:8px; border-left:3px solid #ff66aa;">
-                                <input type="checkbox" id="limit-vault" ${restrictions.allowVault ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> 地下金庫(Vault)操作
+                                <input type="checkbox" id="limit-vault" ${restrictions.allowVault ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> Vault操作
                             </label>
 
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a1a; padding:12px; border-radius:8px; border-left:3px solid #ff0000;" title="※ゲストには原則OFFを推奨">
                                 <input type="checkbox" id="limit-exec" ${restrictions.allowExec ? 'checked' : ''} style="width:18px; height:18px; accent-color:#ff0000;"> プログラム実行 (危険)
                             </label>
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a2a; padding:12px; border-radius:8px; border-left:3px solid #ff00ff;">
-                                <input type="checkbox" id="limit-ai" ${restrictions.allowAI ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> AIとの脳波リンク
+                                <input type="checkbox" id="limit-ai" ${restrictions.allowAI ? 'checked' : ''} style="width:18px; height:18px; accent-color:#00ffcc;"> AI機能
                             </label>
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; background:#2a1a1a; padding:12px; border-radius:8px; border-left:3px solid #ff4444;">
-                                <input type="checkbox" id="limit-delete" ${restrictions.allowNodeDelete ? 'checked' : ''} style="width:18px; height:18px; accent-color:#ff4444;"> 星の破壊 (削除)
+                                <input type="checkbox" id="limit-delete" ${restrictions.allowNodeDelete ? 'checked' : ''} style="width:18px; height:18px; accent-color:#ff4444;"> 星の削除
                             </label>
                         </div>
 
@@ -166,7 +196,10 @@ export class AdminPortal {
 
                 <div id="tab-salvage" class="admin-tab-content" style="display:none; max-width:700px;">
                     <h2 style="color:#fff; border-bottom:2px solid #ffcc00; padding-bottom:10px; margin-bottom:10px;">🚨 迷子データのサルベージ</h2>
-                    <p style="color:#aaa; font-size:12px; margin-bottom:30px; line-height:1.6;">過去に作成して見えなくなってしまったデータをクラウド全体から探し出し、現在の開発者アカウントに復元（上書き）します。<br>※実行前に、Firebaseのルールが一時的に読み取り許可されていることを確認してください。</p>
+                    <p style="color:#aaa; font-size:12px; margin-bottom:30px; line-height:1.6;">
+                        過去に作成して見えなくなってしまったデータをクラウド全体から探し出し、現在の開発者アカウントに復元します。<br>
+                        ※本番環境ではFirestore RulesとADMIN権限で保護してください。
+                    </p>
 
                     <div style="background:rgba(255,204,0,0.05); border:1px solid #ffcc00; border-radius:12px; padding:30px; box-shadow:0 0 30px rgba(255,204,0,0.1); text-align:center;">
                         <div style="font-size:40px; margin-bottom:20px;">🛰️</div>
@@ -189,25 +222,31 @@ export class AdminPortal {
                     b.style.color = '#aaa';
                     b.classList.remove('active');
                 });
-                tabContents.forEach(c => c.style.display = 'none');
+
+                tabContents.forEach(c => {
+                    c.style.display = 'none';
+                });
 
                 btn.style.background = 'rgba(0,255,204,0.1)';
                 btn.style.borderColor = '#00ffcc';
                 btn.style.color = '#00ffcc';
-                
-                if(btn.dataset.target === 'tab-vip') {
+
+                if (btn.dataset.target === 'tab-vip') {
                     btn.style.background = 'rgba(255,0,255,0.1)';
                     btn.style.borderColor = '#ff00ff';
                     btn.style.color = '#ff00ff';
                 }
-                if(btn.dataset.target === 'tab-salvage') {
+
+                if (btn.dataset.target === 'tab-salvage') {
                     btn.style.background = 'rgba(255,204,0,0.1)';
                     btn.style.borderColor = '#ffcc00';
                     btn.style.color = '#ffcc00';
                 }
 
                 btn.classList.add('active');
-                ui.querySelector(`#${btn.dataset.target}`).style.display = 'block';
+
+                const target = ui.querySelector(`#${btn.dataset.target}`);
+                if (target) target.style.display = 'block';
             };
         });
 
@@ -219,23 +258,58 @@ export class AdminPortal {
             }, 300);
         };
 
-        document.getElementById('portal-gen-btn').onclick = async () => {
+        document.getElementById('portal-gen-btn').onclick = async (e) => {
+            const btn = e.currentTarget;
             const tier = document.querySelector('input[name="portal-tier"]:checked').value;
-            const days = parseInt(document.getElementById('portal-days').value) || 30;
+            const days = parseInt(document.getElementById('portal-days').value, 10) || 30;
             const memo = document.getElementById('portal-memo').value || "No Name";
-            const code = await VIPInvite.generateTicket(tier, days, memo);
-            const out = document.getElementById('portal-code-out');
-            out.value = code;
-            out.style.display = 'block';
-            document.getElementById('portal-copy-btn').style.display = 'block';
+
+            btn.disabled = true;
+            btn.innerText = "VIPコード生成中...";
+
+            try {
+                const result = await VIPInviteClient.createTicket({
+                    tier,
+                    daysValid: days,
+                    recipientName: memo
+                });
+
+                const out = document.getElementById('portal-code-out');
+                out.value = result.code;
+                out.style.display = 'block';
+
+                document.getElementById('portal-copy-btn').style.display = 'block';
+            } catch (error) {
+                console.error('[AdminPortal] VIPコード生成に失敗:', error);
+                alert(error.message || 'VIPコード生成に失敗しました。');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "VIPコードを錬成";
+            }
         };
 
-        document.getElementById('portal-copy-btn').onclick = (e) => {
+        document.getElementById('portal-copy-btn').onclick = async (e) => {
             const outArea = document.getElementById('portal-code-out');
-            outArea.select();
-            document.execCommand('copy');
-            e.target.innerText = "✅ コピー完了";
-            setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
+            const code = outArea.value;
+
+            if (!code) {
+                alert("コピーするコードがありません。");
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(code);
+                e.target.innerText = "✅ コピー完了";
+                setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
+            } catch (error) {
+                console.error('[AdminPortal] コピーに失敗:', error);
+
+                outArea.select();
+                document.execCommand('copy');
+
+                e.target.innerText = "✅ コピー完了";
+                setTimeout(() => e.target.innerText = "📄 コピーして顧客に渡す", 2000);
+            }
         };
 
         document.getElementById('portal-save-btn').onclick = async () => {
@@ -244,7 +318,7 @@ export class AdminPortal {
             btn.disabled = true;
 
             const limits = {
-                maxNodes: parseInt(document.getElementById('limit-nodes').value) || 50,
+                maxNodes: parseInt(document.getElementById('limit-nodes').value, 10) || 50,
                 allow3D: document.getElementById('limit-3d').checked,
                 allowP2P: document.getElementById('limit-p2p').checked,
                 allowNodeEdit: document.getElementById('limit-edit').checked,
@@ -259,11 +333,18 @@ export class AdminPortal {
             };
 
             try {
-                await setDoc(doc(db, "system", "settings"), { new_user_limits: limits }, { merge: true });
+                await setDoc(doc(db, "system", "settings"), {
+                    new_user_limits: limits
+                }, {
+                    merge: true
+                });
+
                 localStorage.setItem('universe_new_user_limits', JSON.stringify(limits));
+
                 alert("✅ 制限設定をクラウドに保存しました！\nOSを再起動して設定を反映します。");
                 window.location.reload();
             } catch (error) {
+                console.error('[AdminPortal] 制限設定の保存に失敗:', error);
                 alert(`保存エラー: ${error.message}`);
                 btn.innerText = "💾 制限設定をクラウドに保存して再起動";
                 btn.disabled = false;
@@ -273,6 +354,7 @@ export class AdminPortal {
         document.getElementById('portal-salvage-btn').onclick = async () => {
             const btn = document.getElementById('portal-salvage-btn');
             const origText = btn.innerText;
+
             btn.innerText = "📡 クラウドの深淵をスキャン中...";
             btn.disabled = true;
 
@@ -284,6 +366,7 @@ export class AdminPortal {
                 querySnapshot.forEach((d) => {
                     if (auth.currentUser && d.id !== auth.currentUser.uid) {
                         const data = d.data();
+
                         if (data && data.encryptedData && data.encryptedData.length > maxLength) {
                             maxLength = data.encryptedData.length;
                             bestBackup = data.encryptedData;
@@ -292,12 +375,17 @@ export class AdminPortal {
                 });
 
                 if (bestBackup) {
-                    if (confirm("✨ 過去の巨大なデータを発見しました！\n現在の開発者アカウントに引き継いで復元しますか？")) {
+                    const shouldRestore = confirm(
+                        "✨ 過去の大きなデータを発見しました。\n現在の開発者アカウントに復元しますか？"
+                    );
+
+                    if (shouldRestore) {
                         await setDoc(doc(db, "universes", auth.currentUser.uid), {
                             encryptedData: bestBackup,
                             updatedAt: serverTimestamp()
                         });
-                        alert("✅ データの引き継ぎに成功しました！\nOSを再起動して宇宙を読み込みます。");
+
+                        alert("✅ データの復元に成功しました！\nOSを再起動して宇宙を読み込みます。");
                         window.location.reload();
                     } else {
                         btn.innerText = origText;
@@ -309,8 +397,8 @@ export class AdminPortal {
                     btn.disabled = false;
                 }
             } catch (error) {
-                console.error(error);
-                alert(`スキャンエラー: ${error.message}\nFirebaseのルールが一時的に緩められているか確認してください。`);
+                console.error('[AdminPortal] サルベージに失敗:', error);
+                alert(`スキャンエラー: ${error.message}\nFirestore RulesとADMIN権限を確認してください。`);
                 btn.innerText = origText;
                 btn.disabled = false;
             }
