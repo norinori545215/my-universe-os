@@ -1,179 +1,289 @@
-// functions/src/index.js
-// Firebase Cloud Functions: VIPコード発行・検証。
-// フロント側に SECRET を置かないための本番向け土台。
-
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-const crypto = require('crypto');
+﻿const crypto = require("crypto");
+const admin = require("firebase-admin");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 
 admin.initializeApp();
 
-const REGION = 'asia-northeast1';
+const db = admin.firestore();
+const VIP_SECRET = defineSecret("VIP_SECRET");
+const REGION = "asia-northeast1";
 
-function getVipSecret() {
-  const secret = functions.config()?.vip?.secret || process.env.VIP_SECRET;
+function requireAuth(request) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Login is required.");
+  }
 
-  if (!secret) {
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'VIP_SECRET is not configured. Run: firebase functions:config:set vip.secret="..."'
+  return request.auth.uid;
+}
+
+function normalizeRole(role) {
+  const value = String(role || "RESTRICTED").toUpperCase();
+
+  if (value === "ADMIN") return "ADMIN";
+  if (value === "PRO") return "PRO";
+  if (value === "VIP") return "VIP_GUEST";
+  if (value === "VIP_GUEST") return "VIP_GUEST";
+  if (value === "GUEST_UNLOCK") return "VIP_GUEST";
+
+  return "RESTRICTED";
+}
+
+function normalizeTicketRole(role) {
+  const value = normalizeRole(role);
+
+  if (value === "ADMIN") {
+    throw new HttpsError("invalid-argument", "ADMIN tickets are not allowed.");
+  }
+
+  if (value !== "PRO" && value !== "VIP_GUEST") {
+    throw new HttpsError("invalid-argument", "Invalid ticket role.");
+  }
+
+  return value;
+}
+
+async function getRequesterRole(request, uid) {
+  const tokenRole = normalizeRole(request.auth?.token?.role);
+
+  if (tokenRole === "ADMIN") {
+    return "ADMIN";
+  }
+
+  const snap = await db.collection("users").doc(uid).get();
+
+  if (snap.exists) {
+    return normalizeRole(snap.data().role);
+  }
+
+  return "RESTRICTED";
+}
+
+function getSecretValue() {
+  const secret = VIP_SECRET.value();
+
+  if (!secret || secret.length < 32) {
+    throw new HttpsError(
+      "failed-precondition",
+      "VIP_SECRET is not configured or too short."
     );
   }
 
   return secret;
 }
 
-function assertAuthed(context) {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です。');
-  }
-
-  return context.auth;
+function base64urlEncodeJson(value) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
-async function assertAdmin(context) {
-  const auth = assertAuthed(context);
-  const user = await admin.auth().getUser(auth.uid);
-
-  if (user.customClaims?.role !== 'ADMIN') {
-    throw new functions.https.HttpsError('permission-denied', 'ADMIN権限が必要です。');
-  }
-
-  return user;
+function base64urlDecodeJson(value) {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
 }
 
-function normalizeTier(tier) {
-  const value = String(tier || 'PRO').toUpperCase();
-
-  if (value === 'GUEST_UNLOCK' || value === 'VIP') return 'VIP_GUEST';
-  if (['PRO', 'VIP_GUEST', 'RESTRICTED'].includes(value)) return value;
-
-  return 'PRO';
-}
-
-function base64urlEncode(obj) {
-  return Buffer.from(JSON.stringify(obj)).toString('base64url');
-}
-
-function base64urlDecode(str) {
-  return JSON.parse(Buffer.from(str, 'base64url').toString('utf8'));
-}
-
-function signPayload(base64Payload) {
+function signTicketBody(body) {
   return crypto
-    .createHmac('sha256', getVipSecret())
-    .update(base64Payload)
-    .digest('hex')
-    .slice(0, 32);
+    .createHmac("sha256", getSecretValue())
+    .update(body)
+    .digest("base64url");
 }
 
-exports.createVipTicket = functions.region(REGION).https.onCall(async (data, context) => {
-  await assertAdmin(context);
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
 
-  const tier = normalizeTier(data?.tier);
-  const daysValid = Math.max(1, Math.min(Number(data?.daysValid || 30), 3650));
-  const recipientName = String(data?.recipientName || '').slice(0, 80);
-  const nonce = crypto.randomBytes(16).toString('hex');
-  const exp = Date.now() + daysValid * 24 * 60 * 60 * 1000;
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
 
-  const payload = {
-    t: tier,
-    e: exp,
-    n: recipientName,
-    r: nonce,
-    v: 2,
-  };
-
-  const base64 = base64urlEncode(payload);
-  const signature = signPayload(base64);
-  const code = `NEXUS-${base64}.${signature}`;
-
-  await admin.firestore().collection('vip_tickets').doc(nonce).set({
-    tier,
-    exp,
-    recipientName,
-    nonce,
-    usedBy: null,
-    codeHash: crypto.createHash('sha256').update(code).digest('hex'),
-    createdBy: context.auth.uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  return {
-    code,
-    tier,
-    exp,
-    recipientName,
-  };
-});
-
-exports.verifyVipTicket = functions.region(REGION).https.onCall(async (data, context) => {
-  const auth = assertAuthed(context);
-  const code = String(data?.code || '').trim();
-
-  if (!code.startsWith('NEXUS-')) {
-    throw new functions.https.HttpsError('invalid-argument', '無効なコード形式です。');
+  if (left.length !== right.length) {
+    return false;
   }
 
-  const token = code.replace(/^NEXUS-/, '');
-  const [base64, signature] = token.split('.');
+  return crypto.timingSafeEqual(left, right);
+}
 
-  if (!base64 || !signature) {
-    throw new functions.https.HttpsError('invalid-argument', 'コードが破損しています。');
+function parseTicket(code) {
+  const raw = String(code || "").trim();
+
+  if (!raw.startsWith("NEXUS-")) {
+    throw new HttpsError("invalid-argument", "Invalid VIP code format.");
   }
 
-  const expected = signPayload(base64);
+  const token = raw.slice("NEXUS-".length);
+  const parts = token.split(".");
 
-  if (signature !== expected) {
-    throw new functions.https.HttpsError('permission-denied', 'コードが改ざんされています。');
+  if (parts.length !== 2) {
+    throw new HttpsError("invalid-argument", "Invalid VIP code format.");
+  }
+
+  const [body, signature] = parts;
+  const expectedSignature = signTicketBody(body);
+
+  if (!safeEqual(signature, expectedSignature)) {
+    throw new HttpsError("permission-denied", "Invalid VIP code signature.");
   }
 
   let payload;
 
   try {
-    payload = base64urlDecode(base64);
-  } catch (_) {
-    throw new functions.https.HttpsError('invalid-argument', 'コードを読み取れません。');
+    payload = base64urlDecodeJson(body);
+  } catch (error) {
+    throw new HttpsError("invalid-argument", "Invalid VIP code payload.");
   }
 
-  if (Date.now() > payload.e) {
-    throw new functions.https.HttpsError('deadline-exceeded', 'このコードは期限切れです。');
+  if (!payload || !payload.n || !payload.t || !payload.exp) {
+    throw new HttpsError("invalid-argument", "Invalid VIP code payload.");
   }
-
-  const ref = admin.firestore().collection('vip_tickets').doc(payload.r);
-  const snap = await ref.get();
-
-  if (!snap.exists) {
-    throw new functions.https.HttpsError('not-found', 'コードが存在しません。');
-  }
-
-  const ticket = snap.data();
-
-  if (ticket.usedBy && ticket.usedBy !== auth.uid) {
-    throw new functions.https.HttpsError('already-exists', 'このコードは使用済みです。');
-  }
-
-  const role = normalizeTier(payload.t);
-
-  await ref.set({
-    usedBy: auth.uid,
-    usedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
-
-  await admin.auth().setCustomUserClaims(auth.uid, {
-    role,
-  });
-
-  await admin.firestore().doc(`users/${auth.uid}`).set({
-    role,
-    isVip: true,
-    vipUntil: new Date(payload.e).toISOString(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
 
   return {
-    ok: true,
-    role,
-    exp: payload.e,
+    raw,
+    body,
+    signature,
+    payload
   };
-});
+}
+
+exports.createVipTicket = onCall(
+  {
+    region: REGION,
+    secrets: [VIP_SECRET]
+  },
+  async (request) => {
+    const uid = requireAuth(request);
+    const requesterRole = await getRequesterRole(request, uid);
+
+    if (requesterRole !== "ADMIN") {
+      throw new HttpsError("permission-denied", "ADMIN permission is required.");
+    }
+
+    const data = request.data || {};
+    const role = normalizeTicketRole(data.tier || data.role || "PRO");
+
+    const daysValid = Math.max(
+      1,
+      Math.min(36500, Number(data.daysValid || data.days || 30))
+    );
+
+    const recipientName = String(data.recipientName || data.memo || "").slice(0, 200);
+    const now = Date.now();
+    const exp = now + daysValid * 24 * 60 * 60 * 1000;
+    const nonce = crypto.randomBytes(16).toString("hex");
+
+    const payload = {
+      t: role,
+      exp,
+      iat: now,
+      n: nonce
+    };
+
+    const body = base64urlEncodeJson(payload);
+    const signature = signTicketBody(body);
+    const code = `NEXUS-${body}.${signature}`;
+    const codeHash = sha256(code);
+
+    await db.collection("vip_tickets").doc(nonce).set({
+      role,
+      codeHash,
+      recipientName,
+      createdBy: uid,
+      used: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromMillis(exp)
+    });
+
+    return {
+      ok: true,
+      code,
+      role,
+      exp
+    };
+  }
+);
+
+exports.verifyVipTicket = onCall(
+  {
+    region: REGION,
+    secrets: [VIP_SECRET]
+  },
+  async (request) => {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const code = String(data.code || "").trim();
+
+    if (!code) {
+      throw new HttpsError("invalid-argument", "VIP code is required.");
+    }
+
+    const parsed = parseTicket(code);
+    const payload = parsed.payload;
+
+    const role = normalizeTicketRole(payload.t);
+    const exp = Number(payload.exp);
+    const nonce = String(payload.n);
+
+    if (!Number.isFinite(exp) || exp < Date.now()) {
+      throw new HttpsError("deadline-exceeded", "VIP code has expired.");
+    }
+
+    const codeHash = sha256(parsed.raw);
+    const ticketRef = db.collection("vip_tickets").doc(nonce);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ticketRef);
+
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "VIP code was not found.");
+      }
+
+      const ticket = snap.data();
+
+      if (ticket.codeHash !== codeHash) {
+        throw new HttpsError("permission-denied", "VIP code hash mismatch.");
+      }
+
+      if (ticket.used && ticket.usedBy !== uid) {
+        throw new HttpsError("already-exists", "VIP code has already been used.");
+      }
+
+      tx.set(
+        ticketRef,
+        {
+          used: true,
+          usedBy: uid,
+          usedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        {
+          merge: true
+        }
+      );
+    });
+
+    const userRecord = await admin.auth().getUser(uid);
+    const currentClaims = userRecord.customClaims || {};
+
+    await admin.auth().setCustomUserClaims(uid, {
+      ...currentClaims,
+      role,
+      vipUntil: exp
+    });
+
+    await db.collection("users").doc(uid).set(
+      {
+        role,
+        isVip: true,
+        vipUntil: admin.firestore.Timestamp.fromMillis(exp),
+        lastVipUnlockAt: admin.firestore.FieldValue.serverTimestamp(),
+        vipCodeHash: codeHash
+      },
+      {
+        merge: true
+      }
+    );
+
+    return {
+      ok: true,
+      role,
+      exp
+    };
+  }
+);
