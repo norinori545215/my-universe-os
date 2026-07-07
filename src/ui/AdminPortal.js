@@ -1,15 +1,25 @@
 // src/ui/AdminPortal.js
 import { VIPInvite } from '../billing/VIPInvite.js';
 import { db, auth } from '../security/Auth.js';
+import { PermissionGate } from '../security/PermissionGate.js';
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class AdminPortal {
     static async render(onExitCallback) {
-        if (localStorage.getItem('universe_role') !== 'ADMIN') {
-            alert("権限がありません。");
-            if (onExitCallback) onExitCallback();
-            return;
-        }
+    let permissions;
+
+    try {
+        permissions = await PermissionGate.refresh();
+    } catch (e) {
+        console.error('[AdminPortal] 権限確認に失敗:', e);
+        permissions = PermissionGate.get();
+    }
+
+    if (!permissions.allowAdminPortal) {
+        alert("ADMIN権限がありません。");
+        if (onExitCallback) onExitCallback();
+        return;
+    }
 
         const ui = document.createElement('div');
         ui.id = 'admin-portal-screen';
