@@ -1,5 +1,5 @@
 // src/ui/AdminUI.js
-import { VIPInvite } from '../billing/VIPInvite.js';
+import { VIPInviteClient } from '../billing/VIPInviteClient.js';
 
 export class AdminUI {
     static renderInside(container, resolveOSBoot) {
@@ -13,7 +13,7 @@ export class AdminUI {
                     <div style="font-size:12px; color:#ff8888; margin-bottom:5px;">付与する権限</div>
                     <select id="adm-tier" style="width:100%; background:#111; border:1px solid #ff4444; color:#fff; padding:10px; border-radius:5px; outline:none;">
                         <option value="PRO">PRO版 (全機能解放)</option>
-                        <option value="GUEST_UNLOCK">制限解除版 (一部機能解放)</option>
+                        <option value="VIP_GUEST">制限解除版 (一部機能解放)</option>
                     </select>
                 </div>
 
@@ -38,24 +38,56 @@ export class AdminUI {
             </div>
         `;
 
-        document.getElementById('adm-gen-btn').onclick = async () => {
+        document.getElementById('adm-gen-btn').onclick = async (e) => {
+            const button = e.currentTarget;
             const tier = document.getElementById('adm-tier').value;
             const days = parseInt(document.getElementById('adm-days').value, 10) || 30;
-            const code = await VIPInvite.generateTicket(tier, days);
-            
-            document.getElementById('adm-code').value = code;
-            document.getElementById('adm-result').style.display = 'block';
+
+            button.disabled = true;
+            button.innerText = "コード生成中...";
+
+            try {
+                const result = await VIPInviteClient.createTicket({
+                    tier,
+                    daysValid: days,
+                    recipientName: ''
+                });
+
+                document.getElementById('adm-code').value = result.code;
+                document.getElementById('adm-result').style.display = 'block';
+            } catch (error) {
+                console.error('[AdminUI] VIPコード生成に失敗:', error);
+                alert(error.message || 'VIPコード生成に失敗しました。');
+            } finally {
+                button.disabled = false;
+                button.innerText = "コードを生成する";
+            }
         };
 
-        document.getElementById('adm-copy-btn').onclick = (e) => {
-            navigator.clipboard.writeText(document.getElementById('adm-code').value);
-            e.target.innerText = "✅ コピー完了！";
-            setTimeout(() => e.target.innerText = "コピーする", 2000);
+        document.getElementById('adm-copy-btn').onclick = async (e) => {
+            const code = document.getElementById('adm-code').value;
+
+            if (!code) {
+                alert('コピーするコードがありません。');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(code);
+                e.target.innerText = "✅ コピー完了！";
+                setTimeout(() => e.target.innerText = "コピーする", 2000);
+            } catch (error) {
+                console.error('[AdminUI] コピーに失敗:', error);
+                alert('コピーに失敗しました。手動で選択してコピーしてください。');
+            }
         };
 
         document.getElementById('adm-boot-os').onclick = () => {
             container.style.opacity = '0';
-            setTimeout(() => { container.remove(); resolveOSBoot('ADMIN'); }, 500);
+            setTimeout(() => {
+                container.remove();
+                resolveOSBoot('ADMIN');
+            }, 500);
         };
     }
 }
