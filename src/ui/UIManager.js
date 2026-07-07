@@ -1101,7 +1101,7 @@ export class UIManager {
             const worldX = ((ev.clientX - rect.left - canvasEl.width / 2) / zoom) - this.app.camera.x;
             const worldY = ((ev.clientY - rect.top - canvasEl.height / 2) / zoom) - this.app.camera.y;
 
-            const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
+            const currentRole = this.getCurrentRole();
             if (currentRole === 'RESTRICTED') {
                 if (this.app.currentUniverse.nodes.length >= this.limits.maxNodes) {
                     return;
@@ -1258,8 +1258,8 @@ export class UIManager {
         }
 
         // ★ 権限と制限のチェック（9項目の詳細制限をすべて判定）
-        const currentRole = localStorage.getItem('universe_role') || 'RESTRICTED';
-        const isPro = currentRole === 'PRO' || currentRole === 'ADMIN' || currentRole === 'VIP_GUEST';
+        const currentRole = this.getCurrentRole();
+        const isPro = this.isProRole(currentRole);
         
         const canEdit   = isPro || !!this.limits.allowNodeEdit;
         const canColor  = isPro || !!this.limits.allowNodeColor;
