@@ -4,8 +4,8 @@ import { CognitiveShield } from './engine/CognitiveShield.js';
 import { GlitchEngine } from './engine/GlitchEngine.js'; 
 import { WanderingEntities } from './ai/WanderingEntities.js';
 import { auth, db } from './security/Auth.js';
-import { doc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+import { PermissionGate } from './security/PermissionGate.js';
+import { doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 // ★ インポート
 import { LoginGateway } from './security/LoginGateway.js';
 import { AdminPortal } from './ui/AdminPortal.js';
@@ -16,14 +16,24 @@ window.startUniverseOS = (role) => {
     if (window.__osStarted) return;
     window.__osStarted = true;
 
-    console.log(`マルチバース・エンジン起動... [最終権限: ${role}]`);
-    localStorage.setItem('universe_role', role);
+    const safeRole = role || 'RESTRICTED';
 
-    const app = new CanvasBuilder('universe-canvas'); 
-    
-    new CognitiveShield(); 
-    GlitchEngine.toggleCRT(false); 
-    WanderingEntities.start(app); 
+    console.log(`[My Universe OS] Engine started. role=${safeRole}`);
+
+    // 既存UI互換用のroleキャッシュ。
+    // 本物の権限判定は PermissionGate / Firestore Rules 側で行う。
+    try {
+        PermissionGate.safeCacheForUIOnly(safeRole);
+    } catch (e) {
+        console.warn('[main] roleキャッシュに失敗:', e);
+        localStorage.setItem('universe_role', safeRole);
+    }
+
+    const app = new CanvasBuilder('universe-canvas');
+
+    new CognitiveShield();
+    GlitchEngine.toggleCRT(false);
+    WanderingEntities.start(app);
 };
 
 window.addEventListener('DOMContentLoaded', async () => {
