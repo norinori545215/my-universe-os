@@ -39,7 +39,19 @@ export class NexusP2P {
         return id.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
     }
 
+    static generatePassword(length = 24) {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        const bytes = new Uint8Array(length);
+        crypto.getRandomValues(bytes);
+
+        return Array.from(bytes)
+            .map(byte => chars[byte % chars.length])
+            .join('');
+     }
+
     static showPortalUI(defaultId = '', defaultPw = '') {
+        if (!defaultPw) defaultPw = this.generatePassword();
+
         const portalId = 'p2p-portal-ui';
         if (document.getElementById(portalId)) document.getElementById(portalId).remove();
 
@@ -64,6 +76,7 @@ export class NexusP2P {
             <div>
                 <div style="font-size:11px; color:#ff88ff; margin-bottom:5px;">PASSWORD (暗号鍵)</div>
                 <input type="password" id="p2p-password" value="${defaultPw}" placeholder="***" style="width:100%; background:rgba(0,0,0,0.5); border:1px solid #ff00ff; color:#fff; padding:8px; border-radius:4px; box-sizing:border-box; outline:none;">
+                <button id="p2p-regenerate-pw" style="width:100%; margin-top:6px; padding:6px; background:transparent; color:#ffaa00; border:1px dashed #ffaa00; border-radius:4px; cursor:pointer; font-size:10px;">PWを再生成</button>
             </div>
             <div style="display:flex; gap:10px; margin-top:10px;">
                 <button id="p2p-host-btn" style="flex:1; padding:8px; background:#440044; color:#ff00ff; border:1px solid #ff00ff; border-radius:4px; cursor:pointer; font-weight:bold; font-size:10px;">🌌 空間を創る<br>(Host)</button>
@@ -76,6 +89,10 @@ export class NexusP2P {
         document.body.appendChild(ui);
 
         document.getElementById('p2p-cancel-btn').onclick = () => ui.remove();
+        document.getElementById('p2p-regenerate-pw').onclick = () => {
+            const passwordInput = document.getElementById('p2p-password');
+            if (passwordInput) passwordInput.value = this.generatePassword();
+        };
 
         document.getElementById('p2p-host-btn').onclick = () => {
             const id = document.getElementById('p2p-room-id').value.trim();
@@ -265,14 +282,15 @@ export class NexusP2P {
         if (!this.app || !this.app.currentUniverse) return;
 
         // ★ リロード時にURLから復活したワームホールを探す
-        let existing = this.wormholeNode || this.app.currentUniverse.nodes.find(n => n.url === `p2p://${roomId}:${password}`);
-        
+        const safeRoomId = this.cleanRoomId(roomId);
+        let existing = this.wormholeNode || this.app.currentUniverse.nodes.find(n => n.url === `p2p://${safeRoomId}`);
+
         if (existing) {
             this.wormholeNode = existing;
             this.wormholeNode.isWormhole = true;
-            this.wormholeNode.p2pRoomId = roomId;
-            this.wormholeNode.p2pPassword = password;
-            this.wormholeNode.url = `p2p://${roomId}:${password}`;
+            this.wormholeNode.p2pRoomId = safeRoomId;
+            delete this.wormholeNode.p2pPassword;
+            this.wormholeNode.url = `p2p://${safeRoomId}`;
         } else {
             const cx = this.app.camera ? -this.app.camera.x : 0;
             const cy = this.app.camera ? -this.app.camera.y : 0;
@@ -281,19 +299,19 @@ export class NexusP2P {
             this.wormholeNode = this.app.currentUniverse.nodes[this.app.currentUniverse.nodes.length - 1];
             
             this.wormholeNode.isWormhole = true;
-            this.wormholeNode.p2pRoomId = roomId;
-            this.wormholeNode.p2pPassword = password;
-            this.wormholeNode.url = `p2p://${roomId}:${password}`; // URLに埋め込んで保存
+            this.wormholeNode.p2pRoomId = safeRoomId;
+            delete this.wormholeNode.p2pPassword;
+            this.wormholeNode.url = `p2p://${safeRoomId}`; // PWはURLに保存しない
             
             this.app.autoSave();
         }
 
         // 内側を共有空間として整備
         if (!this.wormholeNode.innerUniverse) {
-             this.wormholeNode.innerUniverse = new this.app.currentUniverse.constructor(`🌌 SHARED: ${roomId}`, 'space');
+             this.wormholeNode.innerUniverse = new this.app.currentUniverse.constructor(`🌌 SHARED: ${safeRoomId}`, 'space');
         }
         this.wormholeNode.innerUniverse.isShared = true;
-        this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${roomId}`;
+        this.wormholeNode.innerUniverse.name = `🌌 SHARED: ${safeRoomId}`;
 
         if (this.app.simulation) this.app.simulation.alpha(0.5).restart();
 
@@ -334,9 +352,8 @@ export class NexusP2P {
 
         // リロードから復帰した星の場合、URLからIDとPWを取り出す
         if (node.url && node.url.startsWith('p2p://')) {
-            const parts = node.url.replace('p2p://', '').split(':');
-            node.p2pRoomId = parts[0];
-            node.p2pPassword = parts[1];
+            node.p2pRoomId = node.url.replace('p2p://', '').split(':')[0];
+            delete node.p2pPassword;
         }
 
         const portalId = 'p2p-wormhole-menu';
@@ -399,12 +416,16 @@ export class NexusP2P {
             document.getElementById('wh-host').onclick = () => {
                 ui.remove();
                 this.wormholeNode = node; // 再接続のためにロック
-                this.initHost(node.p2pRoomId, node.p2pPassword);
+                const pw = prompt("このワームホールのPASSWORDを入力してください:");
+                if (!pw) return;
+                this.initHost(node.p2pRoomId, pw.trim());
             };
             document.getElementById('wh-join').onclick = () => {
                 ui.remove();
                 this.wormholeNode = node; // 再接続のためにロック
-                this.initJoin(node.p2pRoomId, node.p2pPassword);
+                const pw = prompt("このワームホールのPASSWORDを入力してください:");
+                if (!pw) return;
+                this.initJoin(node.p2pRoomId, pw.trim());
             };
         }
 

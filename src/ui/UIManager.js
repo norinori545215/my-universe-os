@@ -1275,9 +1275,8 @@ export class UIManager {
             node.isWormhole = true; 
 
             if (node.url && node.url.startsWith('p2p://')) {
-                const parts = node.url.replace('p2p://', '').split(':');
-                node.p2pRoomId = parts[0];
-                node.p2pPassword = parts[1];
+                node.p2pRoomId = node.url.replace('p2p://', '').split(':')[0];
+                delete node.p2pPassword;
             }
 
             if (this.state.isRapidDeleteMode) {
