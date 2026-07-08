@@ -92,6 +92,10 @@ service cloud.firestore {
     match /nexus_channels/{channelId} {
       allow read, create, update: if signedIn();
       allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read, create, update, delete: if signedIn();
+      }
     }
   }
 }
