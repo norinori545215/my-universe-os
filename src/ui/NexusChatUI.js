@@ -1850,7 +1850,10 @@ export class NexusChatUI {
                 phantom: isPhantom,
                 reactions: {}
             });
-        } catch (e) {}
+        } catch (e) {
+            console.error("[NexusChatUI] dispatchToNetwork failed:", e);
+            alert("Nexus送信に失敗しました: " + (e.message || e.code || e));
+        }
     }
 
     scrollToBottom() {
