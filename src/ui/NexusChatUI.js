@@ -1,7 +1,20 @@
 // src/ui/NexusChatUI.js
 import { SecretNexus } from '../security/SecretNexus.js';
 import { db } from '../security/Auth.js';
-import { collection, doc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, limit, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    collection,
+    doc,
+    setDoc,
+    updateDoc,
+    addDoc,
+    onSnapshot,
+    query,
+    where,
+    orderBy,
+    limit,
+    serverTimestamp,
+    deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export class NexusChatUI {
     constructor(app) {
@@ -10,19 +23,19 @@ export class NexusChatUI {
         this.isContactListOpen = false;
         this.activeNode = null;
         this.unsubscribeNetwork = null;
-        this.unsubscribeTyping = null; 
+        this.unsubscribeTyping = null;
         this.typingTimer = null;
-        
+
         this.mediaRecorder = null;
         this.audioChunks = [];
-        this.unreadChannels = new Set(); 
+        this.unreadChannels = new Set();
 
         this.editingMsgId = null;
         this.replyToMsg = null;
         this.isPhantomMode = false;
 
         this.createUI();
-        
+
         setTimeout(() => this.startGlobalInboxListener(), 2000);
 
         window.addEventListener('resize', () => this.handleResize());
@@ -32,22 +45,126 @@ export class NexusChatUI {
         try {
             const saved = localStorage.getItem('universe_nexus_identity');
             return saved ? JSON.parse(saved) : null;
-        } catch (e) { return null; }
+        } catch (e) {
+            return null;
+        }
     }
 
     getShortId(pubKeyObj) {
         if (!pubKeyObj) return "UNKNOWN";
+
         const str = JSON.stringify(pubKeyObj);
         let hash = 0;
+
         for (let i = 0; i < str.length; i++) {
             hash = ((hash << 5) - hash) + str.charCodeAt(i);
             hash |= 0;
         }
+
         return `NX-${Math.abs(hash).toString(16).substring(0, 6).toUpperCase()}`;
+    }
+
+    clearElement(el) {
+        if (!el) return;
+        while (el.firstChild) {
+            el.removeChild(el.firstChild);
+        }
+    }
+
+    safeMediaUrl(value, kind = 'generic') {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+
+        if (kind === 'image' && raw.startsWith('data:image/')) return raw;
+        if (kind === 'voice' && raw.startsWith('data:audio/')) return raw;
+        if (raw.startsWith('blob:')) return raw;
+
+        try {
+            const url = new URL(raw, window.location.origin);
+            if (url.protocol === 'https:' || url.protocol === 'http:') {
+                return url.href;
+            }
+        } catch (e) {
+            return '';
+        }
+
+        return '';
+    }
+
+    createWipedMessageEl() {
+        const wipedEl = document.createElement('div');
+        wipedEl.style.cssText = `
+            font-size: 12px;
+            color: rgba(255,255,255,0.3);
+            font-style: italic;
+            padding: 10px 15px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.3);
+        `;
+        wipedEl.textContent = '⊘ Message has been wiped';
+        return wipedEl;
+    }
+
+    createAvatar(iconUrl, options = {}) {
+        const size = options.size || 36;
+        const border = options.border || '2px solid #444';
+        const active = !!options.active;
+
+        const iconWrap = document.createElement('div');
+        iconWrap.style.cssText = `
+            width: ${size}px;
+            height: ${size}px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: ${border};
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #111;
+            transition: 0.3s;
+        `;
+
+        const safeUrl = this.safeMediaUrl(iconUrl, 'image');
+
+        if (safeUrl) {
+            const img = document.createElement('img');
+            img.src = safeUrl;
+            img.alt = 'Nexus icon';
+            img.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+            iconWrap.appendChild(img);
+        } else {
+            iconWrap.style.background = active
+                ? 'radial-gradient(circle, #ff00ff 0%, #111 70%)'
+                : 'radial-gradient(circle, #444 0%, #111 70%)';
+        }
+
+        return iconWrap;
+    }
+
+    renderTriggerTab() {
+        if (!this.triggerTab) return;
+
+        this.clearElement(this.triggerTab);
+
+        const label = document.createElement('div');
+
+        if (this.isOpen) {
+            label.style.fontSize = '24px';
+            label.textContent = '×';
+        } else {
+            label.style.transform = 'rotate(-90deg)';
+            label.style.whiteSpace = 'nowrap';
+            label.style.marginTop = '5px';
+            label.textContent = 'NEXUS';
+        }
+
+        this.triggerTab.appendChild(label);
     }
 
     async startGlobalInboxListener() {
         if (!db) return;
+
         const myId = this.getMyIdentity();
         if (!myId) return;
 
@@ -61,12 +178,17 @@ export class NexusChatUI {
                 const channelData = change.doc.data();
                 const channelId = change.doc.id;
 
-                const myLastRead = (channelData.lastRead && channelData.lastRead[myShortId]) ? channelData.lastRead[myShortId] : 0;
-                const lastUpdated = channelData.updatedAt ? channelData.updatedAt.toMillis() : 0;
-                
+                const myLastRead = channelData.lastRead && channelData.lastRead[myShortId]
+                    ? channelData.lastRead[myShortId]
+                    : 0;
+
+                const lastUpdated = channelData.updatedAt
+                    ? channelData.updatedAt.toMillis()
+                    : 0;
+
                 if (lastUpdated > myLastRead && (!this.isOpen || this.activeNode?.channelId !== channelId)) {
                     this.unreadChannels.add(channelId);
-                    if(this.isOpen) this.refreshContacts();
+                    if (this.isOpen) this.refreshContacts();
                 }
 
                 if (change.type === "added") {
@@ -74,36 +196,40 @@ export class NexusChatUI {
                     if (!peerPubStr) return;
 
                     let existingNode = null;
+
                     const searchUniverse = (nodes) => {
                         nodes.forEach(n => {
                             if (JSON.stringify(n.peerPublicKey) === peerPubStr) existingNode = n;
                             if (n.innerUniverse) searchUniverse(n.innerUniverse.nodes);
                         });
                     };
+
                     searchUniverse(this.app.currentUniverse.nodes);
 
                     if (!existingNode) {
                         const peerPubObj = JSON.parse(peerPubStr);
                         const shortId = this.getShortId(peerPubObj);
-                        
+
                         let hubNode = this.app.currentUniverse.nodes.find(n => n.name === '📡 通信ネットワーク');
+
                         if (!hubNode) {
                             const cx = this.app.camera ? -this.app.camera.x : 0;
                             const cy = this.app.camera ? -this.app.camera.y : 0;
                             hubNode = this.app.currentUniverse.addNode('📡 通信ネットワーク', cx, cy, 45, '#ff00ff', 'galaxy');
                         }
-                        
+
                         const rx = (Math.random() - 0.5) * 200;
                         const ry = (Math.random() - 0.5) * 200;
                         const newNode = hubNode.innerUniverse.addNode(`User ${shortId}`, rx, ry, 30, '#ff00ff', 'star');
-                        
+
                         newNode.peerPublicKey = peerPubObj;
                         newNode.channelId = channelId;
                         newNode.messages = [];
-                        
+
                         this.app.autoSave();
-                        if(window.universeAudio) window.universeAudio.playWarp();
-                        if(this.isOpen) this.refreshContacts();
+
+                        if (window.universeAudio) window.universeAudio.playWarp();
+                        if (this.isOpen) this.refreshContacts();
                     }
                 }
             });
@@ -127,14 +253,25 @@ export class NexusChatUI {
                 .nexus-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 0, 255, 0.5); }
                 .nexus-input-scroll::-webkit-scrollbar { width: 4px; }
                 .nexus-input-scroll::-webkit-scrollbar-thumb { background: rgba(0, 255, 204, 0.3); border-radius: 10px; }
-                
+
                 .nexus-contact-panel { width: 160px; border-right: 1px solid rgba(255,0,255,0.2); transition: 0.3s; z-index: 10; }
                 .nexus-menu-btn { display: none; background: transparent; border: none; color: #ff00ff; font-size: 24px; cursor: pointer; margin-right: 10px; padding: 0 5px; }
-                
-                @keyframes phantom-pulse { 0% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } 50% { box-shadow: 0 0 18px #ff00ff; } 100% { box-shadow: 0 0 5px rgba(255,0,255,0.5); } }
+
+                @keyframes phantom-pulse {
+                    0% { box-shadow: 0 0 5px rgba(255,0,255,0.5); }
+                    50% { box-shadow: 0 0 18px #ff00ff; }
+                    100% { box-shadow: 0 0 5px rgba(255,0,255,0.5); }
+                }
 
                 @media (max-width: 600px) {
-                    .nexus-contact-panel { position: absolute; left: -200px; height: 100%; background: rgba(10,15,20,0.98) !important; box-shadow: 5px 0 20px rgba(0,0,0,0.8); }
+                    .nexus-contact-panel {
+                        position: absolute;
+                        left: -200px;
+                        height: 100%;
+                        background: rgba(10,15,20,0.98) !important;
+                        box-shadow: 5px 0 20px rgba(0,0,0,0.8);
+                    }
+
                     .nexus-contact-panel.open { left: 0; }
                     .nexus-menu-btn { display: block; }
                 }
@@ -144,9 +281,16 @@ export class NexusChatUI {
 
         this.triggerTab = document.createElement('div');
         this.triggerTab.style.cssText = 'position:fixed; top:50%; right:20px; transform:translateY(-50%); width:30px; height:80px; background:rgba(0,255,204,0.1); border:1px solid #00ffcc; border-radius:15px; z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#00ffcc; cursor:pointer; box-shadow:0 0 20px rgba(0,255,204,0.3); backdrop-filter:blur(5px); font-weight:bold; transition:all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); font-size:18px; letter-spacing:2px;';
-        this.triggerTab.innerHTML = '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
-        this.triggerTab.onmouseover = () => { if(!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.3)'; };
-        this.triggerTab.onmouseout = () => { if(!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.1)'; };
+        this.renderTriggerTab();
+
+        this.triggerTab.onmouseover = () => {
+            if (!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.3)';
+        };
+
+        this.triggerTab.onmouseout = () => {
+            if (!this.isOpen) this.triggerTab.style.background = 'rgba(0,255,204,0.1)';
+        };
+
         this.triggerTab.onclick = () => this.toggle();
         document.body.appendChild(this.triggerTab);
 
@@ -156,11 +300,27 @@ export class NexusChatUI {
 
         const header = document.createElement('div');
         header.style.cssText = 'padding:15px 20px; border-bottom:1px solid rgba(255,0,255,0.3); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(90deg, rgba(255,0,255,0.1) 0%, transparent 100%); flex-shrink:0;';
-        header.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:18px; color:#ff00ff;">📡</span><div style="font-size:16px; font-weight:bold; letter-spacing:2px; color:#ff00ff; text-shadow:0 0 5px #ff00ff;">NEXUS HUB</div></div>`;
+
+        const titleWrap = document.createElement('div');
+        titleWrap.style.cssText = 'display:flex; align-items:center; gap:10px;';
+
+        const titleIcon = document.createElement('span');
+        titleIcon.style.cssText = 'font-size:18px; color:#ff00ff;';
+        titleIcon.textContent = '📡';
+
+        const titleText = document.createElement('div');
+        titleText.style.cssText = 'font-size:16px; font-weight:bold; letter-spacing:2px; color:#ff00ff; text-shadow:0 0 5px #ff00ff;';
+        titleText.textContent = 'NEXUS HUB';
+
+        titleWrap.appendChild(titleIcon);
+        titleWrap.appendChild(titleText);
+
         const closeBtn = document.createElement('button');
-        closeBtn.innerText = '×';
+        closeBtn.textContent = '×';
         closeBtn.style.cssText = 'background:transparent; border:none; color:#ff4444; font-size:26px; cursor:pointer; padding:0 10px; line-height:1; transition:0.2s;';
         closeBtn.onclick = () => this.toggle();
+
+        header.appendChild(titleWrap);
         header.appendChild(closeBtn);
         this.panel.appendChild(header);
 
@@ -175,12 +335,12 @@ export class NexusChatUI {
 
         this.chatArea = document.createElement('div');
         this.chatArea.style.cssText = 'flex:1; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); overflow:hidden; position:relative; width:100%;';
-        
+
         this.mobileOverlay = document.createElement('div');
         this.mobileOverlay.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9; display:none; backdrop-filter:blur(2px);';
         this.mobileOverlay.onclick = () => this.toggleContactList(false);
         this.chatArea.appendChild(this.mobileOverlay);
-        
+
         body.appendChild(this.chatArea);
 
         this.chatHeader = document.createElement('div');
@@ -194,35 +354,39 @@ export class NexusChatUI {
 
         this.typingIndicator = document.createElement('div');
         this.typingIndicator.style.cssText = 'font-size:11px; color:#00ffcc; padding:8px 25px; opacity:0; transition:opacity 0.3s; font-family:monospace; position:absolute; bottom:80px; left:0; width:100%; pointer-events:none; background:linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); text-shadow:0 0 5px #00ffcc; z-index:10;';
-        this.typingIndicator.innerText = '🌐 相手が暗号を編集中...';
+        this.typingIndicator.textContent = '🌐 相手が暗号を編集中...';
         this.chatArea.appendChild(this.typingIndicator);
 
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = 'padding:10px 15px; border-top:1px solid rgba(0,255,204,0.2); background:rgba(10,15,20,0.95); flex-shrink:0; display:flex; align-items:flex-end; gap:8px; z-index:15;';
-        
+
         const fileInput = document.createElement('input');
-        fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
         fileInput.onchange = (e) => this.sendImage(e.target.files[0]);
 
         const inputWrapper = document.createElement('div');
         inputWrapper.style.cssText = 'flex:1; display:flex; align-items:flex-end; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,204,0.3); border-radius:24px; padding:6px 6px 6px 10px; transition:0.3s; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);';
 
         const attachBtn = document.createElement('button');
-        attachBtn.innerText = '📎';
+        attachBtn.textContent = '📎';
         attachBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         attachBtn.onclick = () => fileInput.click();
 
         this.micBtn = document.createElement('button');
-        this.micBtn.innerText = '🎙️';
+        this.micBtn.textContent = '🎙️';
         this.micBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#00ffcc; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none;';
         this.micBtn.onclick = () => this.toggleVoiceRecord();
 
         this.phantomBtn = document.createElement('button');
-        this.phantomBtn.innerText = '👻';
+        this.phantomBtn.textContent = '👻';
         this.phantomBtn.title = '自己消滅モード (Phantom Protocol)';
         this.phantomBtn.style.cssText = 'background:transparent; border:none; font-size:18px; cursor:pointer; color:#888; transition:0.2s; padding:6px; margin-right:2px; flex-shrink:0; outline:none; filter:grayscale(1);';
+
         this.phantomBtn.onclick = () => {
             this.isPhantomMode = !this.isPhantomMode;
+
             if (this.isPhantomMode) {
                 this.phantomBtn.style.color = '#ff00ff';
                 this.phantomBtn.style.filter = 'drop-shadow(0 0 5px #ff00ff)';
@@ -237,7 +401,7 @@ export class NexusChatUI {
         };
 
         this.actionCancelBtn = document.createElement('button');
-        this.actionCancelBtn.innerHTML = '✖';
+        this.actionCancelBtn.textContent = '✖';
         this.actionCancelBtn.title = 'キャンセル';
         this.actionCancelBtn.style.cssText = 'display:none; background:transparent; border:none; color:#ff4444; font-size:16px; cursor:pointer; margin-right:5px; padding:4px;';
         this.actionCancelBtn.onclick = () => this.cancelAction();
@@ -247,45 +411,68 @@ export class NexusChatUI {
         this.inputField.placeholder = 'Secure Message...';
         this.inputField.rows = 1;
         this.inputField.style.cssText = 'flex:1; background:transparent; border:none; color:#fff; padding:6px 0; outline:none; font-size:14px; line-height:1.5; font-family:sans-serif; resize:none; max-height:100px; overflow-y:auto; margin-right:5px; width:100%;';
-        
+
         this.inputField.addEventListener('input', () => {
             this.inputField.style.height = 'auto';
             this.inputField.style.height = Math.min(this.inputField.scrollHeight, 100) + 'px';
 
-            if(this.activeNode && this.activeNode.channelId && db && this.getMyIdentity()) {
-                if(this.typingTimer) clearTimeout(this.typingTimer);
-                else {
+            if (this.activeNode && this.activeNode.channelId && db && this.getMyIdentity()) {
+                if (this.typingTimer) {
+                    clearTimeout(this.typingTimer);
+                } else {
                     const myShortId = this.getShortId(this.getMyIdentity().publicKey);
-                    updateDoc(doc(db, "nexus_channels", this.activeNode.channelId), { [`typing.${myShortId}`]: Date.now() }).catch(()=>{});
+                    updateDoc(doc(db, "nexus_channels", this.activeNode.channelId), {
+                        [`typing.${myShortId}`]: Date.now()
+                    }).catch(() => {});
                 }
-                this.typingTimer = setTimeout(() => { this.typingTimer = null; }, 2000);
+
+                this.typingTimer = setTimeout(() => {
+                    this.typingTimer = null;
+                }, 2000);
             }
         });
 
-        this.inputField.onkeydown = (e) => { 
-            if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
+        this.inputField.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
         };
-        
-        this.inputField.onfocus = () => { if(!this.isPhantomMode) inputWrapper.style.borderColor = '#00ffcc'; };
-        this.inputField.onblur = () => { if(!this.isPhantomMode) inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)'; };
-        
+
+        this.inputField.onfocus = () => {
+            if (!this.isPhantomMode) inputWrapper.style.borderColor = '#00ffcc';
+        };
+
+        this.inputField.onblur = () => {
+            if (!this.isPhantomMode) inputWrapper.style.borderColor = 'rgba(0,255,204,0.3)';
+        };
+
         const sendBtn = document.createElement('button');
-        sendBtn.innerHTML = '➤';
+        sendBtn.textContent = '➤';
         sendBtn.style.cssText = 'background:linear-gradient(135deg, #00ffcc 0%, #00ccff 100%); color:#000; border:none; width:34px; height:34px; border-radius:50%; font-weight:bold; cursor:pointer; font-size:16px; transition:0.3s; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 0 10px rgba(0,255,204,0.3); outline:none;';
-        sendBtn.onmouseover = () => { sendBtn.style.transform = 'scale(1.1)'; sendBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.6)'; };
-        sendBtn.onmouseout = () => { sendBtn.style.transform = 'scale(1)'; sendBtn.style.boxShadow = '0 0 10px rgba(0,255,204,0.3)'; };
+
+        sendBtn.onmouseover = () => {
+            sendBtn.style.transform = 'scale(1.1)';
+            sendBtn.style.boxShadow = '0 0 15px rgba(0,255,204,0.6)';
+        };
+
+        sendBtn.onmouseout = () => {
+            sendBtn.style.transform = 'scale(1)';
+            sendBtn.style.boxShadow = '0 0 10px rgba(0,255,204,0.3)';
+        };
+
         sendBtn.onclick = () => this.sendMessage();
 
         inputContainer.appendChild(fileInput);
         inputWrapper.appendChild(attachBtn);
         inputWrapper.appendChild(this.micBtn);
-        inputWrapper.appendChild(this.phantomBtn); 
-        inputWrapper.appendChild(this.actionCancelBtn); 
+        inputWrapper.appendChild(this.phantomBtn);
+        inputWrapper.appendChild(this.actionCancelBtn);
         inputWrapper.appendChild(this.inputField);
         inputWrapper.appendChild(sendBtn);
         inputContainer.appendChild(inputWrapper);
         this.chatArea.appendChild(inputContainer);
-        
+
         this.handleResize();
     }
 
@@ -299,8 +486,10 @@ export class NexusChatUI {
     }
 
     toggleContactList(forceState = null) {
-        if (window.innerWidth > 600) return; 
+        if (window.innerWidth > 600) return;
+
         this.isContactListOpen = forceState !== null ? forceState : !this.isContactListOpen;
+
         if (this.isContactListOpen) {
             this.contactList.classList.add('open');
             this.mobileOverlay.style.display = 'block';
@@ -312,30 +501,43 @@ export class NexusChatUI {
 
     toggle() {
         this.isOpen = !this.isOpen;
+
         this.panel.style.right = this.isOpen ? '0px' : '-100%';
-        this.triggerTab.style.right = this.isOpen ? (window.innerWidth > 600 ? '605px' : 'calc(100% - 30px)') : '20px'; 
+        this.triggerTab.style.right = this.isOpen
+            ? (window.innerWidth > 600 ? '605px' : 'calc(100% - 30px)')
+            : '20px';
+
         this.triggerTab.style.background = this.isOpen ? 'rgba(255,68,68,0.1)' : 'rgba(0,255,204,0.1)';
         this.triggerTab.style.borderColor = this.isOpen ? '#ff4444' : '#00ffcc';
         this.triggerTab.style.color = this.isOpen ? '#ff4444' : '#00ffcc';
-        this.triggerTab.innerHTML = this.isOpen ? '<div style="font-size:24px;">×</div>' : '<div style="transform:rotate(-90deg); white-space:nowrap; margin-top:5px;">NEXUS</div>';
+
+        this.renderTriggerTab();
+
         if (this.isOpen) this.refreshContacts();
     }
 
     refreshContacts() {
-        this.contactList.innerHTML = '';
+        this.clearElement(this.contactList);
+
         let nexusNodes = [];
+
         const findNexus = (nodes) => {
             nodes.forEach(n => {
                 if ((n.sharedKey || n.peerPublicKey) && !n.isGhost) nexusNodes.push(n);
                 if (n.innerUniverse) findNexus(n.innerUniverse.nodes);
             });
         };
+
         findNexus(this.app.currentUniverse.nodes);
 
         if (nexusNodes.length === 0) {
-            this.contactList.innerHTML = '<div style="color:#666; font-size:10px; text-align:center; padding:20px 5px;">NO CHANNELS</div>';
-            this.chatHeader.innerHTML = '';
-            this.msgContainer.innerHTML = '';
+            const emptyEl = document.createElement('div');
+            emptyEl.style.cssText = 'color:#666; font-size:10px; text-align:center; padding:20px 5px;';
+            emptyEl.textContent = 'NO CHANNELS';
+
+            this.contactList.appendChild(emptyEl);
+            this.clearElement(this.chatHeader);
+            this.clearElement(this.msgContainer);
             this.activeNode = null;
             return;
         }
@@ -344,19 +546,40 @@ export class NexusChatUI {
             const btn = document.createElement('div');
             const isActive = this.activeNode === node;
             const isUnread = node.channelId && this.unreadChannels.has(node.channelId);
-            
-            btn.style.cssText = `display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; border:1px solid transparent; cursor:pointer; transition:0.3s; overflow:hidden; position:relative; ${isActive ? 'background:rgba(255,0,255,0.15); border-color:rgba(255,0,255,0.4);' : ''}`;
-            
-            const iconWrap = document.createElement('div');
-            iconWrap.style.cssText = `width:36px; height:36px; border-radius:50%; overflow:hidden; border:2px solid ${isActive?'#ff00ff':'#444'}; flex-shrink:0; display:flex; justify-content:center; align-items:center; background:#111; transition:0.3s;`;
-            if (node.iconUrl) iconWrap.innerHTML = `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-            else iconWrap.style.background = isActive ? 'radial-gradient(circle, #ff00ff 0%, #111 70%)' : 'radial-gradient(circle, #444 0%, #111 70%)';
-            
+
+            btn.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                border-radius: 10px;
+                border: 1px solid transparent;
+                cursor: pointer;
+                transition: 0.3s;
+                overflow: hidden;
+                position: relative;
+                ${isActive ? 'background:rgba(255,0,255,0.15); border-color:rgba(255,0,255,0.4);' : ''}
+            `;
+
+            const iconWrap = this.createAvatar(node.iconUrl, {
+                size: 36,
+                border: `2px solid ${isActive ? '#ff00ff' : '#444'}`,
+                active: isActive
+            });
+
             const nameEl = document.createElement('div');
-            nameEl.style.cssText = `font-size:13px; font-weight:${(isActive || isUnread)?'bold':'normal'}; color:${isActive?'#fff':(isUnread?'#ff00ff':'#aaa')}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
-            nameEl.innerText = node.name;
-            
-            btn.appendChild(iconWrap); btn.appendChild(nameEl);
+            nameEl.style.cssText = `
+                font-size: 13px;
+                font-weight: ${(isActive || isUnread) ? 'bold' : 'normal'};
+                color: ${isActive ? '#fff' : (isUnread ? '#ff00ff' : '#aaa')};
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            `;
+            nameEl.textContent = node.name || 'UNKNOWN';
+
+            btn.appendChild(iconWrap);
+            btn.appendChild(nameEl);
 
             if (isUnread && !isActive) {
                 const badge = document.createElement('div');
@@ -368,95 +591,175 @@ export class NexusChatUI {
                 this.openChat(node);
                 this.toggleContactList(false);
             };
+
             this.contactList.appendChild(btn);
         });
 
-        if (!this.activeNode || !nexusNodes.includes(this.activeNode)) this.openChat(nexusNodes[0]);
+        if (!this.activeNode || !nexusNodes.includes(this.activeNode)) {
+            this.openChat(nexusNodes[0]);
+        }
     }
 
-async openChat(node) {
-        if (this.unsubscribeNetwork) { this.unsubscribeNetwork(); this.unsubscribeNetwork = null; }
-        if (this.unsubscribeTyping) { this.unsubscribeTyping(); this.unsubscribeTyping = null; }
+    async openChat(node) {
+        if (this.unsubscribeNetwork) {
+            this.unsubscribeNetwork();
+            this.unsubscribeNetwork = null;
+        }
+
+        if (this.unsubscribeTyping) {
+            this.unsubscribeTyping();
+            this.unsubscribeTyping = null;
+        }
 
         this.cancelAction();
 
         const myId = this.getMyIdentity();
+
         if (!node.sharedKey && node.peerPublicKey && myId) {
-            try { node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey); } 
-            catch (e) { console.error("鍵の再錬成に失敗", e); }
+            try {
+                node.sharedKey = await SecretNexus.deriveSharedSecret(myId.privateKey, node.peerPublicKey);
+            } catch (e) {
+                console.error("鍵の再錬成に失敗", e);
+            }
         }
 
         this.activeNode = node;
-        if(node.channelId) this.unreadChannels.delete(node.channelId); 
+
+        if (node.channelId) this.unreadChannels.delete(node.channelId);
+
         this.refreshContacts();
-        
+
         const shortId = this.getShortId(node.peerPublicKey);
-        
-        this.chatHeader.innerHTML = `
-            <button class="nexus-menu-btn" onclick="document.dispatchEvent(new CustomEvent('nexusToggleMenu'))">≡</button>
-            <div id="nx-header-icon" title="アイコン画像を設定" style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid #ff00ff; flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; box-shadow:0 0 10px rgba(255,0,255,0.3); cursor:pointer; transition:0.2s;">
-                ${node.iconUrl ? `<img src="${node.iconUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; background:radial-gradient(circle, #ff00ff 0%, #111 70%);"></div>`}
-            </div>
-            <div style="display:flex; flex-direction:column; gap:2px; flex:1; overflow:hidden;">
-                <div id="nx-header-name" title="相手の名前を変更" style="font-size:15px; font-weight:bold; color:#fff; letter-spacing:1px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:0.2s;">
-                    ${node.name} <span style="font-size:10px; opacity:0.5;">✏️</span>
-                </div>
-                <div style="font-size:10px; color:#ff00ff; font-family:monospace;">ID: ${shortId} | 🔐 E2EE</div>
-            </div>
-            <div style="display:flex; gap:5px; margin-left:10px;">
-                <button id="nx-header-archive" title="通信記録を独立した星として結晶化" style="background:transparent; border:1px solid #00ffff; color:#00ffff; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;">💎</button>
-                <button id="nx-header-wipe" title="全通信記録を完全消去" style="background:transparent; border:1px solid #ff4444; color:#ff4444; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;">🔥</button>
-            </div>
-        `;
 
-        document.addEventListener('nexusToggleMenu', () => this.toggleContactList(), { once: true });
+        this.clearElement(this.chatHeader);
 
-        document.getElementById('nx-header-name').onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
-        document.getElementById('nx-header-name').onmouseout = (e) => e.currentTarget.style.color = '#fff';
-        document.getElementById('nx-header-name').onclick = () => {
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'nexus-menu-btn';
+        menuBtn.textContent = '≡';
+        menuBtn.onclick = () => this.toggleContactList();
+        this.chatHeader.appendChild(menuBtn);
+
+        const headerIcon = this.createAvatar(node.iconUrl, {
+            size: 40,
+            border: '2px solid #ff00ff',
+            active: true
+        });
+
+        headerIcon.id = 'nx-header-icon';
+        headerIcon.title = 'アイコン画像を設定';
+        headerIcon.style.cursor = 'pointer';
+        headerIcon.style.boxShadow = '0 0 10px rgba(255,0,255,0.3)';
+        headerIcon.style.marginRight = '10px';
+
+        this.chatHeader.appendChild(headerIcon);
+
+        const infoWrap = document.createElement('div');
+        infoWrap.style.cssText = 'display:flex; flex-direction:column; gap:2px; flex:1; overflow:hidden;';
+
+        const nameEl = document.createElement('div');
+        nameEl.id = 'nx-header-name';
+        nameEl.title = '相手の名前を変更';
+        nameEl.style.cssText = 'font-size:15px; font-weight:bold; color:#fff; letter-spacing:1px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:0.2s;';
+
+        const nameText = document.createElement('span');
+        nameText.textContent = node.name || 'UNKNOWN';
+
+        const editMark = document.createElement('span');
+        editMark.style.cssText = 'font-size:10px; opacity:0.5; margin-left:4px;';
+        editMark.textContent = '✏️';
+
+        nameEl.appendChild(nameText);
+        nameEl.appendChild(editMark);
+
+        const statusEl = document.createElement('div');
+        statusEl.style.cssText = 'font-size:10px; color:#ff00ff; font-family:monospace;';
+        statusEl.textContent = `ID: ${shortId} | 🔐 E2EE`;
+
+        infoWrap.appendChild(nameEl);
+        infoWrap.appendChild(statusEl);
+
+        this.chatHeader.appendChild(infoWrap);
+
+        const actionWrap = document.createElement('div');
+        actionWrap.style.cssText = 'display:flex; gap:5px; margin-left:10px;';
+
+        const archiveBtn = document.createElement('button');
+        archiveBtn.id = 'nx-header-archive';
+        archiveBtn.title = '通信記録を独立した星として結晶化';
+        archiveBtn.style.cssText = 'background:transparent; border:1px solid #00ffff; color:#00ffff; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;';
+        archiveBtn.textContent = '💎';
+
+        const wipeBtn = document.createElement('button');
+        wipeBtn.id = 'nx-header-wipe';
+        wipeBtn.title = '全通信記録を完全消去';
+        wipeBtn.style.cssText = 'background:transparent; border:1px solid #ff4444; color:#ff4444; border-radius:6px; font-size:14px; cursor:pointer; padding:5px 10px; font-weight:bold; transition:0.2s; white-space:nowrap;';
+        wipeBtn.textContent = '🔥';
+
+        actionWrap.appendChild(archiveBtn);
+        actionWrap.appendChild(wipeBtn);
+        this.chatHeader.appendChild(actionWrap);
+
+        nameEl.onmouseover = (e) => e.currentTarget.style.color = '#ff00ff';
+        nameEl.onmouseout = (e) => e.currentTarget.style.color = '#fff';
+
+        nameEl.onclick = () => {
             const newName = prompt("この通信相手の名前を入力してください:", node.name);
             if (newName && newName.trim() !== "") {
-                node.name = newName.trim(); this.app.autoSave(); this.openChat(node);
+                node.name = newName.trim();
+                this.app.autoSave();
+                this.openChat(node);
             }
         };
 
-        document.getElementById('nx-header-icon').onmouseover = (e) => e.currentTarget.style.transform = 'scale(1.1)';
-        document.getElementById('nx-header-icon').onmouseout = (e) => e.currentTarget.style.transform = 'scale(1)';
-        document.getElementById('nx-header-icon').onclick = () => {
+        headerIcon.onmouseover = (e) => e.currentTarget.style.transform = 'scale(1.1)';
+        headerIcon.onmouseout = (e) => e.currentTarget.style.transform = 'scale(1)';
+
+        headerIcon.onclick = () => {
             const url = prompt("相手のアイコン画像のURLを入力してください:", node.iconUrl || "");
             if (url !== null) {
-                node.iconUrl = url.trim(); this.app.autoSave(); this.openChat(node);
+                node.iconUrl = url.trim();
+                this.app.autoSave();
+                this.openChat(node);
             }
         };
 
-        // ★ 追加：「結晶化」ボタンの処理（ログの抽出と新しい星の生成）
-        const archiveBtn = document.getElementById('nx-header-archive');
-        archiveBtn.onmouseover = () => { archiveBtn.style.background = 'rgba(0,255,255,0.2)'; archiveBtn.style.boxShadow = '0 0 10px rgba(0,255,255,0.5)'; };
-        archiveBtn.onmouseout = () => { archiveBtn.style.background = 'transparent'; archiveBtn.style.boxShadow = 'none'; };
+        archiveBtn.onmouseover = () => {
+            archiveBtn.style.background = 'rgba(0,255,255,0.2)';
+            archiveBtn.style.boxShadow = '0 0 10px rgba(0,255,255,0.5)';
+        };
+
+        archiveBtn.onmouseout = () => {
+            archiveBtn.style.background = 'transparent';
+            archiveBtn.style.boxShadow = 'none';
+        };
+
         archiveBtn.onclick = async () => {
-            if(confirm('現在の「解読可能な通信記録」のみを抽出し、新たな星（ノート）としてこの空間に保存しますか？\n（エラーの残骸や消滅済みのファントムは保存されません）')) {
+            if (confirm('現在の「解読可能な通信記録」のみを抽出し、新たな星（ノート）としてこの空間に保存しますか？\n（エラーの残骸や消滅済みのファントムは保存されません）')) {
                 let logText = `=== 通信記録: ${node.name} ===\n生成日時: ${new Date().toLocaleString()}\n\n`;
                 let readableCount = 0;
 
                 for (let msg of node.messages) {
                     if (msg.isDeleted || msg.phantom) continue;
+
                     try {
                         const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, node.sharedKey);
                         let text = "";
+
                         try {
                             const parsed = JSON.parse(decrypted);
+
                             if (parsed.type === 'text') text = parsed.text;
                             else if (parsed.type === 'image') text = "[画像データ]";
                             else if (parsed.type === 'voice') text = "[音声データ]";
-                        } catch(e) { text = decrypted; }
+                        } catch (e) {
+                            text = decrypted;
+                        }
 
                         const timeStr = new Date(msg.timestamp).toLocaleString();
                         const sender = msg.sender === 'me' ? '自分' : node.name;
                         logText += `[${timeStr}] ${sender}:\n${text}\n\n`;
                         readableCount++;
-                    } catch(e) {
-                        // 復号失敗した残骸はスキップ
-                    }
+                    } catch (e) {}
                 }
 
                 if (readableCount === 0) {
@@ -466,57 +769,83 @@ async openChat(node) {
 
                 const cx = this.app.camera ? -this.app.camera.x : 0;
                 const cy = this.app.camera ? -this.app.camera.y : 0;
-                const archiveNode = this.app.currentUniverse.addNode(`📜 記録: ${node.name}`, cx + (Math.random()*60-30), cy + (Math.random()*60-30), 20, '#00ffff', 'star');
-                
+
+                const archiveNode = this.app.currentUniverse.addNode(
+                    `📜 記録: ${node.name}`,
+                    cx + (Math.random() * 60 - 30),
+                    cy + (Math.random() * 60 - 30),
+                    20,
+                    '#00ffff',
+                    'star'
+                );
+
                 archiveNode.note = logText;
                 this.app.autoSave();
-                
-                if(window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1); // 星の生成音
+
+                if (window.universeAudio) window.universeAudio.playSystemSound(600, 'sine', 0.1);
+
                 alert(`解読可能な ${readableCount} 件のメッセージを抽出しました！\n新たな星「${archiveNode.name}」のノートパッドからいつでも読めます。`);
             }
         };
 
-        const wipeBtn = document.getElementById('nx-header-wipe');
-        wipeBtn.onmouseover = () => { wipeBtn.style.background = 'rgba(255,68,68,0.2)'; wipeBtn.style.boxShadow = '0 0 10px rgba(255,68,68,0.5)'; };
-        wipeBtn.onmouseout = () => { wipeBtn.style.background = 'transparent'; wipeBtn.style.boxShadow = 'none'; };
+        wipeBtn.onmouseover = () => {
+            wipeBtn.style.background = 'rgba(255,68,68,0.2)';
+            wipeBtn.style.boxShadow = '0 0 10px rgba(255,68,68,0.5)';
+        };
+
+        wipeBtn.onmouseout = () => {
+            wipeBtn.style.background = 'transparent';
+            wipeBtn.style.boxShadow = 'none';
+        };
+
         wipeBtn.onclick = async () => {
-            if(confirm('【警告】表示されている通信記録を完全に焼却(Wipe)しますか？\n※自分と相手の画面から物理的にデータが消滅します。')) {
-                if(!this.activeNode || !this.activeNode.messages) return;
+            if (confirm('【警告】表示されている通信記録を完全に焼却(Wipe)しますか？\n※自分と相手の画面から物理的にデータが消滅します。')) {
+                if (!this.activeNode || !this.activeNode.messages) return;
+
                 const msgs = [...this.activeNode.messages];
                 let count = 0;
-                wipeBtn.innerText = '処理中...';
-                
-                for(let msg of msgs) {
-                    if(msg.id) {
+
+                wipeBtn.textContent = '処理中...';
+
+                for (let msg of msgs) {
+                    if (msg.id) {
                         try {
                             await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
                             count++;
-                        } catch(e) {}
+                        } catch (e) {}
                     }
                 }
-                
+
                 this.activeNode.messages = [];
-                this.msgContainer.innerHTML = '';
+                this.clearElement(this.msgContainer);
                 this.app.autoSave();
-                
-                wipeBtn.innerText = '🔥';
-                if(count > 0 || msgs.length > 0) alert(`通信記録を跡形もなく灰にしました。`);
+
+                wipeBtn.textContent = '🔥';
+
+                if (count > 0 || msgs.length > 0) {
+                    alert(`通信記録を跡形もなく灰にしました。`);
+                }
             }
         };
-        
-        this.msgContainer.innerHTML = '';
+
+        this.clearElement(this.msgContainer);
+
         if (!node.messages) node.messages = [];
-        
+
         for (let msg of node.messages) {
             await this.renderMessageObj(msg);
         }
+
         this.scrollToBottom();
-        
-        if (node.peerPublicKey && myId && db) await this.listenToNetwork(node, myId);
+
+        if (node.peerPublicKey && myId && db) {
+            await this.listenToNetwork(node, myId);
+        }
     }
 
     updateReadReceipts(peerLastRead) {
         if (!this.activeNode || !this.activeNode.messages) return;
+
         this.activeNode.messages.forEach(msg => {
             if (msg.sender === 'me' && !msg.isDeleted && msg.timestamp <= peerLastRead) {
                 const readEl = document.getElementById(`read-${msg.id}`);
@@ -524,16 +853,24 @@ async openChat(node) {
 
                 if (msg.phantom && !msg.phantomTimerStarted) {
                     msg.phantomTimerStarted = true;
+
                     const timerEl = document.getElementById(`phantom-timer-${msg.id}`);
+
                     if (timerEl) {
                         let timeLeft = 10;
+
                         const countdown = setInterval(async () => {
                             timeLeft--;
-                            if (timeLeft > 0) timerEl.innerText = `👻 溶解まで: ${timeLeft}秒`;
-                            else {
+
+                            if (timeLeft > 0) {
+                                timerEl.textContent = `👻 溶解まで: ${timeLeft}秒`;
+                            } else {
                                 clearInterval(countdown);
-                                timerEl.innerText = '💥 消滅済';
-                                try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+                                timerEl.textContent = '💥 消滅済';
+
+                                try {
+                                    await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
+                                } catch (e) {}
                             }
                         }, 1000);
                     }
@@ -544,7 +881,12 @@ async openChat(node) {
 
     startReply(msgId, textStr) {
         if (!textStr) textStr = "Media";
-        this.replyToMsg = { id: msgId, text: textStr };
+
+        this.replyToMsg = {
+            id: msgId,
+            text: textStr
+        };
+
         this.editingMsgId = null;
         this.actionCancelBtn.style.display = 'block';
         this.inputField.placeholder = `↩️ 返信: ${textStr.substring(0, 15)}...`;
@@ -563,78 +905,121 @@ async openChat(node) {
     cancelAction() {
         this.editingMsgId = null;
         this.replyToMsg = null;
-        if(this.actionCancelBtn) this.actionCancelBtn.style.display = 'none';
-        if(this.inputField) {
+
+        if (this.actionCancelBtn) this.actionCancelBtn.style.display = 'none';
+
+        if (this.inputField) {
             this.inputField.value = '';
-            this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...';
+            this.inputField.placeholder = this.isPhantomMode
+                ? '👻 Phantom Message (10秒で消滅)...'
+                : 'Secure Message...';
         }
     }
 
     showReactionMenu(msgId, x, y) {
         const existing = document.getElementById('nx-react-menu');
-        if(existing) existing.remove();
+        if (existing) existing.remove();
 
         const menu = document.createElement('div');
         menu.id = 'nx-react-menu';
-        menu.style.cssText = `position:fixed; left:${Math.min(x, window.innerWidth-180)}px; top:${Math.max(0, y-50)}px; background:rgba(10,15,20,0.95); border:1px solid #00ffcc; border-radius:20px; padding:8px 12px; display:flex; gap:10px; z-index:10000; box-shadow:0 5px 15px rgba(0,0,0,0.5); backdrop-filter:blur(10px);`;
+        menu.style.cssText = `
+            position: fixed;
+            left: ${Math.min(x, window.innerWidth - 180)}px;
+            top: ${Math.max(0, y - 50)}px;
+            background: rgba(10,15,20,0.95);
+            border: 1px solid #00ffcc;
+            border-radius: 20px;
+            padding: 8px 12px;
+            display: flex;
+            gap: 10px;
+            z-index: 10000;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+        `;
 
         const emojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
         emojis.forEach(em => {
             const b = document.createElement('div');
-            b.innerText = em;
+            b.textContent = em;
             b.style.cssText = 'font-size:20px; cursor:pointer; transition:0.2s;';
+
             b.onmouseover = () => b.style.transform = 'scale(1.3)';
             b.onmouseout = () => b.style.transform = 'scale(1)';
-            b.onclick = () => { this.toggleReaction(msgId, em); document.getElementById('nx-react-overlay')?.remove(); menu.remove(); };
+
+            b.onclick = () => {
+                this.toggleReaction(msgId, em);
+                document.getElementById('nx-react-overlay')?.remove();
+                menu.remove();
+            };
+
             menu.appendChild(b);
         });
 
         const overlay = document.createElement('div');
         overlay.id = 'nx-react-overlay';
         overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999;';
-        overlay.onclick = () => { menu.remove(); overlay.remove(); };
+
+        overlay.onclick = () => {
+            menu.remove();
+            overlay.remove();
+        };
+
         document.body.appendChild(overlay);
         document.body.appendChild(menu);
     }
 
     async toggleReaction(msgId, emoji) {
         if (!this.activeNode || !this.activeNode.channelId) return;
+
         const myShortId = this.getShortId(this.getMyIdentity().publicKey);
         const localMsg = this.activeNode.messages.find(m => m.id === msgId);
-        if(!localMsg) return;
-        
+        if (!localMsg) return;
+
         const currentReaction = localMsg.reactions ? localMsg.reactions[myShortId] : null;
-        let newReaction = (currentReaction === emoji) ? null : emoji;
-        
+        const newReaction = currentReaction === emoji ? null : emoji;
+
         try {
             await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msgId), {
                 [`reactions.${myShortId}`]: newReaction
             });
-        } catch(e) {}
+        } catch (e) {}
     }
 
     async listenToNetwork(node, myId) {
         try {
             const combined = [JSON.stringify(myId.publicKey), JSON.stringify(node.peerPublicKey)].sort().join('|');
             const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined));
-            const channelId = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+            const channelId = Array.from(new Uint8Array(buffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
             node.channelId = channelId;
+
             const myPubStr = JSON.stringify(myId.publicKey);
-            
             const myShortId = this.getShortId(myId.publicKey);
             const peerShortId = this.getShortId(node.peerPublicKey);
 
-            if(db) updateDoc(doc(db, "nexus_channels", channelId), { [`lastRead.${myShortId}`]: Date.now() }).catch(()=>{});
+            if (db) {
+                updateDoc(doc(db, "nexus_channels", channelId), {
+                    [`lastRead.${myShortId}`]: Date.now()
+                }).catch(() => {});
+            }
 
             let peerLastRead = 0;
 
             this.unsubscribeTyping = onSnapshot(doc(db, "nexus_channels", channelId), (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+
                     if (data.typing && data.typing[peerShortId]) {
-                        if (Date.now() - data.typing[peerShortId] < 3000) this.typingIndicator.style.opacity = '1';
-                        else this.typingIndicator.style.opacity = '0';
+                        if (Date.now() - data.typing[peerShortId] < 3000) {
+                            this.typingIndicator.style.opacity = '1';
+                        } else {
+                            this.typingIndicator.style.opacity = '0';
+                        }
                     }
+
                     if (data.lastRead && data.lastRead[peerShortId]) {
                         peerLastRead = data.lastRead[peerShortId];
                         this.updateReadReceipts(peerLastRead);
@@ -655,33 +1040,51 @@ async openChat(node) {
 
                     if (change.type === "added") {
                         const isDuplicate = node.messages.some(m => m.id === docId);
+
                         if (!isDuplicate) {
-                            const senderType = (data.senderPubKey === myPubStr) ? 'me' : 'peer';
-                            const msgObj = { 
-                                id: docId, sender: senderType, cipher: data.cipher, iv: data.iv, 
-                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(), 
+                            const senderType = data.senderPubKey === myPubStr ? 'me' : 'peer';
+
+                            const msgObj = {
+                                id: docId,
+                                sender: senderType,
+                                cipher: data.cipher,
+                                iv: data.iv,
+                                timestamp: data.timestamp ? data.timestamp.toMillis() : Date.now(),
                                 isDeleted: data.isDeleted || false,
                                 isEdited: data.isEdited || false,
-                                phantom: data.phantom || false, 
-                                reactions: data.reactions || {} 
+                                phantom: data.phantom || false,
+                                reactions: data.reactions || {}
                             };
-                            
+
                             node.messages.push(msgObj);
                             await this.renderMessageObj(msgObj, peerLastRead);
                             isNewRendered = true;
 
                             if (senderType === 'peer') {
-                                if (window.universeAudio && this.isOpen) window.universeAudio.playSystemSound(400, 'triangle', 0.1);
-                                if(db) updateDoc(doc(db, "nexus_channels", channelId), { [`lastRead.${myShortId}`]: Date.now() }).catch(()=>{});
+                                if (window.universeAudio && this.isOpen) {
+                                    window.universeAudio.playSystemSound(400, 'triangle', 0.1);
+                                }
+
+                                if (db) {
+                                    updateDoc(doc(db, "nexus_channels", channelId), {
+                                        [`lastRead.${myShortId}`]: Date.now()
+                                    }).catch(() => {});
+                                }
                             }
                         }
                     } else if (change.type === "modified") {
                         const targetMsg = node.messages.find(m => m.id === docId);
+
                         if (targetMsg) {
                             if (data.isDeleted && !targetMsg.isDeleted) {
-                                targetMsg.isDeleted = true; targetMsg.cipher = "";
+                                targetMsg.isDeleted = true;
+                                targetMsg.cipher = "";
+
                                 const domEl = document.getElementById(`msg-${docId}`);
-                                if (domEl) domEl.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
+                                if (domEl) {
+                                    this.clearElement(domEl);
+                                    domEl.appendChild(this.createWipedMessageEl());
+                                }
                             } else {
                                 targetMsg.cipher = data.cipher;
                                 targetMsg.iv = data.iv;
@@ -692,10 +1095,13 @@ async openChat(node) {
                         }
                     } else if (change.type === "removed") {
                         const targetIndex = node.messages.findIndex(m => m.id === docId);
+
                         if (targetIndex !== -1) {
                             node.messages.splice(targetIndex, 1);
+
                             const domEl = document.getElementById(`msg-${docId}`);
                             if (domEl) domEl.remove();
+
                             this.app.autoSave();
                         }
                     }
@@ -706,7 +1112,10 @@ async openChat(node) {
                     node.messages = node.messages.slice(-50);
                 }
 
-                if (isNewRendered) { this.app.autoSave(); this.scrollToBottom(); }
+                if (isNewRendered) {
+                    this.app.autoSave();
+                    this.scrollToBottom();
+                }
             }, (err) => {
                 if (!navigator.onLine || err.code === 'permission-denied') {
                     console.log("🛰️ [Stealth Mode] 圏外のため、リアルタイム通信網を一時遮断しています。");
@@ -714,156 +1123,367 @@ async openChat(node) {
                     console.warn("Network Listener Error:", err);
                 }
             });
-        } catch (e) { console.error("ワームホールエラー", e); }
+        } catch (e) {
+            console.error("ワームホールエラー", e);
+        }
     }
 
     async renderMessageObj(msg, peerLastRead = 0) {
         const isMe = msg.sender === 'me';
-        
+
         const wrapper = document.createElement('div');
         wrapper.id = `msg-${msg.id}`;
-        wrapper.style.cssText = `display:flex; width:100%; justify-content:${isMe ? 'flex-end' : 'flex-start'}; align-items:flex-end; gap:8px; position:relative;`;
-        
+        wrapper.style.cssText = `
+            display: flex;
+            width: 100%;
+            justify-content: ${isMe ? 'flex-end' : 'flex-start'};
+            align-items: flex-end;
+            gap: 8px;
+            position: relative;
+        `;
+
         if (msg.isDeleted) {
-            wrapper.innerHTML = '<div style="font-size:12px; color:rgba(255,255,255,0.3); font-style:italic; padding:10px 15px; border-radius:12px; background:rgba(0,0,0,0.3);">⊘ Message has been wiped</div>';
-            
+            wrapper.appendChild(this.createWipedMessageEl());
+
             const existingEl = document.getElementById(`msg-${msg.id}`);
-            if (existingEl && existingEl.parentNode === this.msgContainer) this.msgContainer.replaceChild(wrapper, existingEl);
-            else this.msgContainer.appendChild(wrapper);
+            if (existingEl && existingEl.parentNode === this.msgContainer) {
+                this.msgContainer.replaceChild(wrapper, existingEl);
+            } else {
+                this.msgContainer.appendChild(wrapper);
+            }
+
             return;
         }
 
         if (!isMe) {
-            const peerIcon = document.createElement('div');
-            peerIcon.style.cssText = `width:28px; height:28px; border-radius:50%; overflow:hidden; border:1px solid rgba(255,0,255,0.5); flex-shrink:0; background:#111; display:flex; justify-content:center; align-items:center; margin-bottom: 2px;`;
-            if (this.activeNode.iconUrl) peerIcon.innerHTML = `<img src="${this.activeNode.iconUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-            else peerIcon.style.background = 'radial-gradient(circle, #ff00ff 0%, #111 70%)';
+            const peerIcon = this.createAvatar(this.activeNode?.iconUrl, {
+                size: 28,
+                border: '1px solid rgba(255,0,255,0.5)',
+                active: true
+            });
+
+            peerIcon.style.marginBottom = '2px';
             wrapper.appendChild(peerIcon);
         }
 
         const metaContainer = document.createElement('div');
-        metaContainer.style.cssText = `display:flex; align-items:flex-end; gap:4px; opacity:0.6; margin-bottom:2px; flex-shrink:0;`;
+        metaContainer.style.cssText = `
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            opacity: 0.6;
+            margin-bottom: 2px;
+            flex-shrink: 0;
+        `;
 
         const timeDate = new Date(msg.timestamp);
-        const timeStr = `${timeDate.getHours().toString().padStart(2,'0')}:${timeDate.getMinutes().toString().padStart(2,'0')}`;
+        const timeStr = `${timeDate.getHours().toString().padStart(2, '0')}:${timeDate.getMinutes().toString().padStart(2, '0')}`;
+
         const timeEl = document.createElement('div');
-        timeEl.innerText = timeStr;
-        timeEl.style.cssText = `font-size:10px; color:#aaa; font-family:sans-serif; margin-left:2px;`;
+        timeEl.textContent = timeStr;
+        timeEl.style.cssText = `
+            font-size: 10px;
+            color: #aaa;
+            font-family: sans-serif;
+            margin-left: 2px;
+        `;
 
         const bubbleWrapper = document.createElement('div');
-        bubbleWrapper.style.cssText = `max-width:70%; display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};`;
+        bubbleWrapper.style.cssText = `
+            max-width: 70%;
+            display: flex;
+            flex-direction: column;
+            align-items: ${isMe ? 'flex-end' : 'flex-start'};
+        `;
 
         const bubble = document.createElement('div');
-        bubble.style.cssText = `padding:10px 14px; font-size:13px; line-height:1.5; word-break:break-all; box-shadow:0 2px 10px rgba(0,0,0,0.3); white-space:pre-wrap; letter-spacing:0.5px; position:relative; overflow:hidden;`;
-        
+        bubble.style.cssText = `
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: break-all;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            white-space: pre-wrap;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+        `;
+
         if (isMe) {
             bubble.style.background = 'linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(0,204,255,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(0,255,204,0.4)'; bubble.style.color = '#ccffff'; bubble.style.borderRadius = '16px 16px 4px 16px';
+            bubble.style.border = '1px solid rgba(0,255,204,0.4)';
+            bubble.style.color = '#ccffff';
+            bubble.style.borderRadius = '16px 16px 4px 16px';
         } else {
             bubble.style.background = 'linear-gradient(135deg, rgba(255,0,255,0.15) 0%, rgba(255,102,204,0.05) 100%)';
-            bubble.style.border = '1px solid rgba(255,102,204,0.4)'; bubble.style.color = '#ffccff'; bubble.style.borderRadius = '16px 16px 16px 4px';
+            bubble.style.border = '1px solid rgba(255,102,204,0.4)';
+            bubble.style.color = '#ffccff';
+            bubble.style.borderRadius = '16px 16px 16px 4px';
         }
 
         if (msg.phantom) {
             bubble.style.animation = 'phantom-pulse 1.5s infinite';
+
             const phantomTimer = document.createElement('div');
             phantomTimer.id = `phantom-timer-${msg.id}`;
-            phantomTimer.style.cssText = `font-size:10px; color:#ff00ff; font-weight:bold; margin-top:5px; text-align:${isMe ? 'right' : 'left'};`;
-            phantomTimer.innerText = isMe ? '👻 Phantom (未読)' : '👻 溶解まで: 10秒';
-            
+            phantomTimer.style.cssText = `
+                font-size: 10px;
+                color: #ff00ff;
+                font-weight: bold;
+                margin-top: 5px;
+                text-align: ${isMe ? 'right' : 'left'};
+            `;
+            phantomTimer.textContent = isMe ? '👻 Phantom (未読)' : '👻 溶解まで: 10秒';
+
             if (!isMe && !msg.phantomTimerStarted) {
                 msg.phantomTimerStarted = true;
+
                 let timeLeft = 10;
+
                 const countdown = setInterval(async () => {
                     timeLeft--;
+
                     const tEl = document.getElementById(`phantom-timer-${msg.id}`);
+
                     if (tEl) {
-                        if (timeLeft > 0) tEl.innerText = `👻 溶解まで: ${timeLeft}秒`;
-                        else {
+                        if (timeLeft > 0) {
+                            tEl.textContent = `👻 溶解まで: ${timeLeft}秒`;
+                        } else {
                             clearInterval(countdown);
-                            tEl.innerText = '💥 溶解...';
-                            try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+                            tEl.textContent = '💥 溶解...';
+
+                            try {
+                                await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
+                            } catch (e) {}
                         }
                     } else if (timeLeft <= 0) {
                         clearInterval(countdown);
-                        try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e){}
+
+                        try {
+                            await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
+                        } catch (e) {}
                     }
                 }, 1000);
             }
+
             bubble.appendChild(phantomTimer);
         }
 
-        let text = ""; let isImage = false; let isVoice = false; let isDecryptFailed = false;
-        let replyHtml = ""; 
-        
-        // ★★★ 修正箇所：復号失敗時のエラー表示を「サイバーパンクな暗号の残骸」に置き換え ★★★
-        try { 
-            const decrypted = await SecretNexus.decryptData({ cipher: msg.cipher, iv: msg.iv }, this.activeNode.sharedKey); 
+        let text = "";
+        let isImage = false;
+        let isVoice = false;
+        let isDecryptFailed = false;
+        let replyTo = null;
+
+        try {
+            const decrypted = await SecretNexus.decryptData(
+                { cipher: msg.cipher, iv: msg.iv },
+                this.activeNode.sharedKey
+            );
+
             try {
                 const parsed = JSON.parse(decrypted);
+
                 if (parsed.replyTo) {
-                    replyHtml = `<div style="background:rgba(0,0,0,0.3); border-left:3px solid ${isMe?'#00ffcc':'#ff00ff'}; padding:6px 10px; margin-bottom:8px; font-size:11px; color:#aaa; border-radius:0 6px 6px 0; cursor:pointer;" onclick="document.getElementById('msg-${parsed.replyTo.id}')?.scrollIntoView({behavior:'smooth'})">↪ ${parsed.replyTo.text.substring(0,30)}${parsed.replyTo.text.length>30?'...':''}</div>`;
+                    replyTo = {
+                        id: String(parsed.replyTo.id || ''),
+                        text: String(parsed.replyTo.text || '')
+                    };
                 }
-                if (parsed.type === 'image') { isImage = true; text = parsed.data; } 
-                else if (parsed.type === 'voice') { isVoice = true; text = parsed.data; }
-                else if (parsed.type === 'text') { text = parsed.text; }
-            } catch(e) { text = decrypted; }
-        } catch(e) { 
+
+                if (parsed.type === 'image') {
+                    isImage = true;
+                    text = parsed.data;
+                } else if (parsed.type === 'voice') {
+                    isVoice = true;
+                    text = parsed.data;
+                } else if (parsed.type === 'text') {
+                    text = parsed.text;
+                } else {
+                    text = decrypted;
+                }
+            } catch (e) {
+                text = decrypted;
+            }
+        } catch (e) {
             isDecryptFailed = true;
-            // エラーテキストの代わりに、16進数のダミーハッシュ（暗号の欠片）を表示
-            const dummyHash = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
-            text = `[ENCRYPTED FRAGMENT]\n0x${dummyHash}...`; 
+
+            const dummyHash = Array.from(crypto.getRandomValues(new Uint8Array(12)))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('')
+                .toUpperCase();
+
+            text = `[ENCRYPTED FRAGMENT]\n0x${dummyHash}...`;
         }
-        
+
         const contentDiv = document.createElement('div');
+
+        const appendReply = () => {
+            if (!replyTo) return;
+
+            const replyEl = document.createElement('div');
+            replyEl.style.cssText = `
+                background: rgba(0,0,0,0.3);
+                border-left: 3px solid ${isMe ? '#00ffcc' : '#ff00ff'};
+                padding: 6px 10px;
+                margin-bottom: 8px;
+                font-size: 11px;
+                color: #aaa;
+                border-radius: 0 6px 6px 0;
+                cursor: pointer;
+            `;
+
+            const preview = replyTo.text.length > 30
+                ? `${replyTo.text.substring(0, 30)}...`
+                : replyTo.text;
+
+            replyEl.textContent = `↪ ${preview}`;
+
+            replyEl.onclick = () => {
+                document.getElementById(`msg-${replyTo.id}`)?.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            contentDiv.appendChild(replyEl);
+        };
+
+        appendReply();
+
         if (isDecryptFailed) {
-            // エラーではなく「解読不能な遺物」としてのオシャレな表示
-            contentDiv.innerHTML = `<div style="font-size:10px; color:#666; font-family:monospace; line-height:1.4;">🔒 暗号鍵が不一致です<br><span style="opacity:0.4;">${text}</span></div>`;
+            const failedEl = document.createElement('div');
+            failedEl.style.cssText = `
+                font-size: 10px;
+                color: #666;
+                font-family: monospace;
+                line-height: 1.4;
+            `;
+
+            const labelEl = document.createElement('div');
+            labelEl.textContent = '🔒 暗号鍵が不一致です';
+
+            const hashEl = document.createElement('span');
+            hashEl.style.opacity = '0.4';
+            hashEl.textContent = String(text || '');
+
+            failedEl.appendChild(labelEl);
+            failedEl.appendChild(hashEl);
+            contentDiv.appendChild(failedEl);
+
             bubble.style.background = 'rgba(255,255,255,0.02)';
             bubble.style.border = '1px dashed rgba(255,255,255,0.1)';
             bubble.style.color = '#555';
             bubble.style.boxShadow = 'none';
         } else if (isImage) {
-            contentDiv.innerHTML = replyHtml + `<img src="${text}" style="max-width:100%; border-radius:8px; cursor:pointer; display:block;" onclick="window.open('${text}')">`;
+            const safeUrl = this.safeMediaUrl(text, 'image');
+
+            if (safeUrl) {
+                const img = document.createElement('img');
+                img.src = safeUrl;
+                img.alt = 'Encrypted image';
+                img.style.cssText = 'max-width:100%; border-radius:8px; cursor:pointer; display:block;';
+                img.onclick = () => window.open(safeUrl, '_blank', 'noopener');
+                contentDiv.appendChild(img);
+            } else {
+                const invalidEl = document.createElement('div');
+                invalidEl.textContent = '[Invalid image URL]';
+                contentDiv.appendChild(invalidEl);
+            }
+
             bubble.style.padding = '6px';
         } else if (isVoice) {
-            contentDiv.innerHTML = replyHtml + `<div style="font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;">🎙️ Encrypted Audio</div><audio src="${text}" controls style="height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;"></audio>`;
+            const safeUrl = this.safeMediaUrl(text, 'voice');
+
+            const labelEl = document.createElement('div');
+            labelEl.style.cssText = 'font-size:10px; color:#fff; margin-bottom:5px; opacity:0.8;';
+            labelEl.textContent = '🎙️ Encrypted Audio';
+            contentDiv.appendChild(labelEl);
+
+            if (safeUrl) {
+                const audio = document.createElement('audio');
+                audio.src = safeUrl;
+                audio.controls = true;
+                audio.style.cssText = 'height:30px; max-width:180px; outline:none; filter:invert(1) hue-rotate(180deg); border-radius:15px;';
+                contentDiv.appendChild(audio);
+            } else {
+                const invalidEl = document.createElement('div');
+                invalidEl.textContent = '[Invalid audio URL]';
+                contentDiv.appendChild(invalidEl);
+            }
         } else {
-            contentDiv.innerHTML = replyHtml + text.replace(/\n/g, '<br>');
+            const textEl = document.createElement('div');
+            textEl.style.whiteSpace = 'pre-wrap';
+            textEl.textContent = String(text || '');
+            contentDiv.appendChild(textEl);
         }
+
         bubble.prepend(contentDiv);
         bubbleWrapper.appendChild(bubble);
 
         if (msg.reactions && Object.keys(msg.reactions).length > 0) {
             const reactTray = document.createElement('div');
-            reactTray.style.cssText = `display:flex; gap:3px; margin-top:2px; flex-wrap:wrap; justify-content:${isMe ? 'flex-end' : 'flex-start'};`;
-            
+            reactTray.style.cssText = `
+                display: flex;
+                gap: 3px;
+                margin-top: 2px;
+                flex-wrap: wrap;
+                justify-content: ${isMe ? 'flex-end' : 'flex-start'};
+            `;
+
             const counts = {};
-            Object.values(msg.reactions).forEach(r => counts[r] = (counts[r]||0)+1);
-            
+
+            Object.values(msg.reactions).forEach(r => {
+                counts[r] = (counts[r] || 0) + 1;
+            });
+
             for (let [emoji, count] of Object.entries(counts)) {
                 const rBadge = document.createElement('div');
-                rBadge.style.cssText = 'background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:10px; padding:2px 6px; font-size:11px; display:flex; align-items:center; gap:3px; cursor:pointer;';
-                rBadge.innerText = `${emoji} ${count > 1 ? count : ''}`;
+                rBadge.style.cssText = `
+                    background: rgba(255,255,255,0.1);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 10px;
+                    padding: 2px 6px;
+                    font-size: 11px;
+                    display: flex;
+                    align-items: center;
+                    gap: 3px;
+                    cursor: pointer;
+                `;
+
+                rBadge.textContent = `${emoji} ${count > 1 ? count : ''}`;
                 rBadge.onclick = () => this.toggleReaction(msg.id, emoji);
                 reactTray.appendChild(rBadge);
             }
+
             bubbleWrapper.appendChild(reactTray);
         }
 
-        // 解読失敗したメッセージにはリアクションや返信ボタンを付けない
         const reactBtn = document.createElement('div');
-        reactBtn.innerHTML = '😀';
+        reactBtn.textContent = '😀';
         reactBtn.title = 'リアクション';
-        reactBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+        reactBtn.style.cssText = `
+            font-size: 11px;
+            cursor: pointer;
+            padding-bottom: 1px;
+            transition: 0.2s;
+            margin-right: 4px;
+            opacity: 0.7;
+        `;
+
         reactBtn.onmouseover = () => reactBtn.style.opacity = '1';
         reactBtn.onmouseout = () => reactBtn.style.opacity = '0.7';
         reactBtn.onclick = (e) => this.showReactionMenu(msg.id, e.clientX, e.clientY);
 
         const replyBtn = document.createElement('div');
-        replyBtn.innerHTML = '↩️';
+        replyBtn.textContent = '↩️';
         replyBtn.title = '引用返信';
-        replyBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+        replyBtn.style.cssText = `
+            font-size: 11px;
+            cursor: pointer;
+            padding-bottom: 1px;
+            transition: 0.2s;
+            margin-right: 4px;
+            opacity: 0.7;
+        `;
+
         replyBtn.onmouseover = () => replyBtn.style.opacity = '1';
         replyBtn.onmouseout = () => replyBtn.style.opacity = '0.7';
         replyBtn.onclick = () => this.startReply(msg.id, text);
@@ -872,28 +1492,46 @@ async openChat(node) {
             if (isMe) {
                 if (msg.isEdited) {
                     const editMark = document.createElement('span');
-                    editMark.innerText = '(編)';
+                    editMark.textContent = '(編)';
                     editMark.style.cssText = 'font-size:9px; color:#888; margin-right:4px;';
                     metaContainer.appendChild(editMark);
                 }
-                
+
                 const readMark = document.createElement('div');
                 readMark.id = `read-${msg.id}`;
-                readMark.innerText = '既読';
-                readMark.style.cssText = `font-size:10px; color:#00ffcc; font-weight:bold; transition:opacity 0.3s; opacity:${msg.timestamp <= peerLastRead ? '1' : '0'}; margin-right:4px; margin-bottom:1px; letter-spacing:1px;`;
-                metaContainer.appendChild(readMark);
+                readMark.textContent = '既読';
+                readMark.style.cssText = `
+                    font-size: 10px;
+                    color: #00ffcc;
+                    font-weight: bold;
+                    transition: opacity 0.3s;
+                    opacity: ${msg.timestamp <= peerLastRead ? '1' : '0'};
+                    margin-right: 4px;
+                    margin-bottom: 1px;
+                    letter-spacing: 1px;
+                `;
 
+                metaContainer.appendChild(readMark);
                 metaContainer.appendChild(reactBtn);
                 metaContainer.appendChild(replyBtn);
 
                 if (!isImage && !isVoice && msg.id) {
                     const editBtn = document.createElement('div');
-                    editBtn.innerHTML = '✏️';
+                    editBtn.textContent = '✏️';
                     editBtn.title = 'メッセージ編集';
-                    editBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s; margin-right:4px; opacity:0.7;';
+                    editBtn.style.cssText = `
+                        font-size: 11px;
+                        cursor: pointer;
+                        padding-bottom: 1px;
+                        transition: 0.2s;
+                        margin-right: 4px;
+                        opacity: 0.7;
+                    `;
+
                     editBtn.onmouseover = () => editBtn.style.opacity = '1';
                     editBtn.onmouseout = () => editBtn.style.opacity = '0.7';
                     editBtn.onclick = () => this.startEdit(msg.id, text);
+
                     metaContainer.appendChild(editBtn);
                 }
             } else {
@@ -902,35 +1540,55 @@ async openChat(node) {
             }
         }
 
-        // 解読失敗時でも削除ボタンだけは残す（不要なら消せるように）
         if (isMe || isDecryptFailed) {
             const delBtn = document.createElement('div');
-            delBtn.innerHTML = '🗑️';
+            delBtn.textContent = '🗑️';
             delBtn.title = 'メッセージを完全消去';
-            delBtn.style.cssText = 'font-size:11px; cursor:pointer; padding-bottom:1px; transition:0.2s;';
+            delBtn.style.cssText = `
+                font-size: 11px;
+                cursor: pointer;
+                padding-bottom: 1px;
+                transition: 0.2s;
+            `;
+
             delBtn.onmouseover = () => delBtn.style.transform = 'scale(1.2)';
             delBtn.onmouseout = () => delBtn.style.transform = 'scale(1)';
+
             delBtn.onclick = async () => {
-                if(confirm('空間からこの通信記録を完全に消去しますか？')) {
-                    if(!msg.id) {
+                if (confirm('空間からこの通信記録を完全に消去しますか？')) {
+                    if (!msg.id) {
                         const targetIndex = this.activeNode.messages.findIndex(m => m === msg);
-                        if (targetIndex !== -1) this.activeNode.messages.splice(targetIndex, 1);
+
+                        if (targetIndex !== -1) {
+                            this.activeNode.messages.splice(targetIndex, 1);
+                        }
+
                         this.app.autoSave();
-                        wrapper.remove(); 
+                        wrapper.remove();
                         return;
                     }
-                    try { await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id)); } catch(e) {}
+
+                    try {
+                        await deleteDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msg.id));
+                    } catch (e) {}
                 }
             };
+
             metaContainer.appendChild(delBtn);
         }
-        
+
         metaContainer.appendChild(timeEl);
-        
-        if(isMe) { wrapper.appendChild(metaContainer); wrapper.appendChild(bubbleWrapper); }
-        else { wrapper.appendChild(bubbleWrapper); wrapper.appendChild(metaContainer); }
-        
+
+        if (isMe) {
+            wrapper.appendChild(metaContainer);
+            wrapper.appendChild(bubbleWrapper);
+        } else {
+            wrapper.appendChild(bubbleWrapper);
+            wrapper.appendChild(metaContainer);
+        }
+
         const existingEl = document.getElementById(`msg-${msg.id}`);
+
         if (existingEl && existingEl.parentNode === this.msgContainer) {
             this.msgContainer.replaceChild(wrapper, existingEl);
         } else {
@@ -944,31 +1602,40 @@ async openChat(node) {
             if (!text || !this.activeNode) return;
 
             const myId = this.getMyIdentity();
+
             if (!myId) {
                 alert("🚨 自分のID（秘密鍵）が見つかりません。再ログインするかIDを復元してください。");
                 return;
             }
-            
+
             if (!this.activeNode.sharedKey) {
                 alert("🚨 相手との量子暗号キーが確立されていません。\n先に「📡 QRセキュア通信」で鍵を交換してください。");
                 return;
             }
-            
+
             this.inputField.value = '';
-            this.inputField.style.height = 'auto'; 
-            
-            const payloadObj = { type: 'text', text: text };
+            this.inputField.style.height = 'auto';
+
+            const payloadObj = {
+                type: 'text',
+                text
+            };
+
             if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
 
             const payload = JSON.stringify(payloadObj);
             const encrypted = await SecretNexus.encryptData(payload, this.activeNode.sharedKey);
-            
+
             if (this.editingMsgId) {
                 const msgId = this.editingMsgId;
                 this.cancelAction();
+
                 if (this.activeNode.channelId && db) {
                     await updateDoc(doc(db, "nexus_channels", this.activeNode.channelId, "messages", msgId), {
-                        cipher: encrypted.cipher, iv: encrypted.iv, isEdited: true, updatedAt: serverTimestamp()
+                        cipher: encrypted.cipher,
+                        iv: encrypted.iv,
+                        isEdited: true,
+                        updatedAt: serverTimestamp()
                     });
                 }
             } else {
@@ -980,95 +1647,158 @@ async openChat(node) {
             alert("送信中にシステムエラーが発生しました: " + e.message);
         }
     }
-    
+
     async toggleVoiceRecord() {
         if (!this.activeNode) return;
-        
-        if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
+
+        if (!this.activeNode.sharedKey) {
+            return alert("🚨 量子暗号キーが確立されていません。");
+        }
 
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
             this.mediaRecorder.stop();
-            this.micBtn.innerText = '🎙️';
+            this.micBtn.textContent = '🎙️';
             this.micBtn.style.color = '#00ffcc';
             this.micBtn.style.textShadow = 'none';
-            this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...';
+            this.inputField.placeholder = this.isPhantomMode
+                ? '👻 Phantom Message (10秒で消滅)...'
+                : 'Secure Message...';
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 this.mediaRecorder = new MediaRecorder(stream);
                 this.audioChunks = [];
-                
+
                 this.mediaRecorder.ondataavailable = e => this.audioChunks.push(e.data);
+
                 this.mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
                     const reader = new FileReader();
+
                     reader.onloadend = async () => {
                         const base64Audio = reader.result;
                         this.inputField.placeholder = 'Encrypting Voice...';
+
                         try {
-                            const payloadObj = { type: 'voice', data: base64Audio };
+                            const payloadObj = {
+                                type: 'voice',
+                                data: base64Audio
+                            };
+
                             if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
-                            const encrypted = await SecretNexus.encryptData(JSON.stringify(payloadObj), this.activeNode.sharedKey);
+
+                            const encrypted = await SecretNexus.encryptData(
+                                JSON.stringify(payloadObj),
+                                this.activeNode.sharedKey
+                            );
+
                             this.cancelAction();
                             await this.dispatchToNetwork(encrypted);
-                        } catch(e) { alert("音声の暗号化に失敗"); }
-                        finally { this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...'; }
+                        } catch (e) {
+                            alert("音声の暗号化に失敗");
+                        } finally {
+                            this.inputField.placeholder = this.isPhantomMode
+                                ? '👻 Phantom Message (10秒で消滅)...'
+                                : 'Secure Message...';
+                        }
                     };
+
                     reader.readAsDataURL(audioBlob);
-                    stream.getTracks().forEach(t => t.stop()); 
+                    stream.getTracks().forEach(t => t.stop());
                 };
-                
+
                 this.mediaRecorder.start();
-                this.micBtn.innerText = '🔴';
+                this.micBtn.textContent = '🔴';
                 this.micBtn.style.color = '#ff4444';
                 this.micBtn.style.textShadow = '0 0 10px #ff4444';
                 this.inputField.placeholder = 'Recording... (タップで送信)';
-            } catch(e) { alert("マイクのアクセスが許可されていません。"); }
+            } catch (e) {
+                alert("マイクのアクセスが許可されていません。");
+            }
         }
     }
 
     async compressImage(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
+
             reader.onload = (e) => {
                 const img = new Image();
+
                 img.onload = () => {
-                    const canvas = document.createElement('canvas'); const MAX_SIZE = 800;
-                    let w = img.width; let h = img.height;
-                    if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; } else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
-                    canvas.width = w; canvas.height = h;
+                    const canvas = document.createElement('canvas');
+                    const MAX_SIZE = 800;
+
+                    let w = img.width;
+                    let h = img.height;
+
+                    if (w > h && w > MAX_SIZE) {
+                        h *= MAX_SIZE / w;
+                        w = MAX_SIZE;
+                    } else if (h > MAX_SIZE) {
+                        w *= MAX_SIZE / h;
+                        h = MAX_SIZE;
+                    }
+
+                    canvas.width = w;
+                    canvas.height = h;
+
                     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
                 };
+
                 img.src = e.target.result;
             };
+
             reader.readAsDataURL(file);
         });
     }
 
     async sendImage(file) {
         if (!file || !this.activeNode) return;
-        
-        if (!this.activeNode.sharedKey) return alert("🚨 量子暗号キーが確立されていません。");
-        
+
+        if (!this.activeNode.sharedKey) {
+            return alert("🚨 量子暗号キーが確立されていません。");
+        }
+
         this.inputField.placeholder = 'Compressing & Encrypting...';
+
         try {
             const base64Data = await this.compressImage(file);
-            const payloadObj = { type: 'image', data: base64Data };
+
+            const payloadObj = {
+                type: 'image',
+                data: base64Data
+            };
+
             if (this.replyToMsg) payloadObj.replyTo = this.replyToMsg;
-            const encrypted = await SecretNexus.encryptData(JSON.stringify(payloadObj), this.activeNode.sharedKey);
+
+            const encrypted = await SecretNexus.encryptData(
+                JSON.stringify(payloadObj),
+                this.activeNode.sharedKey
+            );
+
             this.cancelAction();
             await this.dispatchToNetwork(encrypted);
-        } catch(e) { alert("画像の暗号化に失敗しました。"); } 
-        finally { this.inputField.placeholder = this.isPhantomMode ? '👻 Phantom Message (10秒で消滅)...' : 'Secure Message...'; }
+        } catch (e) {
+            alert("画像の暗号化に失敗しました。");
+        } finally {
+            this.inputField.placeholder = this.isPhantomMode
+                ? '👻 Phantom Message (10秒で消滅)...'
+                : 'Secure Message...';
+        }
     }
 
     async dispatchToNetwork(encrypted) {
-        const myId = this.getMyIdentity(); if (!myId) return;
+        const myId = this.getMyIdentity();
+        if (!myId) return;
+
         const myPubStr = JSON.stringify(myId.publicKey);
-        const myShortId = this.getShortId(myId.publicKey); 
-        
+        const myShortId = this.getShortId(myId.publicKey);
+
         const isPhantom = this.isPhantomMode;
+
         if (this.isPhantomMode) {
             this.isPhantomMode = false;
             this.phantomBtn.style.color = '#888';
@@ -1078,22 +1808,54 @@ async openChat(node) {
         }
 
         if (!this.activeNode.channelId || !db) {
-            const msgObj = { id: "", sender: 'me', cipher: encrypted.cipher, iv: encrypted.iv, timestamp: Date.now(), phantom: isPhantom };
+            const msgObj = {
+                id: "",
+                sender: 'me',
+                cipher: encrypted.cipher,
+                iv: encrypted.iv,
+                timestamp: Date.now(),
+                phantom: isPhantom
+            };
+
             if (!this.activeNode.messages) this.activeNode.messages = [];
-            this.activeNode.messages.push(msgObj); this.app.autoSave();
-            await this.renderMessageObj(msgObj); this.scrollToBottom(); return;
+
+            this.activeNode.messages.push(msgObj);
+            this.app.autoSave();
+
+            await this.renderMessageObj(msgObj);
+            this.scrollToBottom();
+            return;
         }
 
         try {
             const channelRef = doc(db, "nexus_channels", this.activeNode.channelId);
-            await setDoc(channelRef, { participants: [myPubStr, JSON.stringify(this.activeNode.peerPublicKey)], updatedAt: serverTimestamp(), [`lastRead.${myShortId}`]: Date.now() }, { merge: true });
+
+            await setDoc(channelRef, {
+                participants: [
+                    myPubStr,
+                    JSON.stringify(this.activeNode.peerPublicKey)
+                ],
+                updatedAt: serverTimestamp(),
+                [`lastRead.${myShortId}`]: Date.now()
+            }, { merge: true });
+
             const messagesRef = collection(db, "nexus_channels", this.activeNode.channelId, "messages");
-            await addDoc(messagesRef, { 
-                cipher: encrypted.cipher, iv: encrypted.iv, senderPubKey: myPubStr, timestamp: serverTimestamp(), 
-                isDeleted: false, phantom: isPhantom, reactions: {} 
+
+            await addDoc(messagesRef, {
+                cipher: encrypted.cipher,
+                iv: encrypted.iv,
+                senderPubKey: myPubStr,
+                timestamp: serverTimestamp(),
+                isDeleted: false,
+                phantom: isPhantom,
+                reactions: {}
             });
         } catch (e) {}
     }
 
-    scrollToBottom() { setTimeout(() => { this.msgContainer.scrollTop = this.msgContainer.scrollHeight; }, 50); }
+    scrollToBottom() {
+        setTimeout(() => {
+            this.msgContainer.scrollTop = this.msgContainer.scrollHeight;
+        }, 50);
+    }
 }
