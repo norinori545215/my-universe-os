@@ -101,47 +101,39 @@ export class LoginGateway {
             window.localStorage.removeItem('emailForSignIn');
 
             const user = result.user;
-            let role = 'PRO';
+            const userRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userRef);
 
-            if (email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase()) {
-                role = 'ADMIN';
-                await setDoc(doc(db, "users", user.uid), {
-                    role: 'ADMIN'
-                }, {
-                    merge: true
-                });
-            } else if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-                const savedName = window.localStorage.getItem('nameForSignIn') || "Guest User";
+            const savedName = window.localStorage.getItem('nameForSignIn') || user.displayName || "Guest User";
 
+            if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
                 await updateProfile(user, {
                     displayName: savedName
                 });
 
-                role = 'RESTRICTED';
+                window.localStorage.removeItem('nameForSignIn');
+            }
 
-                await setDoc(doc(db, "users", user.uid), {
+            let role = 'RESTRICTED';
+
+            // Firestoreのroleを最優先する
+            if (userDoc.exists() && userDoc.data().role) {
+                role = userDoc.data().role;
+            } else {
+                // 新規・未登録ユーザーはRESTRICTEDで作成
+                await setDoc(userRef, {
                     role: 'RESTRICTED',
                     name: savedName,
                     createdAt: serverTimestamp()
                 }, {
                     merge: true
                 });
+            }
 
-                window.localStorage.removeItem('nameForSignIn');
-            } else {
-                const userDoc = await getDoc(doc(db, "users", user.uid));
-
-                if (userDoc.exists() && userDoc.data().role) {
-                    role = userDoc.data().role;
-                } else {
-                    role = 'PRO';
-
-                    await setDoc(doc(db, "users", user.uid), {
-                        role: 'PRO'
-                    }, {
-                        merge: true
-                    });
-                }
+            // ADMIN_EMAILだけで自動ADMIN昇格はしない
+            // ADMINにしたい場合は Firebase Console の users/{uid}.role を ADMIN にする
+            if (email.toLowerCase() === this.ADMIN_EMAIL.toLowerCase() && role !== 'ADMIN') {
+                console.warn('[LoginGateway] ADMIN_EMAIL matched, but Firestore role is not ADMIN. Set users/{uid}.role = ADMIN manually.');
             }
 
             this.cacheRoleForUIOnly(role);

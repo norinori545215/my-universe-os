@@ -117,13 +117,21 @@ export class UIManager {
     }
 
         getCurrentRole() {
-        try {
-            return PermissionGate.getRole?.() || localStorage.getItem('universe_role') || 'RESTRICTED';
-        } catch (e) {
-            console.warn('[UIManager] role取得に失敗:', e);
-            return localStorage.getItem('universe_role') || 'RESTRICTED';
+            try {
+                const cachedRole = localStorage.getItem('universe_role');
+                const gateRole = PermissionGate.getRole?.();
+
+                // UI表示は最新キャッシュを優先する
+                // 本物の権限判定はFirestore Rules側で守る
+                if (cachedRole === 'ADMIN' || cachedRole === 'PRO' || cachedRole === 'VIP_GUEST') {
+                    return cachedRole;
+                }
+                return gateRole || cachedRole || 'RESTRICTED';
+            } catch (e) {
+                console.warn('[UIManager] role取得に失敗:', e);
+                return localStorage.getItem('universe_role') || 'RESTRICTED';
+                }
         }
-    }
 
     isProRole(role = this.getCurrentRole()) {
         return role === 'PRO' || role === 'ADMIN' || role === 'VIP_GUEST';
