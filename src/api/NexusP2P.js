@@ -671,7 +671,19 @@ export class NexusP2P {
             align-self: ${align}; background: ${bg}; border: 1px solid ${border};
             padding: 6px 10px; border-radius: 6px; max-width: 80%; word-break: break-all;
         `;
-        msgDiv.innerHTML = `<div style="font-size:9px; color:${color}; margin-bottom:2px;">[${sender}]</div><div>${message}</div>`;
+        const senderEl = document.createElement('div');
+        senderEl.style.fontSize = '9px';
+        senderEl.style.color = color;
+        senderEl.style.marginBottom = '2px';
+        senderEl.textContent = `[${sender}]`;
+        
+        const bodyEl = document.createElement('div');
+        bodyEl.style.whiteSpace = 'pre-wrap';
+        bodyEl.textContent = message;
+        
+        msgDiv.appendChild(senderEl);
+        msgDiv.appendChild(bodyEl);
+        
         this.chatLogEl.appendChild(msgDiv);
         this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
 
