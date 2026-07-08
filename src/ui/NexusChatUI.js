@@ -1597,6 +1597,16 @@ export class NexusChatUI {
     }
 
     async sendMessage() {
+        console.log("[NexusChatUI] sendMessage called", {
+            hasInputField: !!this.inputField,
+            inputValue: this.inputField?.value || '',
+            hasActiveNode: !!this.activeNode,
+            activeNodeName: this.activeNode?.name || null,
+            channelId: this.activeNode?.channelId || null,
+            hasSharedKey: !!this.activeNode?.sharedKey,
+            hasPeerPublicKey: !!this.activeNode?.peerPublicKey
+        });
+        
         try {
             const text = this.inputField.value.trim();
             if (!text || !this.activeNode) return;
@@ -1798,6 +1808,15 @@ export class NexusChatUI {
         const myShortId = this.getShortId(myId.publicKey);
 
         const isPhantom = this.isPhantomMode;
+
+        console.log("[NexusChatUI] dispatchToNetwork", {
+            hasDb: !!db,
+            hasActiveNode: !!this.activeNode,
+            channelId: this.activeNode?.channelId || null,
+            hasPeerPublicKey: !!this.activeNode?.peerPublicKey,
+            hasSharedKey: !!this.activeNode?.sharedKey,
+            hasMyId: !!myId
+        });
 
         if (this.isPhantomMode) {
             this.isPhantomMode = false;
